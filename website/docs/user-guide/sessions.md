@@ -314,7 +314,7 @@ The search supports standard FTS5 query syntax:
 
 The agent is prompted to use session search automatically:
 
-> *"When the user references something from a past conversation or you suspect relevant prior context exists, use session_search to recall it before asking them to repeat themselves."*
+> *"When the user references something from a past conversation or you suspect relevant prior context exists, use `session_search` to look it up before asking them to repeat themselves."*
 
 ## Per-Platform Session Tracking
 

@@ -525,7 +525,7 @@ MEMORY_SCHEMA = {
         "PRIORITY: User preferences and corrections > environment facts > procedural knowledge. "
         "The most valuable memory prevents the user from having to repeat themselves.\n\n"
         "Do NOT save task progress, session outcomes, completed-work logs, or temporary TODO "
-        "state to memory; use session_search to recall those from past transcripts.\n"
+        "state to memory; use `session_search` to look up those past transcripts.\n"
         "If you've discovered a new way to do something, solved a problem that could be "
         "necessary later, save it as a skill with the skill tool.\n\n"
         "TWO TARGETS:\n"

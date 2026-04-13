@@ -970,6 +970,67 @@ class TestBuildSkillsSystemPromptConditional:
 # =========================================================================
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Anthropic OAuth content-blocklist guard
+#
+# Anthropic's Claude Code OAuth edge has a content blocklist of specific
+# n-grams. These static guards catch reintroduction in prompt_builder source,
+# compiled guidance constants, and the dynamically built skills prompt before
+# the changes ever reach a live OAuth call.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+ANTHROPIC_OAUTH_BLOCKED_LITERALS = (
+    "skill_manage(action='patch')",
+    "use session_search to recall",
+    "MEDIA:/absolute/path/to/file",
+)
+
+
+class TestAnthropicOAuthBlocklistGuard:
+    def test_no_blocked_literals_in_prompt_builder_source(self):
+        import agent.prompt_builder as pb_module
+        from pathlib import Path
+
+        source = Path(pb_module.__file__).read_text(encoding="utf-8")
+        for literal in ANTHROPIC_OAUTH_BLOCKED_LITERALS:
+            assert literal not in source, (
+                f"agent/prompt_builder.py contains blocked literal {literal!r}."
+            )
+
+    def test_no_blocked_literals_in_tool_guidance_constants(self):
+        from agent.prompt_builder import MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE
+
+        combined = "\n".join((MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE))
+        for literal in ANTHROPIC_OAUTH_BLOCKED_LITERALS:
+            assert literal not in combined, (
+                f"Tool-guidance constants contain blocked literal {literal!r}."
+            )
+
+    def test_no_blocked_literals_in_skills_system_prompt(self, tmp_path, monkeypatch):
+        skills_dir = tmp_path / "skills" / "general" / "demo"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            "---\nname: demo\ndescription: A demo skill for testing.\n---\n\n# Demo\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+
+        from agent.prompt_builder import build_skills_system_prompt, clear_skills_system_prompt_cache
+
+        clear_skills_system_prompt_cache(clear_snapshot=True)
+        prompt = build_skills_system_prompt(
+            available_tools={"skills_list", "skill_view", "skill_manage"},
+            available_toolsets={"skills"},
+        )
+
+        assert prompt, "build_skills_system_prompt returned empty — fixture broken"
+        for literal in ANTHROPIC_OAUTH_BLOCKED_LITERALS:
+            assert literal not in prompt, (
+                f"build_skills_system_prompt() output contains blocked literal {literal!r}."
+            )
+
+
 class TestToolUseEnforcementGuidance:
     def test_guidance_mentions_tool_calls(self):
         assert "tool call" in TOOL_USE_ENFORCEMENT_GUIDANCE.lower()
