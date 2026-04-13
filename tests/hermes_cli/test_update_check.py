@@ -17,18 +17,26 @@ def test_version_string_no_v_prefix():
 
 
 def test_check_for_updates_uses_cache(tmp_path, monkeypatch):
-    """When cache is fresh, check_for_updates should return cached value without calling git."""
+    """When cache is fresh for the active repo, return it without calling git."""
     from hermes_cli.banner import check_for_updates
 
-    # Create a fake git repo and fresh cache
-    repo_dir = tmp_path / "hermes-agent"
-    repo_dir.mkdir()
-    (repo_dir / ".git").mkdir()
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / ".git").mkdir()
+    banner_file = project_root / "hermes_cli" / "banner.py"
+    banner_file.parent.mkdir(parents=True)
+    banner_file.touch()
 
     cache_file = tmp_path / ".update_check"
-    cache_file.write_text(json.dumps({"ts": time.time(), "behind": 3}))
+    cache_file.write_text(json.dumps({
+        "ts": time.time(),
+        "behind": 3,
+        "repo_dir": str(project_root),
+    }))
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    import hermes_cli.banner as banner
+    monkeypatch.setattr(banner, "__file__", str(banner_file))
     with patch("hermes_cli.banner.subprocess.run") as mock_run:
         result = check_for_updates()
 
@@ -40,17 +48,22 @@ def test_check_for_updates_expired_cache(tmp_path, monkeypatch):
     """When cache is expired, check_for_updates should call git fetch."""
     from hermes_cli.banner import check_for_updates
 
-    repo_dir = tmp_path / "hermes-agent"
-    repo_dir.mkdir()
-    (repo_dir / ".git").mkdir()
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / ".git").mkdir()
+    banner_file = project_root / "hermes_cli" / "banner.py"
+    banner_file.parent.mkdir(parents=True)
+    banner_file.touch()
 
     # Write an expired cache (timestamp far in the past)
     cache_file = tmp_path / ".update_check"
-    cache_file.write_text(json.dumps({"ts": 0, "behind": 1}))
+    cache_file.write_text(json.dumps({"ts": 0, "behind": 1, "repo_dir": str(project_root)}))
 
     mock_result = MagicMock(returncode=0, stdout="5\n")
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    import hermes_cli.banner as banner
+    monkeypatch.setattr(banner, "__file__", str(banner_file))
     with patch("hermes_cli.banner.subprocess.run", return_value=mock_result) as mock_run:
         result = check_for_updates()
 
@@ -75,21 +88,58 @@ def test_check_for_updates_no_git_dir(tmp_path, monkeypatch):
     mock_run.assert_not_called()
 
 
-def test_check_for_updates_fallback_to_project_root(tmp_path, monkeypatch):
-    """Dev install: falls back to Path(__file__).parent.parent when HERMES_HOME has no git repo."""
+def test_check_for_updates_fallback_to_legacy_install_repo(tmp_path, monkeypatch):
+    """When the active runtime is not in a git repo, fall back to HERMES_HOME/hermes-agent."""
     import hermes_cli.banner as banner
 
-    project_root = Path(banner.__file__).parent.parent.resolve()
-    if not (project_root / ".git").exists():
-        pytest.skip("Not running from a git checkout")
+    fake_runtime = tmp_path / "runtime" / "hermes_cli" / "banner.py"
+    fake_runtime.parent.mkdir(parents=True)
+    fake_runtime.touch()
 
-    # Point HERMES_HOME at a temp dir with no hermes-agent/.git
+    legacy_repo = tmp_path / "hermes-agent"
+    legacy_repo.mkdir()
+    (legacy_repo / ".git").mkdir()
+
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setattr(banner, "__file__", str(fake_runtime))
     with patch("hermes_cli.banner.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="0\n")
         result = banner.check_for_updates()
-    # Should have fallen back to project root and run git commands
+    assert result == 0
     assert mock_run.call_count >= 1
+
+
+def test_check_for_updates_ignores_cache_from_different_repo(tmp_path, monkeypatch):
+    """A cache produced for another checkout should be ignored and recomputed."""
+    from hermes_cli.banner import check_for_updates
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / ".git").mkdir()
+    banner_file = project_root / "hermes_cli" / "banner.py"
+    banner_file.parent.mkdir(parents=True)
+    banner_file.touch()
+
+    cache_file = tmp_path / ".update_check"
+    cache_file.write_text(json.dumps({
+        "ts": time.time(),
+        "behind": 928,
+        "repo_dir": str(tmp_path / "some-other-repo"),
+    }))
+
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    import hermes_cli.banner as banner
+    monkeypatch.setattr(banner, "__file__", str(banner_file))
+
+    mock_result = MagicMock(returncode=0, stdout="0\n")
+    with patch("hermes_cli.banner.subprocess.run", return_value=mock_result) as mock_run:
+        result = check_for_updates()
+
+    assert result == 0
+    assert mock_run.call_count == 2
+    cached = json.loads(cache_file.read_text())
+    assert cached["behind"] == 0
+    assert cached["repo_dir"] == str(project_root)
 
 
 def test_prefetch_non_blocking():

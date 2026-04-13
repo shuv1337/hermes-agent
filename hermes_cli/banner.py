@@ -123,29 +123,43 @@ def get_available_skills() -> Dict[str, List[str]]:
 _UPDATE_CHECK_CACHE_SECONDS = 6 * 3600
 
 
-def check_for_updates() -> Optional[int]:
-    """Check how many commits behind origin/main the local repo is.
+def _project_repo_dir() -> Optional[Path]:
+    """Return the repo containing this running Hermes code, if it is a git checkout."""
+    repo_dir = Path(__file__).parent.parent.resolve()
+    return repo_dir if (repo_dir / ".git").exists() else None
 
-    Does a ``git fetch`` at most once every 6 hours (cached to
-    ``~/.hermes/.update_check``).  Returns the number of commits behind,
-    or ``None`` if the check fails or isn't applicable.
-    """
+
+def _legacy_install_repo_dir() -> Optional[Path]:
+    """Return the legacy installer checkout under HERMES_HOME, if present."""
     hermes_home = get_hermes_home()
     repo_dir = hermes_home / "hermes-agent"
-    cache_file = hermes_home / ".update_check"
+    return repo_dir if (repo_dir / ".git").exists() else None
 
-    # Must be a git repo — fall back to project root for dev installs
-    if not (repo_dir / ".git").exists():
-        repo_dir = Path(__file__).parent.parent.resolve()
-    if not (repo_dir / ".git").exists():
+
+def check_for_updates() -> Optional[int]:
+    """Check how many commits behind origin/main the active repo is.
+
+    Does a ``git fetch`` at most once every 6 hours (cached to
+    ``~/.hermes/.update_check``). Returns the number of commits behind,
+    or ``None`` if the check fails or isn't applicable.
+
+    Prefer the git checkout that contains the currently running Hermes code.
+    Fall back to the legacy installer checkout under ``$HERMES_HOME/hermes-agent``
+    only when this runtime is not itself running from a git repo.
+    """
+    hermes_home = get_hermes_home()
+    cache_file = hermes_home / ".update_check"
+    repo_dir = _resolve_repo_dir()
+    if repo_dir is None:
         return None
 
-    # Read cache
+    # Read cache. Invalidate when it was produced for a different checkout.
     now = time.time()
     try:
         if cache_file.exists():
             cached = json.loads(cache_file.read_text())
-            if now - cached.get("ts", 0) < _UPDATE_CHECK_CACHE_SECONDS:
+            cache_repo_dir = cached.get("repo_dir")
+            if cache_repo_dir == str(repo_dir) and now - cached.get("ts", 0) < _UPDATE_CHECK_CACHE_SECONDS:
                 return cached.get("behind")
     except Exception:
         pass
@@ -176,7 +190,7 @@ def check_for_updates() -> Optional[int]:
 
     # Write cache
     try:
-        cache_file.write_text(json.dumps({"ts": now, "behind": behind}))
+        cache_file.write_text(json.dumps({"ts": now, "behind": behind, "repo_dir": str(repo_dir)}))
     except Exception:
         pass
 
@@ -185,11 +199,7 @@ def check_for_updates() -> Optional[int]:
 
 def _resolve_repo_dir() -> Optional[Path]:
     """Return the active Hermes git checkout, or None if this isn't a git install."""
-    hermes_home = get_hermes_home()
-    repo_dir = hermes_home / "hermes-agent"
-    if not (repo_dir / ".git").exists():
-        repo_dir = Path(__file__).parent.parent.resolve()
-    return repo_dir if (repo_dir / ".git").exists() else None
+    return _project_repo_dir() or _legacy_install_repo_dir()
 
 
 def _git_short_hash(repo_dir: Path, rev: str) -> Optional[str]:
