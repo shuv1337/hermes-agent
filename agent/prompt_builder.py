@@ -367,7 +367,7 @@ PLATFORM_HINTS = {
     "wecom": (
         "You are on WeCom (企业微信 / Enterprise WeChat). Markdown formatting is supported. "
         "You CAN send media files natively — to deliver a file to the user, include "
-        "MEDIA:/absolute/path/to/file in your response. The file will be sent as a native "
+        "MEDIA:/full/path/to/file in your response. The file will be sent as a native "
         "WeCom attachment: images (.jpg, .png, .webp) are sent as photos (up to 10 MB), "
         "other files (.pdf, .docx, .xlsx, .md, .txt, etc.) arrive as downloadable documents "
         "(up to 20 MB), and videos (.mp4) play inline. Voice messages are supported but "
