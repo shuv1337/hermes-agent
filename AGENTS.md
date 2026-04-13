@@ -222,7 +222,7 @@ The registry handles schema collection, dispatch, availability checking, and err
 
 ### config.yaml options:
 1. Add to `DEFAULT_CONFIG` in `hermes_cli/config.py`
-2. Bump `_config_version` (currently 5) to trigger migration for existing users
+2. Bump `_config_version` (currently 16) to trigger migration for existing users
 
 ### .env variables:
 1. Add to `OPTIONAL_ENV_VARS` in `hermes_cli/config.py` with metadata:
@@ -434,6 +434,20 @@ Leaks as literal `?[K` text under `prompt_toolkit`'s `patch_stdout`. Use space-p
 
 ### `_last_resolved_tool_names` is a process-global in `model_tools.py`
 `_run_single_child()` in `delegate_tool.py` saves and restores this global around subagent execution. If you add new code that reads this global, be aware it may be temporarily stale during child agent runs.
+
+### `hermes gateway restart` can leave the service in auto-restart limbo
+The restart command sends USR1 to the old process and relies on systemd's `Restart=on-failure` to
+spawn a new one. If `hermes gateway status` shows `activating (auto-restart)` for more than ~10s,
+the auto-restart didn't fire. Run `hermes gateway start` explicitly to bring it back. Always verify
+the new PID is `active (running)` after a restart before walking away.
+
+### Anthropic OAuth content blocklist causes misleading 400 errors
+Anthropic's Claude-Code OAuth edge maintains a content blocklist of n-grams associated with
+prompt-injection traffic. If system prompt text (especially in `agent/prompt_builder.py` or tool
+schemas like `tools/memory_tool.py`) contains a blocked literal, the API returns a 400 "out of
+usage" error — **not** a clear blocklist message. Fix: reword the offending text to break the
+tokenization pattern. A static regression guard exists in `tests/agent/test_prompt_builder.py`
+(`test_blocked_literals_absent`) — run it after editing any model-facing prompt text.
 
 ### DO NOT hardcode cross-tool references in schema descriptions
 Tool schema descriptions must not mention tools from other toolsets by name (e.g., `browser_navigate` saying "prefer web_search"). Those tools may be unavailable (missing API keys, disabled toolset), causing the model to hallucinate calls to non-existent tools. If a cross-reference is needed, add it dynamically in `get_tool_definitions()` in `model_tools.py` — see the `browser_navigate` / `execute_code` post-processing blocks for the pattern.
