@@ -645,19 +645,6 @@ def load_gateway_config() -> GatewayConfig:
                         frc = ",".join(str(v) for v in frc)
                     os.environ["WHATSAPP_FREE_RESPONSE_CHATS"] = str(frc)
 
-            # Signal settings → env vars (env vars take precedence)
-            signal_cfg = yaml_cfg.get("signal", {})
-            if isinstance(signal_cfg, dict):
-                if "require_mention" in signal_cfg and not os.getenv("SIGNAL_REQUIRE_MENTION"):
-                    os.environ["SIGNAL_REQUIRE_MENTION"] = str(signal_cfg["require_mention"]).lower()
-                if "mention_patterns" in signal_cfg and not os.getenv("SIGNAL_MENTION_PATTERNS"):
-                    os.environ["SIGNAL_MENTION_PATTERNS"] = json.dumps(signal_cfg["mention_patterns"])
-                frc = signal_cfg.get("free_response_chats")
-                if frc is not None and not os.getenv("SIGNAL_FREE_RESPONSE_CHATS"):
-                    if isinstance(frc, list):
-                        frc = ",".join(str(v) for v in frc)
-                    os.environ["SIGNAL_FREE_RESPONSE_CHATS"] = str(frc)
-
             # Matrix settings → env vars (env vars take precedence)
             matrix_cfg = yaml_cfg.get("matrix", {})
             if isinstance(matrix_cfg, dict):
