@@ -476,24 +476,38 @@ class SignalAdapter(BasePlatformAdapter):
         Signal encodes mentions as structured metadata with the mentioned user's
         UUID and/or phone number. We match against both the account phone number
         and the account UUID (fetched on connect).
+
+        Fallback: some signal-cli versions (notably 0.13.x in daemon/HTTP mode)
+        strip the ``mentions`` array from SSE events while preserving the
+        ``\\uFFFC`` placeholder character in the message text.  When structured
+        mentions are absent but ``\\uFFFC`` is present, we treat it as a
+        mention of the bot — the placeholder proves the sender used the
+        client’s @-mention picker.
         """
-        mentions = data_message.get("mentions", [])
-        if not mentions:
+        mentions = data_message.get("mentions") or []
+
+        if mentions:
+            bot_identifiers = set()
+            if self._account_normalized:
+                bot_identifiers.add(self._account_normalized)
+            if self._account_uuid:
+                bot_identifiers.add(self._account_uuid)
+
+            for mention in mentions:
+                mention_number = mention.get("number", "")
+                mention_uuid = mention.get("uuid", "")
+                if mention_number and mention_number in bot_identifiers:
+                    return True
+                if mention_uuid and mention_uuid in bot_identifiers:
+                    return True
             return False
 
-        bot_identifiers = set()
-        if self._account_normalized:
-            bot_identifiers.add(self._account_normalized)
-        if self._account_uuid:
-            bot_identifiers.add(self._account_uuid)
+        # Fallback: structured mentions missing but \uFFFC placeholder present
+        # in the message text — signal-cli stripped the metadata.
+        raw_text = data_message.get("message", "")
+        if raw_text and "\uFFFC" in raw_text:
+            return True
 
-        for mention in mentions:
-            mention_number = mention.get("number", "")
-            mention_uuid = mention.get("uuid", "")
-            if mention_number and mention_number in bot_identifiers:
-                return True
-            if mention_uuid and mention_uuid in bot_identifiers:
-                return True
         return False
 
     def _message_matches_mention_patterns(self, text: str) -> bool:
@@ -506,21 +520,25 @@ class SignalAdapter(BasePlatformAdapter):
         """Strip bot @mention placeholders from message text for clean agent input."""
         if not text:
             return text
-        mentions = data_message.get("mentions", [])
-        if not mentions:
-            return text
 
-        bot_identifiers = set()
-        if self._account_normalized:
-            bot_identifiers.add(self._account_normalized)
-        if self._account_uuid:
-            bot_identifiers.add(self._account_uuid)
-
-        # After _render_mentions, bot mentions become @<number> or @<uuid> in text.
-        # Strip them so the agent sees clean input.
         cleaned = text
-        for identifier in bot_identifiers:
-            cleaned = re.sub(rf"@{re.escape(identifier)}\b[,:\-]*\s*", "", cleaned)
+        mentions = data_message.get("mentions") or []
+
+        if mentions:
+            bot_identifiers = set()
+            if self._account_normalized:
+                bot_identifiers.add(self._account_normalized)
+            if self._account_uuid:
+                bot_identifiers.add(self._account_uuid)
+
+            # After _render_mentions, bot mentions become @<number> or @<uuid> in text.
+            # Strip them so the agent sees clean input.
+            for identifier in bot_identifiers:
+                cleaned = re.sub(rf"@{re.escape(identifier)}\b[,:\-]*\s*", "", cleaned)
+        else:
+            # Fallback: no structured mentions — strip raw \uFFFC placeholders
+            cleaned = cleaned.replace("\uFFFC", "").strip()
+
         return cleaned.strip() or text
 
     def _should_process_group_message(self, text: str, data_message: dict, group_id: str) -> bool:

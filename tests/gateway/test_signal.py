@@ -834,6 +834,30 @@ class TestSignalMentionDetection:
         }
         assert adapter._message_mentions_bot(data_message) is False
 
+    def test_fffc_fallback_when_mentions_missing(self, monkeypatch):
+        """signal-cli 0.13.x strips mentions from SSE but keeps \\uFFFC in text."""
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "message": "\uFFFC ping",
+            # No 'mentions' key at all — signal-cli SSE stripped it
+        }
+        assert adapter._message_mentions_bot(data_message) is True
+
+    def test_fffc_fallback_with_empty_mentions(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "message": "\uFFFC hello",
+            "mentions": [],
+        }
+        assert adapter._message_mentions_bot(data_message) is True
+
+    def test_no_fffc_no_mentions_returns_false(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "message": "hello without mention",
+        }
+        assert adapter._message_mentions_bot(data_message) is False
+
 
 class TestSignalShouldProcessGroupMessage:
     """Tests for _should_process_group_message."""
@@ -897,6 +921,13 @@ class TestSignalCleanBotMention:
         text = "just a normal message"
         cleaned = adapter._clean_bot_mention_text(text, {"mentions": []})
         assert cleaned == "just a normal message"
+
+    def test_strips_fffc_when_mentions_missing(self, monkeypatch):
+        """When signal-cli strips mentions, clean the raw \\uFFFC from text."""
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        text = "\uFFFC what's the weather?"
+        cleaned = adapter._clean_bot_mention_text(text, {})
+        assert cleaned == "what's the weather?"
 
 
 class TestSignalResolveAccountUUID:
