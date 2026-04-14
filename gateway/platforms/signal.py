@@ -215,19 +215,10 @@ class SignalAdapter(BasePlatformAdapter):
         self._health_monitor_task = asyncio.create_task(self._health_monitor())
 
         # Fetch our own account UUID for mention detection in groups.
-        # signal-cli doesn't expose a direct "whoami" but we can get it
-        # from the account info; fall back gracefully if unavailable.
-        try:
-            acct_info = await self._rpc("listAccounts", {})
-            if isinstance(acct_info, list):
-                for acct in acct_info:
-                    if isinstance(acct, dict) and acct.get("number") == self._account_normalized:
-                        self._account_uuid = acct.get("uuid") or None
-                        break
-            if self._account_uuid:
-                logger.info("Signal: account UUID resolved: %s", self._account_uuid[:8])
-        except Exception:
-            logger.debug("Signal: could not fetch account UUID (mention detection uses phone only)")
+        # Try listAccounts first; if the RPC isn't implemented (older
+        # signal-cli-rest-api), fall back to listGroups and find our
+        # phone number in the member list of any group we belong to.
+        self._account_uuid = await self._resolve_account_uuid()
 
         logger.info("Signal: connected to %s (require_mention=%s)",
                      self.http_url, self._signal_require_mention())
@@ -263,6 +254,52 @@ class SignalAdapter(BasePlatformAdapter):
         self._release_platform_lock()
 
         logger.info("Signal: disconnected")
+
+    # ------------------------------------------------------------------
+    # Account UUID Resolution
+    # ------------------------------------------------------------------
+
+    async def _resolve_account_uuid(self) -> Optional[str]:
+        """Resolve the bot's own UUID for mention matching.
+
+        Tries ``listAccounts`` first (direct lookup).  If that RPC is not
+        implemented (older signal-cli-rest-api versions return -32601),
+        falls back to ``listGroups`` and finds our phone number in the
+        member list of any group we belong to.
+
+        Returns the UUID string, or None if resolution fails.
+        """
+        # Strategy 1: listAccounts (direct)
+        try:
+            acct_info = await self._rpc("listAccounts", {})
+            if isinstance(acct_info, list):
+                for acct in acct_info:
+                    if isinstance(acct, dict) and acct.get("number") == self._account_normalized:
+                        uuid = acct.get("uuid") or None
+                        if uuid:
+                            logger.info("Signal: account UUID resolved via listAccounts: %s", uuid[:8])
+                            return uuid
+        except Exception:
+            pass
+
+        # Strategy 2: listGroups — find our phone in any group's member list
+        try:
+            groups = await self._rpc("listGroups", {"account": self.account})
+            if isinstance(groups, list):
+                for group in groups:
+                    if not isinstance(group, dict):
+                        continue
+                    for member in group.get("members", []):
+                        if isinstance(member, dict) and member.get("number") == self._account_normalized:
+                            uuid = member.get("uuid") or None
+                            if uuid:
+                                logger.info("Signal: account UUID resolved via listGroups: %s", uuid[:8])
+                                return uuid
+        except Exception:
+            pass
+
+        logger.warning("Signal: could not resolve account UUID — group mention detection will only match phone numbers")
+        return None
 
     # ------------------------------------------------------------------
     # SSE Streaming (inbound messages)

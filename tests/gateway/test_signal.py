@@ -897,3 +897,93 @@ class TestSignalCleanBotMention:
         text = "just a normal message"
         cleaned = adapter._clean_bot_mention_text(text, {"mentions": []})
         assert cleaned == "just a normal message"
+
+
+class TestSignalResolveAccountUUID:
+    """Tests for _resolve_account_uuid fallback strategies."""
+
+    @pytest.mark.asyncio
+    async def test_resolves_via_list_accounts(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+
+        async def mock_rpc(method, params, rpc_id=None):
+            if method == "listAccounts":
+                return [{"number": "+10005550100", "uuid": "uuid-from-accounts"}]
+            return None
+
+        adapter._rpc = mock_rpc
+        uuid = await adapter._resolve_account_uuid()
+        assert uuid == "uuid-from-accounts"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_list_groups(self, monkeypatch):
+        """When listAccounts is not implemented, extract UUID from listGroups."""
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+
+        async def mock_rpc(method, params, rpc_id=None):
+            if method == "listAccounts":
+                raise Exception("Method not implemented")
+            if method == "listGroups":
+                return [{
+                    "id": "group1",
+                    "name": "Test Group",
+                    "isMember": True,
+                    "members": [
+                        {"number": "+10005559999", "uuid": "other-uuid"},
+                        {"number": "+10005550100", "uuid": "uuid-from-groups"},
+                    ],
+                }]
+            return None
+
+        adapter._rpc = mock_rpc
+        uuid = await adapter._resolve_account_uuid()
+        assert uuid == "uuid-from-groups"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_both_fail(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+
+        async def mock_rpc(method, params, rpc_id=None):
+            raise Exception("Not implemented")
+
+        adapter._rpc = mock_rpc
+        uuid = await adapter._resolve_account_uuid()
+        assert uuid is None
+
+    @pytest.mark.asyncio
+    async def test_list_accounts_empty_falls_back(self, monkeypatch):
+        """listAccounts returns empty list → falls back to listGroups."""
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+
+        async def mock_rpc(method, params, rpc_id=None):
+            if method == "listAccounts":
+                return []  # empty, no match
+            if method == "listGroups":
+                return [{
+                    "id": "g1",
+                    "members": [{"number": "+10005550100", "uuid": "fallback-uuid"}],
+                }]
+            return None
+
+        adapter._rpc = mock_rpc
+        uuid = await adapter._resolve_account_uuid()
+        assert uuid == "fallback-uuid"
+
+    @pytest.mark.asyncio
+    async def test_list_groups_no_matching_member(self, monkeypatch):
+        """listGroups returns groups but none contain the bot's number."""
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+
+        async def mock_rpc(method, params, rpc_id=None):
+            if method == "listAccounts":
+                return []
+            if method == "listGroups":
+                return [{
+                    "id": "g1",
+                    "members": [{"number": "+10009999999", "uuid": "someone-else"}],
+                }]
+            return None
+
+        adapter._rpc = mock_rpc
+        uuid = await adapter._resolve_account_uuid()
+        assert uuid is None
