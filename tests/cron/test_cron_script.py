@@ -175,6 +175,57 @@ class TestRunJobScript:
         assert parsed["new_prs"][0]["number"] == 42
 
 
+class TestScriptInterpreterSelection:
+    """Tests for interpreter selection based on file extension."""
+
+    def test_shell_script_runs_directly(self, cron_env):
+        """Shell scripts (.sh) should run directly via their shebang, not via Python."""
+        from cron.scheduler import _run_job_script
+
+        script = cron_env / "scripts" / "hello.sh"
+        script.write_text("#!/bin/bash\necho 'hello from bash'\n")
+        script.chmod(0o755)
+
+        success, output = _run_job_script("hello.sh")
+        assert success is True
+        assert output == "hello from bash"
+
+    def test_python_script_runs_with_interpreter(self, cron_env):
+        """Python scripts (.py) should be executed with sys.executable."""
+        from cron.scheduler import _run_job_script
+
+        script = cron_env / "scripts" / "hello.py"
+        script.write_text('import sys; print(f"python={sys.executable}")\n')
+
+        success, output = _run_job_script("hello.py")
+        assert success is True
+        assert "python=" in output
+
+    def test_extensionless_script_runs_with_python(self, cron_env):
+        """Scripts without an extension should fall back to Python interpreter."""
+        from cron.scheduler import _run_job_script
+
+        script = cron_env / "scripts" / "myscript"
+        script.write_text('print("extensionless ok")\n')
+
+        success, output = _run_job_script("myscript")
+        assert success is True
+        assert output == "extensionless ok"
+
+    def test_unknown_extension_runs_directly(self, cron_env):
+        """Unknown extensions (e.g. .rb) should run directly (relying on shebang)."""
+        from cron.scheduler import _run_job_script
+
+        # Use a "ruby" script that is actually a shell script with a shebang
+        script = cron_env / "scripts" / "test.rb"
+        script.write_text("#!/bin/bash\necho 'not really ruby'\n")
+        script.chmod(0o755)
+
+        success, output = _run_job_script("test.rb")
+        assert success is True
+        assert output == "not really ruby"
+
+
 class TestBuildJobPromptWithScript:
     """Test that script output is injected into the prompt."""
 

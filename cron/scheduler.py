@@ -412,9 +412,13 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
     path injection.
 
     Args:
-        script_path: Path to a Python script.  Relative paths are resolved
-            against HERMES_HOME/scripts/.  Absolute and ~-prefixed paths
-            are also validated to ensure they stay within the scripts dir.
+        script_path: Path to a script (Python, bash, or any executable).
+            Shell scripts (.sh/.bash/.zsh) and other non-Python files run
+            directly via their shebang; .py files and extensionless scripts
+            are executed with the current Python interpreter.  Relative
+            paths are resolved against HERMES_HOME/scripts/.  Absolute and
+            ~-prefixed paths are also validated to ensure they stay within
+            the scripts dir.
 
     Returns:
         (success, output) — on failure *output* contains the error message so the
@@ -449,9 +453,21 @@ def _run_job_script(script_path: str) -> tuple[bool, str]:
 
     script_timeout = _get_script_timeout()
 
+    # Determine interpreter: use shebang awareness — executable scripts with a
+    # non-Python shebang (e.g. #!/bin/bash) run directly; .py files and scripts
+    # without a shebang default to the current Python interpreter.
+    cmd: list[str]
+    if path.suffix in (".sh", ".bash", ".zsh"):
+        cmd = [str(path)]
+    elif path.suffix == ".py" or path.suffix == "":
+        cmd = [sys.executable, str(path)]
+    else:
+        # Unknown extension — try running directly (relies on shebang / OS exec)
+        cmd = [str(path)]
+
     try:
         result = subprocess.run(
-            [sys.executable, str(path)],
+            cmd,
             capture_output=True,
             text=True,
             timeout=script_timeout,

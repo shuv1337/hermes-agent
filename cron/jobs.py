@@ -394,9 +394,10 @@ def create_job(
         model: Optional per-job model override
         provider: Optional per-job provider override
         base_url: Optional per-job base URL override
-        script: Optional path to a Python script whose stdout is injected into the
-                prompt each run.  The script runs before the agent turn, and its output
-                is prepended as context.  Useful for data collection / change detection.
+        script: Optional path to a script (Python, bash, or any executable) whose
+                stdout is injected into the prompt each run.  The script runs before
+                the agent turn, and its output is prepended as context.  Useful for
+                data collection / change detection.
 
     Returns:
         The created job dict
