@@ -770,3 +770,130 @@ class TestSignalStopTyping:
         await adapter.stop_typing("+155****4567")
 
         adapter._stop_typing_indicator.assert_awaited_once_with("+155****4567")
+
+
+# ---------------------------------------------------------------------------
+# Group Mention Gating
+# ---------------------------------------------------------------------------
+
+class TestSignalRequireMention:
+    """Tests for require_mention group gating."""
+
+    def test_require_mention_default_true(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch)
+        assert adapter._signal_require_mention() is True
+
+    def test_require_mention_from_config_extra(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, require_mention=False)
+        assert adapter._signal_require_mention() is False
+
+    def test_require_mention_from_env(self, monkeypatch):
+        monkeypatch.setenv("SIGNAL_REQUIRE_MENTION", "false")
+        adapter = _make_signal_adapter(monkeypatch)
+        assert adapter._signal_require_mention() is False
+
+    def test_config_extra_takes_precedence_over_env(self, monkeypatch):
+        monkeypatch.setenv("SIGNAL_REQUIRE_MENTION", "false")
+        adapter = _make_signal_adapter(monkeypatch, require_mention=True)
+        assert adapter._signal_require_mention() is True
+
+
+class TestSignalMentionDetection:
+    """Tests for _message_mentions_bot."""
+
+    def test_mention_by_phone_number(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "message": "\uFFFC hello",
+            "mentions": [{"start": 0, "length": 1, "number": "+10005550100", "uuid": "abc-123"}],
+        }
+        assert adapter._message_mentions_bot(data_message) is True
+
+    def test_mention_by_uuid(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        adapter._account_uuid = "abc-def-123"
+        data_message = {
+            "message": "\uFFFC hello",
+            "mentions": [{"start": 0, "length": 1, "uuid": "abc-def-123"}],
+        }
+        assert adapter._message_mentions_bot(data_message) is True
+
+    def test_no_mention(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "message": "hello",
+            "mentions": [],
+        }
+        assert adapter._message_mentions_bot(data_message) is False
+
+    def test_mention_of_different_user(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "message": "\uFFFC hello",
+            "mentions": [{"start": 0, "length": 1, "number": "+10005559999", "uuid": "other-uuid"}],
+        }
+        assert adapter._message_mentions_bot(data_message) is False
+
+
+class TestSignalShouldProcessGroupMessage:
+    """Tests for _should_process_group_message."""
+
+    def test_group_with_mention_accepted(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "mentions": [{"start": 0, "length": 1, "number": "+10005550100"}],
+        }
+        assert adapter._should_process_group_message("hello", data_message, "group123") is True
+
+    def test_group_without_mention_rejected(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch)
+        assert adapter._should_process_group_message("hello", {"mentions": []}, "group123") is False
+
+    def test_group_require_mention_disabled(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, require_mention=False)
+        assert adapter._should_process_group_message("hello", {"mentions": []}, "group123") is True
+
+    def test_group_command_always_accepted(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch)
+        assert adapter._should_process_group_message("/help", {"mentions": []}, "group123") is True
+
+    def test_group_free_response_chat_accepted(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, free_response_chats=["group123"])
+        assert adapter._should_process_group_message("hello", {"mentions": []}, "group123") is True
+
+    def test_mention_pattern_match(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, mention_patterns=["(?i)\\bhermes\\b"])
+        assert adapter._should_process_group_message("hey hermes do something", {"mentions": []}, "group123") is True
+
+    def test_mention_pattern_no_match(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, mention_patterns=["(?i)\\bhermes\\b"])
+        assert adapter._should_process_group_message("hey there", {"mentions": []}, "group123") is False
+
+
+class TestSignalCleanBotMention:
+    """Tests for _clean_bot_mention_text."""
+
+    def test_strips_phone_mention(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "mentions": [{"start": 0, "length": 1, "number": "+10005550100"}],
+        }
+        text = "@+10005550100 what's the weather?"
+        cleaned = adapter._clean_bot_mention_text(text, data_message)
+        assert cleaned == "what's the weather?"
+
+    def test_strips_uuid_mention(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        adapter._account_uuid = "abc-def-123"
+        data_message = {
+            "mentions": [{"start": 0, "length": 1, "uuid": "abc-def-123"}],
+        }
+        text = "@abc-def-123 hello"
+        cleaned = adapter._clean_bot_mention_text(text, data_message)
+        assert cleaned == "hello"
+
+    def test_preserves_text_without_mention(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch)
+        text = "just a normal message"
+        cleaned = adapter._clean_bot_mention_text(text, {"mentions": []})
+        assert cleaned == "just a normal message"
