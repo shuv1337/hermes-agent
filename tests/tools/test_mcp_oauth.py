@@ -169,6 +169,23 @@ class TestBuildOAuthAuth:
         assert provider is not None
         assert provider.context.client_metadata.scope == "read write admin"
 
+    def test_server_url_preserves_path(self, tmp_path, monkeypatch):
+        """Regression: server_url must include the path component.
+
+        Previously we stripped the path (e.g. /mcp) down to just the origin,
+        which caused 'Protected resource … does not match expected …' errors
+        when the server's PRM resource included the path.
+        """
+        try:
+            from mcp.client.auth import OAuthClientProvider
+        except ImportError:
+            pytest.skip("MCP SDK auth not available")
+
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        provider = build_oauth_auth("composio", "https://connect.composio.dev/mcp")
+        assert isinstance(provider, OAuthClientProvider)
+        assert provider.context.server_url == "https://connect.composio.dev/mcp"
+
 
 # ---------------------------------------------------------------------------
 # Utility functions

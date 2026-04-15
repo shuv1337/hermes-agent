@@ -465,13 +465,15 @@ def build_oauth_auth(
         _write_json(storage._client_info_path(), client_info.model_dump(exclude_none=True))
         logger.debug("Pre-registered client_id=%s for '%s'", client_id, server_name)
 
-    # --- Base URL for discovery ---
-    parsed = urlparse(server_url)
-    base_url = f"{parsed.scheme}://{parsed.netloc}"
-
     # --- Build provider ---
+    # Pass the full server URL (including path) so the SDK's resource
+    # validation matches the Protected Resource Metadata returned by
+    # the server.  Previously we stripped the path to just the origin,
+    # which caused "Protected resource … does not match expected …"
+    # errors for servers whose PRM includes a path component (e.g.
+    # https://connect.composio.dev/mcp).
     provider = OAuthClientProvider(
-        server_url=base_url,
+        server_url=server_url,
         client_metadata=client_metadata,
         storage=storage,
         redirect_handler=_redirect_handler,
