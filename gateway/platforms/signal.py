@@ -153,6 +153,10 @@ class SignalAdapter(BasePlatformAdapter):
         group_allowed_str = os.getenv("SIGNAL_GROUP_ALLOWED_USERS", "")
         self.group_allow_from = set(_parse_comma_list(group_allowed_str))
 
+        # Group mention gating
+        self._mention_patterns = self._compile_mention_patterns()
+        self._account_uuid: Optional[str] = None  # resolved on connect
+
         # HTTP client
         self.client: Optional[httpx.AsyncClient] = None
 
@@ -210,7 +214,11 @@ class SignalAdapter(BasePlatformAdapter):
         self._sse_task = asyncio.create_task(self._sse_listener())
         self._health_monitor_task = asyncio.create_task(self._health_monitor())
 
-        logger.info("Signal: connected to %s", self.http_url)
+        # Resolve our own UUID for mention detection in groups.
+        self._account_uuid = await self._resolve_account_uuid()
+
+        logger.info("Signal: connected to %s (require_mention=%s)",
+                     self.http_url, self._signal_require_mention())
         return True
 
     async def disconnect(self) -> None:
@@ -243,6 +251,158 @@ class SignalAdapter(BasePlatformAdapter):
         self._release_platform_lock()
 
         logger.info("Signal: disconnected")
+
+    # ------------------------------------------------------------------
+    # Account UUID Resolution
+    # ------------------------------------------------------------------
+
+    async def _resolve_account_uuid(self) -> Optional[str]:
+        """Resolve the bot's own UUID for mention matching.
+
+        Tries ``listAccounts`` first.  If that RPC is not implemented,
+        falls back to ``listGroups`` and finds our phone number in the
+        member list of any group we belong to.
+        """
+        try:
+            acct_info = await self._rpc("listAccounts", {})
+            if isinstance(acct_info, list):
+                for acct in acct_info:
+                    if isinstance(acct, dict) and acct.get("number") == self._account_normalized:
+                        uuid = acct.get("uuid") or None
+                        if uuid:
+                            logger.info("Signal: account UUID resolved via listAccounts: %s", uuid[:8])
+                            return uuid
+        except Exception:
+            pass
+
+        try:
+            groups = await self._rpc("listGroups", {"account": self.account})
+            if isinstance(groups, list):
+                for group in groups:
+                    if not isinstance(group, dict):
+                        continue
+                    for member in group.get("members", []):
+                        if isinstance(member, dict) and member.get("number") == self._account_normalized:
+                            uuid = member.get("uuid") or None
+                            if uuid:
+                                logger.info("Signal: account UUID resolved via listGroups: %s", uuid[:8])
+                                return uuid
+        except Exception:
+            pass
+
+        logger.warning("Signal: could not resolve account UUID — group mention detection will only match phone numbers")
+        return None
+
+    # ------------------------------------------------------------------
+    # Group Mention Gating
+    # ------------------------------------------------------------------
+
+    def _signal_require_mention(self) -> bool:
+        """Return whether group chats should require an explicit bot mention."""
+        configured = self.config.extra.get("require_mention")
+        if configured is not None:
+            if isinstance(configured, str):
+                return configured.lower() in ("true", "1", "yes", "on")
+            return bool(configured)
+        return os.getenv("SIGNAL_REQUIRE_MENTION", "true").lower() in ("true", "1", "yes", "on")
+
+    def _signal_free_response_chats(self) -> set:
+        """Return set of group IDs where the bot responds without @mention."""
+        raw = self.config.extra.get("free_response_chats")
+        if raw is None:
+            raw = os.getenv("SIGNAL_FREE_RESPONSE_CHATS", "")
+        if isinstance(raw, list):
+            return {str(part).strip() for part in raw if str(part).strip()}
+        return {part.strip() for part in str(raw).split(",") if part.strip()}
+
+    def _compile_mention_patterns(self) -> List[re.Pattern]:
+        """Compile optional regex wake-word patterns for group triggers."""
+        patterns = self.config.extra.get("mention_patterns")
+        if patterns is None:
+            raw = os.getenv("SIGNAL_MENTION_PATTERNS", "").strip()
+            if raw:
+                try:
+                    import json as _json
+                    patterns = _json.loads(raw)
+                except Exception:
+                    patterns = [raw]
+        if not patterns:
+            return []
+        compiled = []
+        for pattern in patterns:
+            try:
+                compiled.append(re.compile(pattern, re.IGNORECASE))
+            except re.error as exc:
+                logger.warning("Signal: invalid mention pattern %r: %s", pattern, exc)
+        if compiled:
+            logger.info("Signal: loaded %d mention pattern(s)", len(compiled))
+        return compiled
+
+    def _message_mentions_bot(self, data_message: dict) -> bool:
+        """Check if the data message contains an @mention of this bot."""
+        mentions = data_message.get("mentions") or []
+        if not mentions:
+            return False
+
+        bot_identifiers = set()
+        if self._account_normalized:
+            bot_identifiers.add(self._account_normalized)
+        if self._account_uuid:
+            bot_identifiers.add(self._account_uuid)
+
+        for mention in mentions:
+            mention_number = mention.get("number", "")
+            mention_uuid = mention.get("uuid", "")
+            if mention_number and mention_number in bot_identifiers:
+                return True
+            if mention_uuid and mention_uuid in bot_identifiers:
+                return True
+        return False
+
+    def _message_matches_mention_patterns(self, text: str) -> bool:
+        """Check if message text matches any configured wake-word patterns."""
+        if not self._mention_patterns or not text:
+            return False
+        return any(pattern.search(text) for pattern in self._mention_patterns)
+
+    def _clean_bot_mention_text(self, text: str, data_message: dict) -> str:
+        """Strip bot @mention placeholders from message text for clean agent input."""
+        if not text:
+            return text
+        mentions = data_message.get("mentions") or []
+        if not mentions:
+            return text
+
+        bot_identifiers = set()
+        if self._account_normalized:
+            bot_identifiers.add(self._account_normalized)
+        if self._account_uuid:
+            bot_identifiers.add(self._account_uuid)
+
+        cleaned = text
+        for identifier in bot_identifiers:
+            cleaned = re.sub(rf"@{re.escape(identifier)}\b[,:\-]*\s*", "", cleaned)
+        return cleaned.strip() or text
+
+    def _should_process_group_message(self, text: str, data_message: dict, group_id: str) -> bool:
+        """Apply group mention gating rules.
+
+        Group messages are accepted when:
+        - the group is in ``free_response_chats``
+        - ``require_mention`` is disabled
+        - the message starts with a / command
+        - the bot is @mentioned in the structured mention metadata
+        - the text matches a configured regex wake-word pattern
+        """
+        if group_id in self._signal_free_response_chats():
+            return True
+        if not self._signal_require_mention():
+            return True
+        if text and text.strip().startswith("/"):
+            return True
+        if self._message_mentions_bot(data_message):
+            return True
+        return self._message_matches_mention_patterns(text or "")
 
     # ------------------------------------------------------------------
     # SSE Streaming (inbound messages)
@@ -432,15 +592,24 @@ class SignalAdapter(BasePlatformAdapter):
                 logger.debug("Signal: group %s not in allowlist", group_id[:8] if group_id else "?")
                 return
 
+        # Extract text and render mentions (needed before mention gating check)
+        raw_text = data_message.get("message", "")
+        mentions = data_message.get("mentions", [])
+        text = _render_mentions(raw_text, mentions) if raw_text and mentions else raw_text
+
+        # Group mention gating — require @mention or wake-word in groups
+        if is_group and not self._should_process_group_message(text, data_message, group_id):
+            logger.debug("Signal: ignoring group message without bot mention (group=%s)",
+                         group_id[:8] if group_id else "?")
+            return
+
+        # Clean bot @mention from text so agent sees clean input
+        if is_group and self._message_mentions_bot(data_message):
+            text = self._clean_bot_mention_text(text, data_message)
+
         # Build chat info
         chat_id = sender if not is_group else f"group:{group_id}"
         chat_type = "group" if is_group else "dm"
-
-        # Extract text and render mentions
-        text = data_message.get("message", "")
-        mentions = data_message.get("mentions", [])
-        if text and mentions:
-            text = _render_mentions(text, mentions)
 
         # Process attachments
         attachments_data = data_message.get("attachments", [])
