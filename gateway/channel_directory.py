@@ -8,6 +8,7 @@ action="list" and for resolving human-friendly channel names to numeric IDs.
 
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -191,15 +192,37 @@ def load_directory() -> Dict[str, Any]:
         return {"updated_at": None, "platforms": {}}
 
 
+# Patterns for raw platform IDs that should NOT be resolved via the channel
+# directory.  When the caller already provides a concrete ID, resolution would
+# at best be a no-op and at worst could prefix-match against a session-based
+# composite entry (e.g. "C0ABC123:thread_ts"), clobbering the clean ID.
+_SLACK_ID_RE = re.compile(r"^[CDG][A-Z0-9]{8,}$")
+_DISCORD_SNOWFLAKE_RE = re.compile(r"^\d{17,20}$")
+
+
 def resolve_channel_name(platform_name: str, name: str) -> Optional[str]:
     """
     Resolve a human-friendly channel name to a numeric ID.
+
+    If *name* is already a raw platform ID (Slack C/D/G-prefixed, Discord
+    snowflake, Telegram numeric chat_id), returns ``None`` immediately —
+    there is nothing to resolve.
 
     Matching strategy (case-insensitive, first match wins):
     - Discord: "bot-home", "#bot-home", "GuildName/bot-home"
     - Telegram: display name or group name
     - Slack: "engineering", "#engineering"
     """
+    stripped = name.strip()
+
+    # Fast exit: the caller already has a concrete platform ID.
+    if platform_name == "slack" and _SLACK_ID_RE.match(stripped):
+        return None
+    if platform_name == "discord" and _DISCORD_SNOWFLAKE_RE.match(stripped):
+        return None
+    if platform_name == "telegram" and stripped.lstrip("-").isdigit():
+        return None
+
     directory = load_directory()
     channels = directory.get("platforms", {}).get(platform_name, [])
     if not channels:

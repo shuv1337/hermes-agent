@@ -154,6 +154,62 @@ class TestResolveChannelName:
             assert resolve_channel_name("telegram", "Dev Group (group)") == "456"
             assert resolve_channel_name("telegram", "Coaching Chat / topic 17585 (group)") == "-1001:17585"
 
+    def test_raw_slack_channel_id_skips_resolution(self, tmp_path):
+        """A raw Slack channel ID should NOT be resolved via the directory.
+
+        Regression: prefix-matching 'C0ALYH76U3C' against a session-based
+        entry like 'C0ALYH76U3C / topic ...' would return a composite
+        'C0ALYH76U3C:thread_ts' ID that breaks chat.postMessage.
+        """
+        platforms = {
+            "slack": [
+                {"id": "C0ALYH76U3C:1776183941.931459", "name": "C0ALYH76U3C / topic 1776183941.931459", "type": "group"},
+            ]
+        }
+        with self._setup(tmp_path, platforms):
+            # Raw channel ID → None (no resolution, caller keeps the ID as-is)
+            assert resolve_channel_name("slack", "C0ALYH76U3C") is None
+            # Human-friendly name still works
+            assert resolve_channel_name("slack", "C0ALYH76U3C / topic 1776183941.931459") == "C0ALYH76U3C:1776183941.931459"
+
+    def test_raw_slack_dm_id_skips_resolution(self, tmp_path):
+        platforms = {
+            "slack": [{"id": "D01ABC", "name": "Alice (dm)", "type": "dm"}]
+        }
+        with self._setup(tmp_path, platforms):
+            assert resolve_channel_name("slack", "D01ABCDEFGH") is None
+            assert resolve_channel_name("slack", "Alice (dm)") == "D01ABC"
+
+    def test_raw_discord_snowflake_skips_resolution(self, tmp_path):
+        platforms = {
+            "discord": [{"id": "123456789012345678", "name": "general", "guild": "MyServer", "type": "channel"}]
+        }
+        with self._setup(tmp_path, platforms):
+            assert resolve_channel_name("discord", "123456789012345678") is None
+            assert resolve_channel_name("discord", "general") == "123456789012345678"
+
+    def test_raw_telegram_id_skips_resolution(self, tmp_path):
+        platforms = {
+            "telegram": [{"id": "-1001234567", "name": "My Group", "type": "group"}]
+        }
+        with self._setup(tmp_path, platforms):
+            assert resolve_channel_name("telegram", "-1001234567") is None
+            assert resolve_channel_name("telegram", "My Group") == "-1001234567"
+
+    def test_human_name_still_resolves_for_slack(self, tmp_path):
+        """Ensure human-friendly names still resolve correctly."""
+        platforms = {
+            "slack": [
+                {"id": "C01CHANNELS", "name": "engineering", "type": "channel"},
+                {"id": "C0ALYH76U3C:1776183941.931459", "name": "C0ALYH76U3C / topic 1776183941.931459", "type": "group"},
+            ]
+        }
+        with self._setup(tmp_path, platforms):
+            # Human name → resolved
+            assert resolve_channel_name("slack", "engineering") == "C01CHANNELS"
+            # Raw ID → skipped
+            assert resolve_channel_name("slack", "C0ALYH76U3C") is None
+
 
 class TestBuildFromSessions:
     def _write_sessions(self, tmp_path, sessions_data):
