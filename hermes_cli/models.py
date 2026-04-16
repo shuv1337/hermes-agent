@@ -24,8 +24,7 @@ COPILOT_REASONING_EFFORTS_O_SERIES = ["low", "medium", "high"]
 # Fallback OpenRouter snapshot used when the live catalog is unavailable.
 # (model_id, display description shown in menus)
 OPENROUTER_MODELS: list[tuple[str, str]] = [
-    ("anthropic/claude-opus-4.7",       "recommended"),
-    ("anthropic/claude-opus-4.6",       ""),
+    ("anthropic/claude-opus-4.6",       "recommended"),
     ("anthropic/claude-sonnet-4.6",     ""),
     ("qwen/qwen3.6-plus",               ""),
     ("anthropic/claude-sonnet-4.5",     ""),
@@ -189,7 +188,6 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "MiniMax-M2",
     ],
     "anthropic": [
-        "claude-opus-4-7",
         "claude-opus-4-6",
         "claude-sonnet-4-6",
         "claude-opus-4-5-20251101",
@@ -1153,12 +1151,9 @@ _PRIORITY_PROCESSING_MODELS: frozenset[str] = frozenset({
 
 # Models that support Anthropic Fast Mode (speed="fast").
 # See https://platform.claude.com/docs/en/build-with-claude/fast-mode
-# Opus 4.7 is now Anthropic's current Opus release; keep 4.6 for users pinned
-# to the prior version. Both hyphen and dot variants are stored to handle
-# native Anthropic (claude-opus-4-7) and OpenRouter (claude-opus-4.7).
+# Currently only Claude Opus 4.6.  Both hyphen and dot variants are stored
+# to handle native Anthropic (claude-opus-4-6) and OpenRouter (claude-opus-4.6).
 _ANTHROPIC_FAST_MODE_MODELS: frozenset[str] = frozenset({
-    "claude-opus-4-7",
-    "claude-opus-4.7",
     "claude-opus-4-6",
     "claude-opus-4.6",
 })

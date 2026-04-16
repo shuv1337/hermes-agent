@@ -43,7 +43,7 @@ def test_openrouter_models_api_pricing_is_converted_from_per_token_to_per_millio
     monkeypatch.setattr(
         "agent.usage_pricing.fetch_model_metadata",
         lambda: {
-            "anthropic/claude-opus-4.7": {
+            "anthropic/claude-opus-4.6": {
                 "pricing": {
                     "prompt": "0.000005",
                     "completion": "0.000025",
@@ -55,7 +55,7 @@ def test_openrouter_models_api_pricing_is_converted_from_per_token_to_per_millio
     )
 
     entry = get_pricing_entry(
-        "anthropic/claude-opus-4.7",
+        "anthropic/claude-opus-4.6",
         provider="openrouter",
         base_url="https://openrouter.ai/api/v1",
     )
@@ -76,20 +76,6 @@ def test_estimate_usage_cost_marks_subscription_routes_included():
 
     assert result.status == "included"
     assert float(result.amount_usd) == 0.0
-
-
-def test_anthropic_official_docs_pricing_includes_opus_4_7_cache_rates():
-    entry = get_pricing_entry(
-        "claude-opus-4-7",
-        provider="anthropic",
-        base_url="https://api.anthropic.com",
-    )
-
-    assert entry is not None
-    assert float(entry.input_cost_per_million) == 5.0
-    assert float(entry.output_cost_per_million) == 25.0
-    assert float(entry.cache_read_cost_per_million) == 0.5
-    assert float(entry.cache_write_cost_per_million) == 6.25
 
 
 def test_estimate_usage_cost_refuses_cache_pricing_without_official_cache_rate(monkeypatch):

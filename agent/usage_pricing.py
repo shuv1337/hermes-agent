@@ -83,18 +83,6 @@ _UTC_NOW = lambda: datetime.now(timezone.utc)
 _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
     (
         "anthropic",
-        "claude-opus-4-7",
-    ): PricingEntry(
-        input_cost_per_million=Decimal("5.00"),
-        output_cost_per_million=Decimal("25.00"),
-        cache_read_cost_per_million=Decimal("0.50"),
-        cache_write_cost_per_million=Decimal("6.25"),
-        source="official_docs_snapshot",
-        source_url="https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
-        pricing_version="anthropic-pricing-2026-04-16",
-    ),
-    (
-        "anthropic",
         "claude-opus-4-20250514",
     ): PricingEntry(
         input_cost_per_million=Decimal("15.00"),

@@ -1083,14 +1083,6 @@ class TestBuildAnthropicKwargs:
 
 
 class TestGetAnthropicMaxOutput:
-    def test_opus_4_7(self):
-        from agent.anthropic_adapter import _get_anthropic_max_output
-        assert _get_anthropic_max_output("claude-opus-4-7") == 128_000
-
-    def test_opus_4_7_variant(self):
-        from agent.anthropic_adapter import _get_anthropic_max_output
-        assert _get_anthropic_max_output("claude-opus-4-7:1m:fast") == 128_000
-
     def test_opus_4_6(self):
         from agent.anthropic_adapter import _get_anthropic_max_output
         assert _get_anthropic_max_output("claude-opus-4-6") == 128_000

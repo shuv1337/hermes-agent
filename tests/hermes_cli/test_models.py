@@ -11,8 +11,7 @@ from hermes_cli.models import (
 import hermes_cli.models as _models_mod
 
 LIVE_OPENROUTER_MODELS = [
-    ("anthropic/claude-opus-4.7", "recommended"),
-    ("anthropic/claude-opus-4.6", ""),
+    ("anthropic/claude-opus-4.6", "recommended"),
     ("qwen/qwen3.6-plus", ""),
     ("nvidia/nemotron-3-super-120b-a12b:free", "free"),
 ]
@@ -70,15 +69,14 @@ class TestFetchOpenRouterModels:
                 return False
 
             def read(self):
-                return b'{"data":[{"id":"anthropic/claude-opus-4.7","pricing":{"prompt":"0.000005","completion":"0.000025"}},{"id":"anthropic/claude-opus-4.6","pricing":{"prompt":"0.000005","completion":"0.000025"}},{"id":"qwen/qwen3.6-plus","pricing":{"prompt":"0.000000325","completion":"0.00000195"}},{"id":"nvidia/nemotron-3-super-120b-a12b:free","pricing":{"prompt":"0","completion":"0"}}]}'
+                return b'{"data":[{"id":"anthropic/claude-opus-4.6","pricing":{"prompt":"0.000015","completion":"0.000075"}},{"id":"qwen/qwen3.6-plus","pricing":{"prompt":"0.000000325","completion":"0.00000195"}},{"id":"nvidia/nemotron-3-super-120b-a12b:free","pricing":{"prompt":"0","completion":"0"}}]}'
 
         monkeypatch.setattr(_models_mod, "_openrouter_catalog_cache", None)
         with patch("hermes_cli.models.urllib.request.urlopen", return_value=_Resp()):
             models = fetch_openrouter_models(force_refresh=True)
 
         assert models == [
-            ("anthropic/claude-opus-4.7", "recommended"),
-            ("anthropic/claude-opus-4.6", ""),
+            ("anthropic/claude-opus-4.6", "recommended"),
             ("qwen/qwen3.6-plus", ""),
             ("nvidia/nemotron-3-super-120b-a12b:free", "free"),
         ]
@@ -95,18 +93,18 @@ class TestFindOpenrouterSlug:
     def test_exact_match(self):
         from hermes_cli.models import _find_openrouter_slug
         with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
-            assert _find_openrouter_slug("anthropic/claude-opus-4.7") == "anthropic/claude-opus-4.7"
+            assert _find_openrouter_slug("anthropic/claude-opus-4.6") == "anthropic/claude-opus-4.6"
 
     def test_bare_name_match(self):
         from hermes_cli.models import _find_openrouter_slug
         with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
-            result = _find_openrouter_slug("claude-opus-4.7")
-        assert result == "anthropic/claude-opus-4.7"
+            result = _find_openrouter_slug("claude-opus-4.6")
+        assert result == "anthropic/claude-opus-4.6"
 
     def test_case_insensitive(self):
         from hermes_cli.models import _find_openrouter_slug
         with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
-            result = _find_openrouter_slug("Anthropic/Claude-Opus-4.7")
+            result = _find_openrouter_slug("Anthropic/Claude-Opus-4.6")
         assert result is not None
 
     def test_unknown_returns_none(self):
@@ -117,9 +115,9 @@ class TestFindOpenrouterSlug:
 
 class TestDetectProviderForModel:
     def test_anthropic_model_detected(self):
-        """claude-opus-4-7 should resolve to anthropic provider."""
+        """claude-opus-4-6 should resolve to anthropic provider."""
         with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
-            result = detect_provider_for_model("claude-opus-4-7", "openai-codex")
+            result = detect_provider_for_model("claude-opus-4-6", "openai-codex")
         assert result is not None
         assert result[0] == "anthropic"
 
@@ -137,10 +135,10 @@ class TestDetectProviderForModel:
     def test_openrouter_slug_match(self):
         """Models in the OpenRouter catalog should be found."""
         with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
-            result = detect_provider_for_model("anthropic/claude-opus-4.7", "openai-codex")
+            result = detect_provider_for_model("anthropic/claude-opus-4.6", "openai-codex")
         assert result is not None
         assert result[0] == "openrouter"
-        assert result[1] == "anthropic/claude-opus-4.7"
+        assert result[1] == "anthropic/claude-opus-4.6"
 
     def test_bare_name_gets_openrouter_slug(self, monkeypatch):
         for env_var in (
@@ -152,10 +150,10 @@ class TestDetectProviderForModel:
             monkeypatch.delenv(env_var, raising=False)
         """Bare model names should get mapped to full OpenRouter slugs."""
         with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
-            result = detect_provider_for_model("claude-opus-4.7", "openai-codex")
+            result = detect_provider_for_model("claude-opus-4.6", "openai-codex")
         assert result is not None
         # Should find it on OpenRouter with full slug
-        assert result[1] == "anthropic/claude-opus-4.7"
+        assert result[1] == "anthropic/claude-opus-4.6"
 
     def test_unknown_model_returns_none(self):
         """Completely unknown model names should return None."""
@@ -165,7 +163,7 @@ class TestDetectProviderForModel:
     def test_aggregator_not_suggested(self):
         """nous/openrouter should never be auto-suggested as target provider."""
         with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
-            result = detect_provider_for_model("claude-opus-4-7", "openai-codex")
+            result = detect_provider_for_model("claude-opus-4-6", "openai-codex")
         assert result is not None
         assert result[0] not in ("nous",)  # nous has claude models but shouldn't be suggested
 

@@ -41,8 +41,7 @@ ADAPTIVE_EFFORT_MAP = {
 # max_tokens as a mandatory field.  Previously we hardcoded 16384, which
 # starves thinking-enabled models (thinking tokens count toward the limit).
 _ANTHROPIC_OUTPUT_LIMITS = {
-    # Claude 4.7/4.6
-    "claude-opus-4-7":   128_000,
+    # Claude 4.6
     "claude-opus-4-6":   128_000,
     "claude-sonnet-4-6":  64_000,
     # Claude 4.5
@@ -92,8 +91,8 @@ def _get_anthropic_max_output(model: str) -> int:
 
 
 def _supports_adaptive_thinking(model: str) -> bool:
-    """Return True for Claude 4.7/4.6 models that support adaptive thinking."""
-    return any(v in model for v in ("4-7", "4.7", "4-6", "4.6"))
+    """Return True for Claude 4.6 models that support adaptive thinking."""
+    return any(v in model for v in ("4-6", "4.6"))
 
 
 # Beta headers for enhanced features (sent with ALL auth types)
@@ -1315,7 +1314,7 @@ def build_anthropic_kwargs(
             kwargs["tool_choice"] = {"type": "tool", "name": tool_choice}
 
     # Map reasoning_config to Anthropic's thinking parameter.
-    # Claude 4.7/4.6 models use adaptive thinking + output_config.effort.
+    # Claude 4.6 models use adaptive thinking + output_config.effort.
     # Older models use manual thinking with budget_tokens.
     # MiniMax Anthropic-compat endpoints support thinking (manual mode only,
     # not adaptive).  Haiku does NOT support extended thinking — skip entirely.
@@ -1334,7 +1333,7 @@ def build_anthropic_kwargs(
                 kwargs["temperature"] = 1
                 kwargs["max_tokens"] = max(effective_max_tokens, budget + 4096)
 
-    # ── Fast mode (Opus 4.7/4.6) ─────────────────────────────────────
+    # ── Fast mode (Opus 4.6 only) ────────────────────────────────────
     # Adds extra_body.speed="fast" + the fast-mode beta header for ~2.5x
     # output speed. Only for native Anthropic endpoints — third-party
     # providers would reject the unknown beta header and speed parameter.

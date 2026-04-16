@@ -254,14 +254,10 @@ class TestAnthropicFastMode(unittest.TestCase):
         from hermes_cli.models import model_supports_fast_mode
 
         # Native Anthropic format (hyphens)
-        assert model_supports_fast_mode("claude-opus-4-7") is True
         assert model_supports_fast_mode("claude-opus-4-6") is True
         # OpenRouter format (dots)
-        assert model_supports_fast_mode("claude-opus-4.7") is True
         assert model_supports_fast_mode("claude-opus-4.6") is True
         # With vendor prefix
-        assert model_supports_fast_mode("anthropic/claude-opus-4-7") is True
-        assert model_supports_fast_mode("anthropic/claude-opus-4.7") is True
         assert model_supports_fast_mode("anthropic/claude-opus-4-6") is True
         assert model_supports_fast_mode("anthropic/claude-opus-4.6") is True
 
@@ -277,19 +273,11 @@ class TestAnthropicFastMode(unittest.TestCase):
         from hermes_cli.models import model_supports_fast_mode
 
         # OpenRouter variant tags after colon should be stripped
-        assert model_supports_fast_mode("claude-opus-4.7:fast") is True
-        assert model_supports_fast_mode("claude-opus-4.7:beta") is True
         assert model_supports_fast_mode("claude-opus-4.6:fast") is True
         assert model_supports_fast_mode("claude-opus-4.6:beta") is True
 
     def test_resolve_overrides_returns_speed_for_anthropic(self):
         from hermes_cli.models import resolve_fast_mode_overrides
-
-        result = resolve_fast_mode_overrides("claude-opus-4-7")
-        assert result == {"speed": "fast"}
-
-        result = resolve_fast_mode_overrides("anthropic/claude-opus-4.7")
-        assert result == {"speed": "fast"}
 
         result = resolve_fast_mode_overrides("claude-opus-4-6")
         assert result == {"speed": "fast"}
@@ -307,9 +295,6 @@ class TestAnthropicFastMode(unittest.TestCase):
     def test_is_anthropic_fast_model(self):
         from hermes_cli.models import _is_anthropic_fast_model
 
-        assert _is_anthropic_fast_model("claude-opus-4-7") is True
-        assert _is_anthropic_fast_model("claude-opus-4.7") is True
-        assert _is_anthropic_fast_model("anthropic/claude-opus-4-7") is True
         assert _is_anthropic_fast_model("claude-opus-4-6") is True
         assert _is_anthropic_fast_model("claude-opus-4.6") is True
         assert _is_anthropic_fast_model("anthropic/claude-opus-4-6") is True
@@ -320,7 +305,7 @@ class TestAnthropicFastMode(unittest.TestCase):
         cli_mod = _import_cli()
         stub = SimpleNamespace(
             provider="anthropic", requested_provider="anthropic",
-            model="claude-opus-4-7", agent=None,
+            model="claude-opus-4-6", agent=None,
         )
         assert cli_mod.HermesCLI._fast_command_available(stub) is True
 
@@ -336,7 +321,7 @@ class TestAnthropicFastMode(unittest.TestCase):
         """Anthropic models should get speed:'fast' override, not service_tier."""
         cli_mod = _import_cli()
         stub = SimpleNamespace(
-            model="claude-opus-4-7",
+            model="claude-opus-4-6",
             api_key="sk-ant-test",
             base_url="https://api.anthropic.com",
             provider="anthropic",
@@ -359,10 +344,10 @@ class TestAnthropicFastMode(unittest.TestCase):
         }
 
         with patch("agent.smart_model_routing.resolve_turn_route", return_value={
-            "model": "claude-opus-4-7",
+            "model": "claude-opus-4-6",
             "runtime": dict(original_runtime),
             "label": None,
-            "signature": ("claude-opus-4-7", "anthropic", "https://api.anthropic.com", "anthropic_messages", None, ()),
+            "signature": ("claude-opus-4-6", "anthropic", "https://api.anthropic.com", "anthropic_messages", None, ()),
         }):
             route = cli_mod.HermesCLI._resolve_turn_agent_config(stub, "hi")
 
@@ -377,7 +362,7 @@ class TestAnthropicFastModeAdapter(unittest.TestCase):
         from agent.anthropic_adapter import build_anthropic_kwargs, _FAST_MODE_BETA
 
         kwargs = build_anthropic_kwargs(
-            model="claude-opus-4-7",
+            model="claude-opus-4-6",
             messages=[{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
             tools=None,
             max_tokens=None,
@@ -393,7 +378,7 @@ class TestAnthropicFastModeAdapter(unittest.TestCase):
         from agent.anthropic_adapter import build_anthropic_kwargs
 
         kwargs = build_anthropic_kwargs(
-            model="claude-opus-4-7",
+            model="claude-opus-4-6",
             messages=[{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
             tools=None,
             max_tokens=None,
@@ -408,7 +393,7 @@ class TestAnthropicFastModeAdapter(unittest.TestCase):
         from agent.anthropic_adapter import build_anthropic_kwargs
 
         kwargs = build_anthropic_kwargs(
-            model="claude-opus-4-7",
+            model="claude-opus-4-6",
             messages=[{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
             tools=None,
             max_tokens=None,
@@ -425,7 +410,7 @@ class TestAnthropicFastModeAdapter(unittest.TestCase):
         from agent.anthropic_adapter import build_anthropic_kwargs
 
         kwargs = build_anthropic_kwargs(
-            model="claude-opus-4-7",
+            model="claude-opus-4-6",
             messages=[{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
             tools=None,
             max_tokens=None,
