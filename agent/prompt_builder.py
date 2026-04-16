@@ -380,7 +380,7 @@ PLATFORM_HINTS = {
     ),
     "qqbot": (
         "You are on QQ, a popular Chinese messaging platform. QQ supports markdown formatting "
-        "and emoji. You can send media files natively: include MEDIA:/absolute/path/to/file in "
+        "and emoji. You can send media files natively: include MEDIA:/full/path/to/file in "
         "your response. Images are sent as native photos, and other files arrive as downloadable "
         "documents."
     ),
