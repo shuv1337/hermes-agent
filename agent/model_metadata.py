@@ -97,10 +97,12 @@ MINIMUM_CONTEXT_LENGTH = 64_000
 # all miss. Replaced the previous 80+ entry dict.
 # For provider-specific context lengths, models.dev is the primary source.
 DEFAULT_CONTEXT_LENGTHS = {
-    # Anthropic Claude 4.6 (1M context) — bare IDs only to avoid
+    # Anthropic Claude 4.7/4.6 (1M context) — bare IDs only to avoid
     # fuzzy-match collisions (e.g. "anthropic/claude-sonnet-4" is a
     # substring of "anthropic/claude-sonnet-4.6").
     # OpenRouter-prefixed models resolve via OpenRouter live API or models.dev.
+    "claude-opus-4-7": 1000000,
+    "claude-opus-4.7": 1000000,
     "claude-opus-4-6": 1000000,
     "claude-sonnet-4-6": 1000000,
     "claude-opus-4.6": 1000000,
