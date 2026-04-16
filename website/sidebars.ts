@@ -78,6 +78,7 @@ const sidebars: SidebarsConfig = {
           label: 'Management',
           items: [
             'user-guide/features/web-dashboard',
+            'user-guide/features/dashboard-plugins',
           ],
         },
         {
@@ -119,6 +120,7 @@ const sidebars: SidebarsConfig = {
         'user-guide/messaging/wecom-callback',
         'user-guide/messaging/weixin',
         'user-guide/messaging/bluebubbles',
+        'user-guide/messaging/qqbot',
         'user-guide/messaging/open-webui',
         'user-guide/messaging/webhooks',
       ],
@@ -136,6 +138,7 @@ const sidebars: SidebarsConfig = {
         'user-guide/features/honcho',
         'user-guide/features/provider-routing',
         'user-guide/features/fallback-providers',
+        'user-guide/features/credential-pools',
       ],
     },
     {
@@ -153,10 +156,12 @@ const sidebars: SidebarsConfig = {
         'guides/use-voice-mode-with-hermes',
         'guides/build-a-hermes-plugin',
         'guides/automate-with-cron',
+        'guides/automation-templates',
         'guides/cron-troubleshooting',
         'guides/work-with-skills',
         'guides/delegation-patterns',
         'guides/migrate-from-openclaw',
+        'guides/aws-bedrock',
       ],
     },
     {
