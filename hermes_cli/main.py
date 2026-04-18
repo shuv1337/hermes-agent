@@ -785,6 +785,14 @@ def cmd_chat(args):
 
 def cmd_gateway(args):
     """Gateway management commands."""
+    # Initialize Maple OTEL telemetry before the gateway starts.
+    # No-op if MAPLE_INGEST_KEY isn't set — safe to leave always on.
+    try:
+        from agent.telemetry import init_telemetry
+        init_telemetry(service_name="hermes-gateway")
+    except Exception:
+        # Never let telemetry init block the gateway from starting.
+        pass
     from hermes_cli.gateway import gateway_command
     gateway_command(args)
 

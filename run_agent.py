@@ -3636,7 +3636,9 @@ class AIAgent:
 
         1. Try lowercase
         2. Try normalized (lowercase + hyphens/spaces -> underscores)
-        3. Try fuzzy match (difflib, cutoff=0.7)
+        3. Try prepending ``mcp_`` (common failure: model drops MCP prefix)
+        4. Try case-insensitive direct match
+        5. Try fuzzy match (difflib, cutoff=0.7, case-insensitive)
 
         Returns the repaired name if found in valid_tool_names, else None.
         """
@@ -3652,10 +3654,35 @@ class AIAgent:
         if normalized in self.valid_tool_names:
             return normalized
 
-        # 3. Fuzzy match
-        matches = get_close_matches(lowered, self.valid_tool_names, n=1, cutoff=0.7)
+        # Build a case-insensitive lookup (lowercased key -> original cased name)
+        # Done lazily here rather than cached because valid_tool_names is small
+        # and this path only runs on mismatch.
+        lower_map = {v.lower(): v for v in self.valid_tool_names}
+
+        # 3. MCP prefix recovery — Claude Opus repeatedly drops `mcp_` from
+        #    `mcp_<server>_<TOOL>` calls (e.g. composio, honcho). The tool
+        #    name is otherwise exact, so prepending fixes it deterministically.
+        if not tool_name.startswith("mcp_"):
+            candidate = "mcp_" + tool_name
+            if candidate in self.valid_tool_names:
+                return candidate
+            if candidate.lower() in lower_map:
+                return lower_map[candidate.lower()]
+
+        # 4. Case-insensitive exact match — MCP tool names often contain
+        #    UPPERCASE segments (COMPOSIO_MULTI_EXECUTE_TOOL). Lowercasing the
+        #    query and comparing against lower_map catches casing drift.
+        if tool_name.lower() in lower_map:
+            return lower_map[tool_name.lower()]
+
+        # 5. Fuzzy match — operate on lowercased names so casing doesn't
+        #    tank the SequenceMatcher ratio (e.g. case mismatch alone drops
+        #    composio_COMPOSIO_MULTI_EXECUTE_TOOL vs the prefixed real name
+        #    from ~0.95 to ~0.37 and blows past the cutoff).
+        lower_keys = list(lower_map.keys())
+        matches = get_close_matches(lowered, lower_keys, n=1, cutoff=0.7)
         if matches:
-            return matches[0]
+            return lower_map[matches[0]]
 
         return None
 
