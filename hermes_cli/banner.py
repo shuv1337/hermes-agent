@@ -220,13 +220,30 @@ def _git_short_hash(repo_dir: Path, rev: str) -> Optional[str]:
     return value or None
 
 
+def _resolve_banner_base_ref(repo_dir: Path) -> tuple[Optional[str], Optional[str]]:
+    """Return the preferred remote ref/label for banner and status comparisons.
+
+    Prefer the official ``upstream/main`` branch when available so forked
+    checkouts report against the real upstream. Fall back to ``origin/main``
+    for single-remote installs.
+    """
+    for ref, label in (("upstream/main", "upstream"), ("origin/main", "origin")):
+        if _git_short_hash(repo_dir, ref):
+            return ref, label
+    return None, None
+
+
 def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
-    """Return upstream/local git hashes for the startup banner."""
+    """Return base/local git hashes for the startup banner."""
     repo_dir = repo_dir or _resolve_repo_dir()
     if repo_dir is None:
         return None
 
-    upstream = _git_short_hash(repo_dir, "origin/main")
+    base_ref, base_label = _resolve_banner_base_ref(repo_dir)
+    if not base_ref or not base_label:
+        return None
+
+    upstream = _git_short_hash(repo_dir, base_ref)
     local = _git_short_hash(repo_dir, "HEAD")
     if not upstream or not local:
         return None
@@ -234,7 +251,7 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
     ahead = 0
     try:
         result = subprocess.run(
-            ["git", "rev-list", "--count", "origin/main..HEAD"],
+            ["git", "rev-list", "--count", f"{base_ref}..HEAD"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -245,7 +262,13 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
     except Exception:
         ahead = 0
 
-    return {"upstream": upstream, "local": local, "ahead": max(ahead, 0)}
+    return {
+        "upstream": upstream,
+        "base_ref": base_ref,
+        "base_label": base_label,
+        "local": local,
+        "ahead": max(ahead, 0),
+    }
 
 
 def format_banner_version_label() -> str:
@@ -256,14 +279,15 @@ def format_banner_version_label() -> str:
         return base
 
     upstream = state["upstream"]
+    base_label = state.get("base_label") or "upstream"
     local = state["local"]
     ahead = int(state.get("ahead") or 0)
 
     if ahead <= 0 or upstream == local:
-        return f"{base} · upstream {upstream}"
+        return f"{base} · {base_label} {upstream}"
 
     carried_word = "commit" if ahead == 1 else "commits"
-    return f"{base} · upstream {upstream} · local {local} (+{ahead} carried {carried_word})"
+    return f"{base} · {base_label} {upstream} · local {local} (+{ahead} carried {carried_word})"
 
 
 # =========================================================================

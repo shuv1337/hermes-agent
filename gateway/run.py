@@ -375,8 +375,9 @@ def _collect_gateway_info(started_at: Optional[float]) -> dict:
         - ``version``       str   (e.g. ``"0.10.0"``)
         - ``release_date``  str   (e.g. ``"2026.4.16"``)
         - ``local_commit``  str   (short hash of HEAD, 8 chars)
-        - ``upstream_commit`` str (short hash of origin/main, 8 chars)
-        - ``commits_ahead`` int   (HEAD commits carried on top of origin/main)
+        - ``upstream_commit`` str (short hash of the comparison base ref, 8 chars)
+        - ``comparison_label`` str (e.g. ``"upstream"`` or ``"origin"``)
+        - ``commits_ahead`` int   (HEAD commits carried on top of that base ref)
         - ``uptime_seconds`` int
         - ``uptime_human``  str   (from _format_gateway_uptime)
         - ``pid``           int
@@ -396,6 +397,7 @@ def _collect_gateway_info(started_at: Optional[float]) -> dict:
         if git_state:
             info["local_commit"] = git_state.get("local")
             info["upstream_commit"] = git_state.get("upstream")
+            info["comparison_label"] = git_state.get("base_label") or "upstream"
             ahead = git_state.get("ahead") or 0
             try:
                 info["commits_ahead"] = max(0, int(ahead))
@@ -5100,12 +5102,13 @@ class GatewayRunner:
 
             local_commit = gw_info.get("local_commit")
             upstream_commit = gw_info.get("upstream_commit")
+            comparison_label = gw_info.get("comparison_label") or "upstream"
             ahead = gw_info.get("commits_ahead") or 0
             if local_commit and upstream_commit:
                 if ahead > 0 and local_commit != upstream_commit:
                     commits_word = "commit" if ahead == 1 else "commits"
                     lines.append(
-                        f"**Commit:** `{local_commit}` · upstream `{upstream_commit}` "
+                        f"**Commit:** `{local_commit}` · {comparison_label} `{upstream_commit}` "
                         f"(+{ahead} {commits_word} ahead)"
                     )
                 else:
