@@ -398,6 +398,169 @@ async def test_status_command_bypasses_active_session_guard():
 
 
 @pytest.mark.asyncio
+async def test_status_command_includes_gateway_info_block(monkeypatch):
+    """/status shows version, commit hash, uptime, and PID when available."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+        total_tokens=42,
+    )
+    runner = _make_runner(session_entry)
+    # Simulate a gateway that has been up for ~2 minutes.
+    runner._gateway_started_at = time.time() - 125
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "9.9.9",
+            "release_date": "2099.1.1",
+            "local_commit": "abc12345",
+            "upstream_commit": "def67890",
+            "commits_ahead": 3,
+            "uptime_seconds": 125,
+            "uptime_human": "2m 5s",
+            "pid": 12345,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+
+    assert "**Version:** v9.9.9 (2099.1.1)" in result
+    assert "**Commit:** `abc12345` · upstream `def67890` (+3 commits ahead)" in result
+    assert "**Gateway Uptime:** 2m 5s (pid 12345)" in result
+    # Existing session fields must still be present.
+    assert "**Session ID:** `sess-1`" in result
+    assert "**Agent Running:** No" in result
+
+
+@pytest.mark.asyncio
+async def test_status_command_singular_commit_ahead(monkeypatch):
+    """Commits-ahead label uses singular 'commit' when ahead == 1."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner._gateway_started_at = time.time()
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "1.0.0",
+            "release_date": "2026.1.1",
+            "local_commit": "aaaa1111",
+            "upstream_commit": "bbbb2222",
+            "commits_ahead": 1,
+            "uptime_seconds": 5,
+            "uptime_human": "5s",
+            "pid": 999,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+    assert "(+1 commit ahead)" in result
+    assert "(+1 commits ahead)" not in result
+
+
+@pytest.mark.asyncio
+async def test_status_command_clean_tree_omits_ahead_clause(monkeypatch):
+    """When HEAD == origin/main, commit line drops the '+N ahead' suffix."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner._gateway_started_at = time.time()
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "1.0.0",
+            "release_date": "2026.1.1",
+            "local_commit": "deadbeef",
+            "upstream_commit": "deadbeef",
+            "commits_ahead": 0,
+            "uptime_seconds": 10,
+            "uptime_human": "10s",
+            "pid": 100,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+    assert "**Commit:** `deadbeef`" in result
+    assert "ahead" not in result  # no '+N commits ahead' suffix
+    assert "upstream" not in result  # no 'upstream' label either
+
+
+@pytest.mark.asyncio
+async def test_status_command_survives_gateway_info_failure(monkeypatch):
+    """A broken _collect_gateway_info must not break /status — session block still renders."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+        total_tokens=7,
+    )
+    runner = _make_runner(session_entry)
+
+    def _boom(_started):
+        raise RuntimeError("simulated git failure")
+
+    monkeypatch.setattr("gateway.run._collect_gateway_info", _boom)
+
+    result = await runner._handle_message(_make_event("/status"))
+    # No gateway-info lines, but session section still intact.
+    assert "**Session ID:** `sess-1`" in result
+    assert "**Tokens:** 7" in result
+    assert "**Version:**" not in result
+    assert "**Commit:**" not in result
+    assert "**Gateway Uptime:**" not in result
+
+
+def test_format_gateway_uptime_boundaries():
+    """_format_gateway_uptime covers s/m/h/d ranges."""
+    from gateway.run import _format_gateway_uptime
+
+    assert _format_gateway_uptime(0) == "0s"
+    assert _format_gateway_uptime(59) == "59s"
+    assert _format_gateway_uptime(60) == "1m 0s"
+    assert _format_gateway_uptime(125) == "2m 5s"
+    assert _format_gateway_uptime(3599) == "59m 59s"
+    assert _format_gateway_uptime(3600) == "1h 0m"
+    assert _format_gateway_uptime(3661) == "1h 1m"
+    assert _format_gateway_uptime(86400) == "1d 0h 0m"
+    assert _format_gateway_uptime(90061) == "1d 1h 1m"
+    assert _format_gateway_uptime(-5) == "0s"  # clamp to zero
+
+
+def test_collect_gateway_info_handles_missing_started_at():
+    """_collect_gateway_info returns best-effort dict when no start time is given."""
+    from gateway.run import _collect_gateway_info
+
+    info = _collect_gateway_info(None)
+    # Version/pid are always resolvable; uptime requires started_at.
+    assert "uptime_seconds" not in info
+    assert "uptime_human" not in info
+    assert info.get("pid")
+    assert info.get("version")
+
+
+@pytest.mark.asyncio
 async def test_profile_command_reports_custom_root_profile(monkeypatch, tmp_path):
     """Gateway /profile detects custom-root profiles (not under ~/.hermes)."""
     from pathlib import Path

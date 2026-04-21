@@ -345,6 +345,81 @@ logger = logging.getLogger(__name__)
 _AGENT_PENDING_SENTINEL = object()
 
 
+def _format_gateway_uptime(seconds: float) -> str:
+    """Human-readable uptime supporting days/hours/minutes/seconds.
+
+    Extends `tools.process_registry.format_uptime_short` (which tops out at
+    ``h m``) so the gateway can report multi-day lifetimes cleanly in
+    /status output.
+    """
+    s = max(0, int(seconds))
+    if s < 60:
+        return f"{s}s"
+    mins, secs = divmod(s, 60)
+    if mins < 60:
+        return f"{mins}m {secs}s"
+    hours, mins = divmod(mins, 60)
+    if hours < 24:
+        return f"{hours}h {mins}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h {mins}m"
+
+
+def _collect_gateway_info(started_at: Optional[float]) -> dict:
+    """Gather gateway version/commit/uptime metadata for /status output.
+
+    Every lookup is wrapped so a failure in one field (e.g. git unreachable)
+    cannot break the whole /status response. Returns a dict with whichever
+    keys resolve cleanly:
+
+        - ``version``       str   (e.g. ``"0.10.0"``)
+        - ``release_date``  str   (e.g. ``"2026.4.16"``)
+        - ``local_commit``  str   (short hash of HEAD, 8 chars)
+        - ``upstream_commit`` str (short hash of origin/main, 8 chars)
+        - ``commits_ahead`` int   (HEAD commits carried on top of origin/main)
+        - ``uptime_seconds`` int
+        - ``uptime_human``  str   (from _format_gateway_uptime)
+        - ``pid``           int
+    """
+    info: dict = {}
+
+    try:
+        from hermes_cli import __version__ as _v, __release_date__ as _rd
+        info["version"] = _v
+        info["release_date"] = _rd
+    except Exception:
+        pass
+
+    try:
+        from hermes_cli.banner import get_git_banner_state
+        git_state = get_git_banner_state()
+        if git_state:
+            info["local_commit"] = git_state.get("local")
+            info["upstream_commit"] = git_state.get("upstream")
+            ahead = git_state.get("ahead") or 0
+            try:
+                info["commits_ahead"] = max(0, int(ahead))
+            except (TypeError, ValueError):
+                info["commits_ahead"] = 0
+    except Exception:
+        pass
+
+    if started_at:
+        try:
+            elapsed = max(0, int(time.time() - float(started_at)))
+            info["uptime_seconds"] = elapsed
+            info["uptime_human"] = _format_gateway_uptime(elapsed)
+        except Exception:
+            pass
+
+    try:
+        info["pid"] = os.getpid()
+    except Exception:
+        pass
+
+    return info
+
+
 def _resolve_runtime_agent_kwargs() -> dict:
     """Resolve provider credentials for gateway-created AIAgent instances."""
     from hermes_cli.runtime_provider import (
@@ -686,6 +761,11 @@ class GatewayRunner:
         # Track pending /update prompt responses per session.
         # Key: session_key, Value: True when a prompt is waiting for user input.
         self._update_prompt_pending: Dict[str, bool] = {}
+
+        # Wall-clock time the GatewayRunner was constructed. Used by /status
+        # to report gateway uptime. This is set once per process lifetime —
+        # systemd restarts reset it, which is the correct behavior.
+        self._gateway_started_at: float = time.time()
 
         # Persistent Honcho managers keyed by gateway session key.
         # This preserves write_frequency="session" semantics across short-lived
@@ -4997,11 +5077,54 @@ class GatewayRunner:
             except Exception:
                 title = None
 
-        lines = [
-            "📊 **Hermes Gateway Status**",
-            "",
-            f"**Session ID:** `{session_entry.session_id}`",
-        ]
+        lines = ["📊 **Hermes Gateway Status**", ""]
+
+        # Gateway-level metadata (version / commit / uptime / pid).
+        # Failures in collection are swallowed so /status never breaks on
+        # a missing git checkout, read-only FS, etc.
+        try:
+            gw_info = _collect_gateway_info(
+                getattr(self, "_gateway_started_at", None)
+            )
+        except Exception:
+            gw_info = {}
+
+        if gw_info:
+            version = gw_info.get("version")
+            release_date = gw_info.get("release_date")
+            if version:
+                version_line = f"**Version:** v{version}"
+                if release_date:
+                    version_line += f" ({release_date})"
+                lines.append(version_line)
+
+            local_commit = gw_info.get("local_commit")
+            upstream_commit = gw_info.get("upstream_commit")
+            ahead = gw_info.get("commits_ahead") or 0
+            if local_commit and upstream_commit:
+                if ahead > 0 and local_commit != upstream_commit:
+                    commits_word = "commit" if ahead == 1 else "commits"
+                    lines.append(
+                        f"**Commit:** `{local_commit}` · upstream `{upstream_commit}` "
+                        f"(+{ahead} {commits_word} ahead)"
+                    )
+                else:
+                    lines.append(f"**Commit:** `{local_commit}`")
+            elif local_commit:
+                lines.append(f"**Commit:** `{local_commit}`")
+
+            uptime_human = gw_info.get("uptime_human")
+            pid = gw_info.get("pid")
+            if uptime_human and pid:
+                lines.append(f"**Gateway Uptime:** {uptime_human} (pid {pid})")
+            elif uptime_human:
+                lines.append(f"**Gateway Uptime:** {uptime_human}")
+            elif pid:
+                lines.append(f"**Gateway PID:** {pid}")
+
+            lines.append("")
+
+        lines.append(f"**Session ID:** `{session_entry.session_id}`")
         if title:
             lines.append(f"**Title:** {title}")
         lines.extend([
