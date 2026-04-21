@@ -30,9 +30,11 @@ logger = logging.getLogger(__name__)
 THINKING_BUDGET = {"xhigh": 32000, "high": 16000, "medium": 8000, "low": 4000}
 # Hermes effort → Anthropic adaptive-thinking effort (output_config.effort).
 # Anthropic exposes 5 levels on 4.7+: low, medium, high, xhigh, max.
-# We preserve xhigh as xhigh (the recommended default for coding/agentic on
-# 4.7) and expose max as a distinct ceiling. "minimal" is a legacy alias that
-# maps to low.  See:
+# Opus/Sonnet 4.6 only expose 4 levels: low, medium, high, max — no xhigh.
+# We preserve xhigh as xhigh on 4.7+ (the recommended default for coding/
+# agentic work) and downgrade it to max on pre-4.7 adaptive models (which
+# is the strongest level they accept).  "minimal" is a legacy alias that
+# maps to low on every model.  See:
 # https://platform.claude.com/docs/en/about-claude/models/migration-guide
 ADAPTIVE_EFFORT_MAP = {
     "max":     "max",
@@ -42,6 +44,12 @@ ADAPTIVE_EFFORT_MAP = {
     "low":     "low",
     "minimal": "low",
 }
+
+# Models that accept the "xhigh" output_config.effort level.  Opus 4.7 added
+# xhigh as a distinct level between high and max; older adaptive-thinking
+# models (4.6) reject it with a 400.  Keep this substring list in sync with
+# the Anthropic migration guide as new model families ship.
+_XHIGH_EFFORT_SUBSTRINGS = ("4-7", "4.7")
 
 # Models where extended thinking is deprecated/removed (4.6+ behavior: adaptive
 # is the only supported mode; 4.7 additionally forbids manual thinking entirely
@@ -111,6 +119,17 @@ def _get_anthropic_max_output(model: str) -> int:
 def _supports_adaptive_thinking(model: str) -> bool:
     """Return True for Claude 4.6+ models that support adaptive thinking."""
     return any(v in model for v in _ADAPTIVE_THINKING_SUBSTRINGS)
+
+
+def _supports_xhigh_effort(model: str) -> bool:
+    """Return True for models that accept the 'xhigh' adaptive effort level.
+
+    Opus 4.7 introduced xhigh as a distinct level between high and max.
+    Pre-4.7 adaptive models (Opus/Sonnet 4.6) only accept low/medium/high/max
+    and reject xhigh with an HTTP 400. Callers should downgrade xhigh→max
+    when this returns False.
+    """
+    return any(v in model for v in _XHIGH_EFFORT_SUBSTRINGS)
 
 
 def _forbids_sampling_params(model: str) -> bool:
@@ -273,8 +292,14 @@ def _common_betas_for_base_url(base_url: str | None) -> list[str]:
     return _COMMON_BETAS
 
 
-def build_anthropic_client(api_key: str, base_url: str = None):
+def build_anthropic_client(api_key: str, base_url: str = None, timeout: float = None):
     """Create an Anthropic client, auto-detecting setup-tokens vs API keys.
+
+    If *timeout* is provided it overrides the default 900s read timeout.  The
+    connect timeout stays at 10s.  Callers pass this from the per-provider /
+    per-model ``request_timeout_seconds`` config so Anthropic-native and
+    Anthropic-compatible providers respect the same knob as OpenAI-wire
+    providers.
 
     Returns an anthropic.Anthropic instance.
     """
@@ -286,8 +311,9 @@ def build_anthropic_client(api_key: str, base_url: str = None):
     from httpx import Timeout
 
     normalized_base_url = _normalize_base_url_text(base_url)
+    _read_timeout = timeout if (isinstance(timeout, (int, float)) and timeout > 0) else 900.0
     kwargs = {
-        "timeout": Timeout(timeout=900.0, connect=10.0),
+        "timeout": Timeout(timeout=float(_read_timeout), connect=10.0),
     }
     if normalized_base_url:
         kwargs["base_url"] = normalized_base_url
@@ -1392,8 +1418,13 @@ def build_anthropic_kwargs(
                     "type": "adaptive",
                     "display": "summarized",
                 }
+                adaptive_effort = ADAPTIVE_EFFORT_MAP.get(effort, "medium")
+                # Downgrade xhigh→max on models that don't list xhigh as a
+                # supported level (Opus/Sonnet 4.6). Opus 4.7+ keeps xhigh.
+                if adaptive_effort == "xhigh" and not _supports_xhigh_effort(model):
+                    adaptive_effort = "max"
                 kwargs["output_config"] = {
-                    "effort": ADAPTIVE_EFFORT_MAP.get(effort, "medium"),
+                    "effort": adaptive_effort,
                 }
             else:
                 kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}

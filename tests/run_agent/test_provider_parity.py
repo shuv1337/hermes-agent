@@ -60,6 +60,9 @@ def _make_agent(monkeypatch, provider, api_mode="chat_completions", base_url="ht
     )
     if model:
         kwargs["model"] = model
+    base_url="https://openrouter.ai/api/v1",
+    api_key="test-key",
+    base_url="https://openrouter.ai/api/v1",
     return AIAgent(**kwargs)
 
 
@@ -246,6 +249,23 @@ class TestBuildApiKwargsChatCompletionsServiceTier:
         messages = [{"role": "user", "content": "hi"}]
         kwargs = agent._build_api_kwargs(messages)
         assert "service_tier" not in kwargs
+
+
+class TestBuildApiKwargsKimiNoTemperatureOverride:
+    def test_kimi_for_coding_omits_temperature(self, monkeypatch):
+        """Temperature should NOT be set client-side for Kimi models.
+
+        The Kimi gateway selects the correct temperature server-side.
+        """
+        agent = _make_agent(
+            monkeypatch,
+            "kimi-coding",
+            base_url="https://api.kimi.com/coding/v1",
+            model="kimi-for-coding",
+        )
+        messages = [{"role": "user", "content": "hi"}]
+        kwargs = agent._build_api_kwargs(messages)
+        assert "temperature" not in kwargs
 
 
 class TestBuildApiKwargsAIGateway:

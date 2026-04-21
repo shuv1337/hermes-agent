@@ -274,6 +274,7 @@ class TestDelegateTask(unittest.TestCase):
                 model=None,
                 max_iterations=10,
                 parent_agent=parent,
+                task_count=1,
             )
 
         self.assertIs(mock_child._print_fn, sink)
@@ -294,6 +295,7 @@ class TestDelegateTask(unittest.TestCase):
                 model=None,
                 max_iterations=10,
                 parent_agent=parent,
+                task_count=1,
             )
 
         self.assertTrue(callable(mock_child.thinking_callback))
@@ -363,6 +365,7 @@ class TestToolNamePreservation(unittest.TestCase):
                     model=None,
                     max_iterations=10,
                     parent_agent=parent,
+                    task_count=1,
                 )
             except NameError as exc:
                 self.fail(
@@ -902,6 +905,45 @@ class TestDelegationProviderIntegration(unittest.TestCase):
 
     @patch("tools.delegate_tool._load_config")
     @patch("tools.delegate_tool._resolve_delegation_credentials")
+    def test_delegation_acp_runtime_reaches_child_agent(self, mock_creds, mock_cfg):
+        """Resolved ACP runtime command/args must be forwarded to child agents."""
+        mock_cfg.return_value = {
+            "max_iterations": 45,
+            "model": "copilot-model",
+            "provider": "copilot-acp",
+        }
+        mock_creds.return_value = {
+            "model": "copilot-model",
+            "provider": "copilot-acp",
+            "base_url": "acp://copilot",
+            "api_key": "copilot-acp",
+            "api_mode": "chat_completions",
+            "command": "custom-copilot",
+            "args": ["--stdio-custom"],
+        }
+        parent = _make_mock_parent(depth=0)
+
+        with patch("tools.delegate_tool._build_child_agent") as mock_build, \
+             patch("tools.delegate_tool._run_single_child") as mock_run:
+            mock_child = MagicMock()
+            mock_build.return_value = mock_child
+            mock_run.return_value = {
+                "task_index": 0, "status": "completed",
+                "summary": "Done", "api_calls": 1, "duration_seconds": 1.0
+            }
+
+            delegate_task(goal="ACP delegation test", parent_agent=parent)
+
+            _, kwargs = mock_build.call_args
+            self.assertEqual(kwargs.get("override_provider"), "copilot-acp")
+            self.assertEqual(kwargs.get("override_base_url"), "acp://copilot")
+            self.assertEqual(kwargs.get("override_api_key"), "copilot-acp")
+            self.assertEqual(kwargs.get("override_api_mode"), "chat_completions")
+            self.assertEqual(kwargs.get("override_acp_command"), "custom-copilot")
+            self.assertEqual(kwargs.get("override_acp_args"), ["--stdio-custom"])
+
+    @patch("tools.delegate_tool._load_config")
+    @patch("tools.delegate_tool._resolve_delegation_credentials")
     def test_model_only_no_provider_inherits_parent_credentials(self, mock_creds, mock_cfg):
         """Setting only model (no provider) changes model but keeps parent credentials."""
         mock_cfg.return_value = {
@@ -1000,6 +1042,7 @@ class TestChildCredentialPoolResolution(unittest.TestCase):
                 model=None,
                 max_iterations=10,
                 parent_agent=parent,
+                task_count=1,
             )
 
             self.assertEqual(mock_child._credential_pool, mock_pool)
@@ -1225,6 +1268,7 @@ class TestDelegationReasoningEffort(unittest.TestCase):
         _build_child_agent(
             task_index=0, goal="test", context=None, toolsets=None,
             model=None, max_iterations=50, parent_agent=parent,
+            task_count=1,
         )
         call_kwargs = MockAgent.call_args[1]
         self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "xhigh"})
@@ -1241,6 +1285,7 @@ class TestDelegationReasoningEffort(unittest.TestCase):
         _build_child_agent(
             task_index=0, goal="test", context=None, toolsets=None,
             model=None, max_iterations=50, parent_agent=parent,
+            task_count=1,
         )
         call_kwargs = MockAgent.call_args[1]
         self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "low"})
@@ -1257,6 +1302,7 @@ class TestDelegationReasoningEffort(unittest.TestCase):
         _build_child_agent(
             task_index=0, goal="test", context=None, toolsets=None,
             model=None, max_iterations=50, parent_agent=parent,
+            task_count=1,
         )
         call_kwargs = MockAgent.call_args[1]
         self.assertEqual(call_kwargs["reasoning_config"], {"enabled": False})
@@ -1273,6 +1319,7 @@ class TestDelegationReasoningEffort(unittest.TestCase):
         _build_child_agent(
             task_index=0, goal="test", context=None, toolsets=None,
             model=None, max_iterations=50, parent_agent=parent,
+            task_count=1,
         )
         call_kwargs = MockAgent.call_args[1]
         self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "medium"})

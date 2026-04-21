@@ -19,6 +19,7 @@ import os
 import random
 import re
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -128,6 +129,27 @@ def _render_mentions(text: str, mentions: list) -> str:
     return text
 
 
+def _is_signal_service_id(value: str) -> bool:
+    """Return True if *value* already looks like a Signal service identifier."""
+    if not value:
+        return False
+    if value.startswith("PNI:") or value.startswith("u:"):
+        return True
+    try:
+        uuid.UUID(value)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def _looks_like_e164_number(value: str) -> bool:
+    """Return True for a plausible E.164 phone number."""
+    if not value or not value.startswith("+"):
+        return False
+    digits = value[1:]
+    return digits.isdigit() and 7 <= len(digits) <= 15
+
+
 def check_signal_requirements() -> bool:
     """Check if Signal is configured (has URL and account)."""
     return bool(os.getenv("SIGNAL_HTTP_URL") and os.getenv("SIGNAL_ACCOUNT"))
@@ -165,6 +187,14 @@ class SignalAdapter(BasePlatformAdapter):
         self._sse_task: Optional[asyncio.Task] = None
         self._health_monitor_task: Optional[asyncio.Task] = None
         self._typing_tasks: Dict[str, asyncio.Task] = {}
+        # Per-chat typing-indicator backoff. When signal-cli reports
+        # NETWORK_FAILURE (recipient offline / unroutable), base.py's
+        # _keep_typing refresh loop would otherwise hammer sendTyping every
+        # ~2s indefinitely, producing WARNING-level log spam and pointless
+        # RPC traffic. We track consecutive failures per chat and skip the
+        # RPC during a cooldown window instead.
+        self._typing_failures: Dict[str, int] = {}
+        self._typing_skip_until: Dict[str, float] = {}
         self._running = False
         self._last_sse_activity = 0.0
         self._sse_response: Optional[httpx.Response] = None
@@ -176,6 +206,12 @@ class SignalAdapter(BasePlatformAdapter):
         # in Note to Self / self-chat mode (mirrors WhatsApp recentlySentIds)
         self._recent_sent_timestamps: set = set()
         self._max_recent_timestamps = 50
+        # Signal increasingly exposes ACI/PNI UUIDs as stable recipient IDs.
+        # Keep a best-effort mapping so outbound sends can upgrade from a
+        # phone number to the corresponding UUID when signal-cli prefers it.
+        self._recipient_uuid_by_number: Dict[str, str] = {}
+        self._recipient_number_by_uuid: Dict[str, str] = {}
+        self._recipient_cache_lock = asyncio.Lock()
 
         logger.info("Signal adapter initialized: url=%s account=%s groups=%s",
                      self.http_url, redact_phone(self.account),
@@ -192,35 +228,50 @@ class SignalAdapter(BasePlatformAdapter):
             return False
 
         # Acquire scoped lock to prevent duplicate Signal listeners for the same phone
+        lock_acquired = False
         try:
             if not self._acquire_platform_lock('signal-phone', self.account, 'Signal account'):
                 return False
+            lock_acquired = True
         except Exception as e:
             logger.warning("Signal: Could not acquire phone lock (non-fatal): %s", e)
 
         self.client = httpx.AsyncClient(timeout=30.0)
-
-        # Health check — verify signal-cli daemon is reachable
         try:
-            resp = await self.client.get(f"{self.http_url}/api/v1/check", timeout=10.0)
-            if resp.status_code != 200:
-                logger.error("Signal: health check failed (status %d)", resp.status_code)
+            # Health check — verify signal-cli daemon is reachable
+            try:
+                resp = await self.client.get(f"{self.http_url}/api/v1/check", timeout=10.0)
+                if resp.status_code != 200:
+                    logger.error("Signal: health check failed (status %d)", resp.status_code)
+                    return False
+            except Exception as e:
+                logger.error("Signal: cannot reach signal-cli at %s: %s", self.http_url, e)
                 return False
-        except Exception as e:
-            logger.error("Signal: cannot reach signal-cli at %s: %s", self.http_url, e)
-            return False
 
-        self._running = True
-        self._last_sse_activity = time.time()
-        self._sse_task = asyncio.create_task(self._sse_listener())
-        self._health_monitor_task = asyncio.create_task(self._health_monitor())
+            self._running = True
+            self._last_sse_activity = time.time()
+            self._sse_task = asyncio.create_task(self._sse_listener())
+            self._health_monitor_task = asyncio.create_task(self._health_monitor())
 
-        # Resolve our own UUID for mention detection in groups.
-        self._account_uuid = await self._resolve_account_uuid()
+            # Resolve our own UUID for mention detection in groups.
+            # Must happen after _running=True so any RPC timing works, but
+            # before we return so the UUID is set when the SSE listener
+            # starts dispatching messages.
+            self._account_uuid = await self._resolve_account_uuid()
 
-        logger.info("Signal: connected to %s (require_mention=%s)",
-                     self.http_url, self._signal_require_mention())
-        return True
+            logger.info(
+                "Signal: connected to %s (require_mention=%s)",
+                self.http_url,
+                self._signal_require_mention(),
+            )
+            return True
+        finally:
+            if not self._running:
+                if self.client:
+                    await self.client.aclose()
+                    self.client = None
+                if lock_acquired:
+                    self._release_platform_lock()
 
     async def disconnect(self) -> None:
         """Stop SSE listener and clean up."""
@@ -553,6 +604,7 @@ class SignalAdapter(BasePlatformAdapter):
         )
         sender_name = envelope_data.get("sourceName", "")
         sender_uuid = envelope_data.get("sourceUuid", "")
+        self._remember_recipient_identifiers(sender, sender_uuid)
 
         if not sender:
             logger.debug("Signal: ignoring envelope with no sender")
@@ -680,6 +732,64 @@ class SignalAdapter(BasePlatformAdapter):
 
         await self.handle_message(event)
 
+    def _remember_recipient_identifiers(self, number: Optional[str], service_id: Optional[str]) -> None:
+        """Cache any number↔UUID mapping observed from Signal envelopes."""
+        if not number or not service_id or not _is_signal_service_id(service_id):
+            return
+        self._recipient_uuid_by_number[number] = service_id
+        self._recipient_number_by_uuid[service_id] = number
+
+    def _extract_contact_uuid(self, contact: Any, phone_number: str) -> Optional[str]:
+        """Best-effort extraction of a Signal service ID from listContacts output."""
+        if not isinstance(contact, dict):
+            return None
+
+        number = contact.get("number")
+        recipient = contact.get("recipient")
+        service_id = contact.get("uuid") or contact.get("serviceId")
+        if not service_id:
+            profile = contact.get("profile")
+            if isinstance(profile, dict):
+                service_id = profile.get("serviceId") or profile.get("uuid")
+
+        if service_id and _is_signal_service_id(service_id):
+            matches_number = number == phone_number or recipient == phone_number
+            if matches_number:
+                return service_id
+        return None
+
+    async def _resolve_recipient(self, chat_id: str) -> str:
+        """Return the preferred Signal recipient identifier for a direct chat."""
+        if (
+            not chat_id
+            or chat_id.startswith("group:")
+            or _is_signal_service_id(chat_id)
+            or not _looks_like_e164_number(chat_id)
+        ):
+            return chat_id
+
+        cached = self._recipient_uuid_by_number.get(chat_id)
+        if cached:
+            return cached
+
+        async with self._recipient_cache_lock:
+            cached = self._recipient_uuid_by_number.get(chat_id)
+            if cached:
+                return cached
+
+            contacts = await self._rpc("listContacts", {
+                "account": self.account,
+                "allRecipients": True,
+            })
+            if isinstance(contacts, list):
+                for contact in contacts:
+                    number = contact.get("number") if isinstance(contact, dict) else None
+                    service_id = self._extract_contact_uuid(contact, chat_id)
+                    if number and service_id:
+                        self._remember_recipient_identifiers(number, service_id)
+
+            return self._recipient_uuid_by_number.get(chat_id, chat_id)
+
     # ------------------------------------------------------------------
     # Attachment Handling
     # ------------------------------------------------------------------
@@ -718,8 +828,22 @@ class SignalAdapter(BasePlatformAdapter):
     # JSON-RPC Communication
     # ------------------------------------------------------------------
 
-    async def _rpc(self, method: str, params: dict, rpc_id: str = None) -> Any:
-        """Send a JSON-RPC 2.0 request to signal-cli daemon."""
+    async def _rpc(
+        self,
+        method: str,
+        params: dict,
+        rpc_id: str = None,
+        *,
+        log_failures: bool = True,
+    ) -> Any:
+        """Send a JSON-RPC 2.0 request to signal-cli daemon.
+
+        When ``log_failures=False``, error and exception paths log at DEBUG
+        instead of WARNING — used by the typing-indicator path to silence
+        repeated NETWORK_FAILURE spam for unreachable recipients while
+        still preserving visibility for the first occurrence and for
+        unrelated RPCs.
+        """
         if not self.client:
             logger.warning("Signal: RPC called but client not connected")
             return None
@@ -744,13 +868,19 @@ class SignalAdapter(BasePlatformAdapter):
             data = resp.json()
 
             if "error" in data:
-                logger.warning("Signal RPC error (%s): %s", method, data["error"])
+                if log_failures:
+                    logger.warning("Signal RPC error (%s): %s", method, data["error"])
+                else:
+                    logger.debug("Signal RPC error (%s): %s", method, data["error"])
                 return None
 
             return data.get("result")
 
         except Exception as e:
-            logger.warning("Signal RPC %s failed: %s", method, e)
+            if log_failures:
+                logger.warning("Signal RPC %s failed: %s", method, e)
+            else:
+                logger.debug("Signal RPC %s failed: %s", method, e)
             return None
 
     # ------------------------------------------------------------------
@@ -775,7 +905,7 @@ class SignalAdapter(BasePlatformAdapter):
         if chat_id.startswith("group:"):
             params["groupId"] = chat_id[6:]
         else:
-            params["recipient"] = [chat_id]
+            params["recipient"] = [await self._resolve_recipient(chat_id)]
 
         result = await self._rpc("send", params)
 
@@ -797,7 +927,28 @@ class SignalAdapter(BasePlatformAdapter):
                 self._recent_sent_timestamps.pop()
 
     async def send_typing(self, chat_id: str, metadata=None) -> None:
-        """Send a typing indicator."""
+        """Send a typing indicator.
+
+        base.py's ``_keep_typing`` refresh loop calls this every ~2s while
+        the agent is processing. If signal-cli returns NETWORK_FAILURE for
+        this recipient (offline, unroutable, group membership lost, etc.)
+        the unmitigated behaviour is: a WARNING log every 2 seconds for as
+        long as the agent keeps running. Instead we:
+
+        - silence the WARNING after the first consecutive failure (subsequent
+          attempts log at DEBUG) so transport issues are still visible once
+          but don't flood the log,
+        - skip the RPC entirely during an exponential cooldown window once
+          three consecutive failures have happened, so we stop hammering
+          signal-cli with requests it can't deliver.
+
+        A successful sendTyping clears the counters.
+        """
+        now = time.monotonic()
+        skip_until = self._typing_skip_until.get(chat_id, 0.0)
+        if now < skip_until:
+            return
+
         params: Dict[str, Any] = {
             "account": self.account,
         }
@@ -805,9 +956,28 @@ class SignalAdapter(BasePlatformAdapter):
         if chat_id.startswith("group:"):
             params["groupId"] = chat_id[6:]
         else:
-            params["recipient"] = [chat_id]
+            params["recipient"] = [await self._resolve_recipient(chat_id)]
 
-        await self._rpc("sendTyping", params, rpc_id="typing")
+        fails = self._typing_failures.get(chat_id, 0)
+        result = await self._rpc(
+            "sendTyping",
+            params,
+            rpc_id="typing",
+            log_failures=(fails == 0),
+        )
+
+        if result is None:
+            fails += 1
+            self._typing_failures[chat_id] = fails
+            # After 3 consecutive failures, back off exponentially (16s,
+            # 32s, 60s cap) to stop spamming signal-cli for a recipient
+            # that clearly isn't reachable right now.
+            if fails >= 3:
+                backoff = min(60.0, 16.0 * (2 ** (fails - 3)))
+                self._typing_skip_until[chat_id] = now + backoff
+        else:
+            self._typing_failures.pop(chat_id, None)
+            self._typing_skip_until.pop(chat_id, None)
 
     async def send_image(
         self,
@@ -847,7 +1017,7 @@ class SignalAdapter(BasePlatformAdapter):
         if chat_id.startswith("group:"):
             params["groupId"] = chat_id[6:]
         else:
-            params["recipient"] = [chat_id]
+            params["recipient"] = [await self._resolve_recipient(chat_id)]
 
         result = await self._rpc("send", params)
         if result is not None:
@@ -886,7 +1056,7 @@ class SignalAdapter(BasePlatformAdapter):
         if chat_id.startswith("group:"):
             params["groupId"] = chat_id[6:]
         else:
-            params["recipient"] = [chat_id]
+            params["recipient"] = [await self._resolve_recipient(chat_id)]
 
         result = await self._rpc("send", params)
         if result is not None:
@@ -959,6 +1129,10 @@ class SignalAdapter(BasePlatformAdapter):
                 await task
             except asyncio.CancelledError:
                 pass
+        # Reset per-chat typing backoff state so the next agent turn starts
+        # fresh rather than inheriting a cooldown from a prior conversation.
+        self._typing_failures.pop(chat_id, None)
+        self._typing_skip_until.pop(chat_id, None)
 
     async def stop_typing(self, chat_id: str) -> None:
         """Public interface for stopping typing — called by base adapter's

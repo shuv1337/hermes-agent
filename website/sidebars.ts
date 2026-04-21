@@ -21,6 +21,7 @@ const sidebars: SidebarsConfig = {
       collapsed: true,
       items: [
         'user-guide/cli',
+        'user-guide/tui',
         'user-guide/configuration',
         'user-guide/sessions',
         'user-guide/profiles',
@@ -36,6 +37,7 @@ const sidebars: SidebarsConfig = {
       collapsed: true,
       items: [
         'user-guide/features/overview',
+        'user-guide/features/tool-gateway',
         {
           type: 'category',
           label: 'Core',
@@ -49,6 +51,7 @@ const sidebars: SidebarsConfig = {
             'user-guide/features/personality',
             'user-guide/features/skins',
             'user-guide/features/plugins',
+            'user-guide/features/built-in-plugins',
           ],
         },
         {
@@ -160,6 +163,8 @@ const sidebars: SidebarsConfig = {
         'guides/cron-troubleshooting',
         'guides/work-with-skills',
         'guides/delegation-patterns',
+        'guides/github-pr-review-agent',
+        'guides/webhook-github-pr-review',
         'guides/migrate-from-openclaw',
         'guides/aws-bedrock',
       ],

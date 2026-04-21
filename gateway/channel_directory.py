@@ -101,7 +101,7 @@ def build_channel_directory(adapters: Dict[Any, Any]) -> Dict[str, Any]:
 
 
 def _build_discord(adapter) -> List[Dict[str, str]]:
-    """Enumerate all text channels the Discord bot can see."""
+    """Enumerate all text channels and forum channels the Discord bot can see."""
     channels = []
     client = getattr(adapter, "_client", None)
     if not client:
@@ -119,6 +119,15 @@ def _build_discord(adapter) -> List[Dict[str, str]]:
                 "name": ch.name,
                 "guild": guild.name,
                 "type": "channel",
+            })
+        # Forum channels (type 15) — creating a message auto-spawns a thread post.
+        forums = getattr(guild, "forum_channels", None) or []
+        for ch in forums:
+            channels.append({
+                "id": str(ch.id),
+                "name": ch.name,
+                "guild": guild.name,
+                "type": "forum",
             })
         # Also include DM-capable users we've interacted with is not
         # feasible via guild enumeration; those come from sessions.
@@ -193,11 +202,20 @@ def load_directory() -> Dict[str, Any]:
 
 
 # Patterns for raw platform IDs that should NOT be resolved via the channel
-# directory.  When the caller already provides a concrete ID, resolution would
+# directory. When the caller already provides a concrete ID, resolution would
 # at best be a no-op and at worst could prefix-match against a session-based
 # composite entry (e.g. "C0ABC123:thread_ts"), clobbering the clean ID.
 _SLACK_ID_RE = re.compile(r"^[CDG][A-Z0-9]{8,}$")
 _DISCORD_SNOWFLAKE_RE = re.compile(r"^\d{17,20}$")
+
+
+def lookup_channel_type(platform_name: str, chat_id: str) -> Optional[str]:
+    """Return the channel ``type`` string (e.g. ``"channel"``, ``"forum"``) for *chat_id*, or *None* if unknown."""
+    directory = load_directory()
+    for ch in directory.get("platforms", {}).get(platform_name, []):
+        if ch.get("id") == chat_id:
+            return ch.get("type")
+    return None
 
 
 def resolve_channel_name(platform_name: str, name: str) -> Optional[str]:
