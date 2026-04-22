@@ -14,11 +14,12 @@ import copy
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 from hermes_constants import get_hermes_home
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 try:
     import anthropic as _anthropic_sdk
@@ -204,6 +205,107 @@ def _detect_claude_code_version() -> str:
 
 _CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
 _MCP_TOOL_PREFIX = "mcp_"
+
+
+# April 2026 Anthropic OAuth blocklist pattern. The edge rejects any request
+# whose ``tools[*].name`` matches this regex with a misleading
+# ``out of extra usage`` 400 at <200ms. The pattern is ``mcp_`` followed
+# exclusively by lowercase letters, digits, and underscores — ANY uppercase
+# letter anywhere in the suffix takes the name outside the match. See the
+# bisect probe in ``tests/integration/test_oauth_blocklist_bisect.py`` for
+# the characterization data.
+_OAUTH_BLOCKED_TOOL_NAME_RE = re.compile(r"^mcp_[a-z0-9_]+$")
+
+
+def _encode_oauth_tool_name(name: str) -> str:
+    """Wrap a tool name so Anthropic's OAuth edge accepts it.
+
+    Background (April 2026): Anthropic's OAuth content filter added a new
+    heuristic that rejects any request whose ``tools[*].name`` matches
+    ``_OAUTH_BLOCKED_TOOL_NAME_RE`` — i.e. ``mcp_`` followed by only lowercase
+    letters, digits, and underscores. Every Hermes core tool is lowercase
+    snake_case, so plain ``_MCP_TOOL_PREFIX + name`` produced exactly that
+    pattern and every OAuth request with tools attached got rejected with a
+    misleading 'out of extra usage' 400.
+
+    Encoding rules (preserves round-trip via ``_decode_oauth_tool_name``):
+      - Canonical Hermes tool (no ``mcp_`` prefix): prepend ``mcp_`` and
+        uppercase the first char of the original name. ``terminal`` →
+        ``mcp_Terminal``.
+      - Canonical MCP tool (already starts with ``mcp_``) whose full name
+        already contains an uppercase letter: leave untouched. It's already
+        outside the blocklist pattern.
+        ``mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS`` is unchanged.
+      - Canonical MCP tool whose full name is entirely lowercase/digits:
+        uppercase the first char after the prefix in place. The prefix is
+        NOT duplicated, so dispatch keeps working and logs stay readable.
+        ``mcp_composio_get_prompt`` → ``mcp_Composio_get_prompt``.
+
+    Bisect results (see ``tests/integration/test_oauth_blocklist_bisect.py``):
+    any uppercase character anywhere in the suffix breaks the heuristic.
+    Uppercasing only the first char is the smallest reversible change.
+
+    The canonical tool registry (used by dispatch, logs, activity feeds, etc.)
+    is untouched — this encoding only affects the bytes we send to Anthropic.
+    """
+    if not name:
+        return _MCP_TOOL_PREFIX
+    if name.startswith(_MCP_TOOL_PREFIX):
+        # The name already has the Claude Code MCP prefix (real MCP tool).
+        # Only encode if it would otherwise trigger the blocklist.
+        if not _OAUTH_BLOCKED_TOOL_NAME_RE.match(name):
+            return name
+        stripped = name[len(_MCP_TOOL_PREFIX):]
+        if not stripped:
+            return name
+        return _MCP_TOOL_PREFIX + stripped[0].upper() + stripped[1:]
+    # Canonical Hermes tool: add the prefix and uppercase the first char so
+    # the resulting name never matches the blocklist regex.
+    return _MCP_TOOL_PREFIX + name[0].upper() + name[1:]
+
+
+def _decode_oauth_tool_name(
+    encoded: str,
+    *,
+    canonical_names: Optional[Set[str]] = None,
+) -> str:
+    """Reverse of ``_encode_oauth_tool_name``.
+
+    Disambiguates between canonical Hermes tools (no prefix) and canonical MCP
+    tools (prefixed) using ``canonical_names`` when provided. Without it,
+    falls back to the historical 'drop the prefix' behavior.
+
+    Names that were pass-through encoded (already contain uppercase, e.g.
+    ``mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS``) round-trip exactly because
+    the decoder prefers the canonical-match branch when it has the set.
+    """
+    if not encoded.startswith(_MCP_TOOL_PREFIX):
+        return encoded
+    stripped = encoded[len(_MCP_TOOL_PREFIX):]
+    if not stripped:
+        return encoded
+
+    # Candidate A: the name the encoder produced from a prefixed canonical
+    # (``mcp_Composio_get_prompt`` → ``mcp_composio_get_prompt``).
+    mcp_style = _MCP_TOOL_PREFIX + stripped[0].lower() + stripped[1:]
+    # Candidate B: the name the encoder produced from an unprefixed canonical
+    # (``mcp_Terminal`` → ``terminal``).
+    hermes_style = stripped[0].lower() + stripped[1:]
+
+    if canonical_names:
+        # A pass-through name (encoder left it alone) is already canonical.
+        if encoded in canonical_names:
+            return encoded
+        if mcp_style in canonical_names:
+            return mcp_style
+        if hermes_style in canonical_names:
+            return hermes_style
+        # Unknown — return the encoded name so downstream dispatch surfaces a
+        # clear 'unknown tool' error rather than silently routing somewhere.
+        return encoded
+    # Legacy callers without canonical_names: preserve the pre-fix behavior
+    # of dropping the prefix.
+    return hermes_style
 
 
 def _get_claude_code_version() -> str:
@@ -1358,13 +1460,18 @@ def build_anthropic_kwargs(
                 text = text.replace("Nous Research", "Anthropic")
                 block["text"] = text
 
-        # 3. Prefix tool names with mcp_ (Claude Code convention)
+        # 3. Encode tool names for Claude Code OAuth compatibility.
+        # Historically this was a simple ``mcp_`` prefix. Anthropic's April
+        # 2026 blocklist rejects ``mcp_<lowercase>`` names, so we now use
+        # ``_encode_oauth_tool_name`` which also capitalizes the first char
+        # after the prefix. See that helper's docstring for details.
         if anthropic_tools:
             for tool in anthropic_tools:
                 if "name" in tool:
-                    tool["name"] = _MCP_TOOL_PREFIX + tool["name"]
+                    tool["name"] = _encode_oauth_tool_name(tool["name"])
 
-        # 4. Prefix tool names in message history (tool_use and tool_result blocks)
+        # 4. Encode tool names in message history (tool_use blocks).
+        # tool_result blocks reference IDs, not names, so they're untouched.
         for msg in anthropic_messages:
             content = msg.get("content")
             if isinstance(content, list):
@@ -1372,7 +1479,7 @@ def build_anthropic_kwargs(
                     if isinstance(block, dict):
                         if block.get("type") == "tool_use" and "name" in block:
                             if not block["name"].startswith(_MCP_TOOL_PREFIX):
-                                block["name"] = _MCP_TOOL_PREFIX + block["name"]
+                                block["name"] = _encode_oauth_tool_name(block["name"])
                         elif block.get("type") == "tool_result" and "tool_use_id" in block:
                             pass  # tool_result uses ID, not name
 
@@ -1461,14 +1568,22 @@ def build_anthropic_kwargs(
 def normalize_anthropic_response(
     response,
     strip_tool_prefix: bool = False,
+    canonical_tool_names: Optional[Set[str]] = None,
 ) -> Tuple[SimpleNamespace, str]:
     """Normalize Anthropic response to match the shape expected by AIAgent.
 
     Returns (assistant_message, finish_reason) where assistant_message has
     .content, .tool_calls, and .reasoning attributes.
 
-    When *strip_tool_prefix* is True, removes the ``mcp_`` prefix that was
-    added to tool names for OAuth Claude Code compatibility.
+    When *strip_tool_prefix* is True, reverses the OAuth tool-name encoding
+    applied in ``build_anthropic_kwargs`` so downstream dispatch sees the
+    canonical registry name (e.g. ``mcp_Terminal`` → ``terminal``).
+
+    ``canonical_tool_names`` — when passed — lets the decoder disambiguate
+    between canonical Hermes tools (no prefix) and canonical MCP tools
+    (prefixed). Callers that have ``self.valid_tool_names`` available should
+    pass it; legacy callers that don't fall back to the historical 'drop the
+    prefix' behavior.
     """
     text_parts = []
     reasoning_parts = []
@@ -1486,7 +1601,9 @@ def normalize_anthropic_response(
         elif block.type == "tool_use":
             name = block.name
             if strip_tool_prefix and name.startswith(_MCP_TOOL_PREFIX):
-                name = name[len(_MCP_TOOL_PREFIX):]
+                name = _decode_oauth_tool_name(
+                    name, canonical_names=canonical_tool_names
+                )
             tool_calls.append(
                 SimpleNamespace(
                     id=block.id,

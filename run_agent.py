@@ -7403,7 +7403,11 @@ class AIAgent:
                     tool_calls = assistant_msg.tool_calls
             elif self.api_mode == "anthropic_messages" and not _aux_available:
                 from agent.anthropic_adapter import normalize_anthropic_response as _nar_flush
-                _flush_msg, _ = _nar_flush(response, strip_tool_prefix=self._is_anthropic_oauth)
+                _flush_msg, _ = _nar_flush(
+                    response,
+                    strip_tool_prefix=self._is_anthropic_oauth,
+                    canonical_tool_names=self.valid_tool_names,
+                )
                 if _flush_msg and _flush_msg.tool_calls:
                     tool_calls = _flush_msg.tool_calls
             elif hasattr(response, "choices") and response.choices:
@@ -8473,7 +8477,11 @@ class AIAgent:
                                    is_oauth=self._is_anthropic_oauth,
                                    preserve_dots=self._anthropic_preserve_dots())
                     summary_response = self._anthropic_messages_create(_ant_kw)
-                    _msg, _ = _nar(summary_response, strip_tool_prefix=self._is_anthropic_oauth)
+                    _msg, _ = _nar(
+                        summary_response,
+                        strip_tool_prefix=self._is_anthropic_oauth,
+                        canonical_tool_names=self.valid_tool_names,
+                    )
                     final_response = (_msg.content or "").strip()
                 else:
                     summary_response = self._ensure_primary_openai_client(reason="iteration_limit_summary").chat.completions.create(**summary_kwargs)
@@ -8505,7 +8513,11 @@ class AIAgent:
                                     max_tokens=self.max_tokens, reasoning_config=self.reasoning_config,
                                     preserve_dots=self._anthropic_preserve_dots())
                     retry_response = self._anthropic_messages_create(_ant_kw2)
-                    _retry_msg, _ = _nar2(retry_response, strip_tool_prefix=self._is_anthropic_oauth)
+                    _retry_msg, _ = _nar2(
+                        retry_response,
+                        strip_tool_prefix=self._is_anthropic_oauth,
+                        canonical_tool_names=self.valid_tool_names,
+                    )
                     final_response = (_retry_msg.content or "").strip()
                 else:
                     summary_kwargs = {
@@ -9577,7 +9589,9 @@ class AIAgent:
                         elif self.api_mode == "anthropic_messages":
                             from agent.anthropic_adapter import normalize_anthropic_response
                             _trunc_msg, _ = normalize_anthropic_response(
-                                response, strip_tool_prefix=self._is_anthropic_oauth
+                                response,
+                                strip_tool_prefix=self._is_anthropic_oauth,
+                                canonical_tool_names=self.valid_tool_names,
                             )
 
                         _trunc_content = getattr(_trunc_msg, "content", None) if _trunc_msg else None
@@ -10786,7 +10800,9 @@ class AIAgent:
                 elif self.api_mode == "anthropic_messages":
                     from agent.anthropic_adapter import normalize_anthropic_response
                     assistant_message, finish_reason = normalize_anthropic_response(
-                        response, strip_tool_prefix=self._is_anthropic_oauth
+                        response,
+                        strip_tool_prefix=self._is_anthropic_oauth,
+                        canonical_tool_names=self.valid_tool_names,
                     )
                 else:
                     assistant_message = response.choices[0].message

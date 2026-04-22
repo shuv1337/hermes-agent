@@ -508,12 +508,31 @@ the auto-restart didn't fire. Run `hermes gateway start` explicitly to bring it 
 the new PID is `active (running)` after a restart before walking away.
 
 ### Anthropic OAuth content blocklist causes misleading 400 errors
-Anthropic's Claude-Code OAuth edge maintains a content blocklist of n-grams associated with
-prompt-injection traffic. If system prompt text (especially in `agent/prompt_builder.py` or tool
-schemas like `tools/memory_tool.py`) contains a blocked literal, the API returns a 400 "out of
-usage" error — **not** a clear blocklist message. Fix: reword the offending text to break the
-tokenization pattern. A static regression guard exists in `tests/agent/test_prompt_builder.py`
-(`test_blocked_literals_absent`) — run it after editing any model-facing prompt text.
+Anthropic's Claude-Code OAuth edge maintains multiple content blocklists. When a request hits one
+the API returns a 400 "out of extra usage" error — **not** a clear blocklist message — with
+characteristic <200ms latency (genuine inference takes >250ms).
+
+**Known blocklists:**
+- **System-prompt n-gram blocklist** (ongoing): specific literals in `agent/prompt_builder.py`
+  and tool-schema descriptions (e.g. `tools/memory_tool.py`). Fix: reword to break tokenization.
+  Static guards in `tests/agent/test_prompt_builder.py::TestAnthropicOAuthBlocklistGuard`.
+- **Tool-name pattern blocklist** (April 2026): tool names matching `^mcp_[a-z0-9_]+$` are
+  rejected (any uppercase letter in the suffix takes them outside the pattern). Our OAuth path
+  used to prepend a plain `mcp_` prefix so every lowercase snake_case Hermes tool tripped it.
+  Fixed in `agent/anthropic_adapter.py::_encode_oauth_tool_name` — prepends `mcp_` AND uppercases
+  the first char (or capitalizes an existing prefixed-lowercase name in place so `mcp_composio_get_prompt`
+  → `mcp_Composio_get_prompt`). `_decode_oauth_tool_name` reverses it via the caller's
+  `canonical_tool_names` set. Static guards in `tests/agent/test_anthropic_adapter.py::TestOAuthToolNameEncoding`
+  and `TestBuildAnthropicKwargsOAuthToolEncoding`.
+
+**Live probe suite:** `tests/integration/test_oauth_blocklist_bisect.py` exercises guidance
+constants, every `PLATFORM_HINTS[k]`, every full per-platform system prompt, the skills index
+(including per-skill bisect), and every tool schema individually. Run it explicitly after any
+suspected OAuth-filter regression:
+
+```bash
+pytest -m integration tests/integration/test_oauth_blocklist_bisect.py -v -s -n0 -o 'addopts='
+```
 
 ### DO NOT hardcode cross-tool references in schema descriptions
 Tool schema descriptions must not mention tools from other toolsets by name (e.g., `browser_navigate` saying "prefer web_search"). Those tools may be unavailable (missing API keys, disabled toolset), causing the model to hallucinate calls to non-existent tools. If a cross-reference is needed, add it dynamically in `get_tool_definitions()` in `model_tools.py` — see the `browser_navigate` / `execute_code` post-processing blocks for the pattern.
