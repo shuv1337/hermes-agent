@@ -4,6 +4,7 @@ Pure utility functions with no AIAgent dependency. Used by ContextCompressor
 and run_agent.py for pre-flight context checks.
 """
 
+import ipaddress
 import logging
 import re
 import time
@@ -14,6 +15,8 @@ from urllib.parse import urlparse
 import requests
 import yaml
 
+from utils import base_url_host_matches, base_url_hostname
+
 from hermes_constants import OPENROUTER_MODELS_URL
 
 logger = logging.getLogger(__name__)
@@ -23,7 +26,7 @@ logger = logging.getLogger(__name__)
 # are preserved so the full model name reaches cache lookups and server queries.
 _PROVIDER_PREFIXES: frozenset[str] = frozenset({
     "openrouter", "nous", "openai-codex", "copilot", "copilot-acp",
-    "gemini", "ollama-cloud", "zai", "kimi-coding", "kimi-coding-cn", "minimax", "minimax-cn", "anthropic", "deepseek",
+    "gemini", "ollama-cloud", "zai", "kimi-coding", "kimi-coding-cn", "stepfun", "minimax", "minimax-cn", "anthropic", "deepseek",
     "opencode-zen", "opencode-go", "ai-gateway", "kilocode", "alibaba",
     "qwen-oauth",
     "xiaomi",
@@ -34,7 +37,7 @@ _PROVIDER_PREFIXES: frozenset[str] = frozenset({
     "glm", "z-ai", "z.ai", "zhipu", "github", "github-copilot",
     "github-models", "kimi", "moonshot", "kimi-cn", "moonshot-cn", "claude", "deep-seek",
     "ollama",
-    "opencode", "zen", "go", "vercel", "kilo", "dashscope", "aliyun", "qwen",
+    "stepfun", "opencode", "zen", "go", "vercel", "kilo", "dashscope", "aliyun", "qwen",
     "mimo", "xiaomi-mimo",
     "arcee-ai", "arceeai",
     "xai", "x-ai", "x.ai", "grok",
@@ -47,6 +50,13 @@ _OLLAMA_TAG_PATTERN = re.compile(
     r"^(\d+\.?\d*b|latest|stable|q\d|fp?\d|instruct|chat|coder|vision|text)",
     re.IGNORECASE,
 )
+
+
+# Tailscale's CGNAT range (RFC 6598). `ipaddress.is_private` excludes this
+# block, so without an explicit check Ollama reached over Tailscale (e.g.
+# `http://100.77.243.5:11434`) wouldn't be treated as local and its stream
+# read / stale timeouts wouldn't get auto-bumped. Built once at import time.
+_TAILSCALE_CGNAT = ipaddress.IPv4Network("100.64.0.0/10")
 
 
 def _strip_provider_prefix(model: str) -> str:
@@ -123,6 +133,8 @@ DEFAULT_CONTEXT_LENGTHS = {
     # Google
     "gemini": 1048576,
     # Gemma (open models served via AI Studio)
+    "gemma-4": 256000,  # Gemma 4 family
+    "gemma4": 256000,  # Ollama-style naming (e.g. gemma4:31b-cloud)
     "gemma-4-31b": 256000,
     "gemma-3": 131072,
     "gemma": 8192,  # fallback for older gemma models
@@ -168,12 +180,15 @@ DEFAULT_CONTEXT_LENGTHS = {
     "Qwen/Qwen3.5-35B-A3B": 131072,
     "deepseek-ai/DeepSeek-V3.2": 65536,
     "moonshotai/Kimi-K2.5": 262144,
+    "moonshotai/Kimi-K2.6": 262144,
     "moonshotai/Kimi-K2-Thinking": 262144,
     "MiniMaxAI/MiniMax-M2.5": 204800,
     "XiaomiMiMo/MiMo-V2-Flash": 256000,
     "mimo-v2-pro": 1000000,
     "mimo-v2-omni": 256000,
     "mimo-v2-flash": 256000,
+    "mimo-v2.5-pro": 1000000,
+    "mimo-v2.5": 1000000,
     "zai-org/GLM-5": 202752,
 }
 
@@ -188,6 +203,7 @@ _CONTEXT_LENGTH_KEYS = (
     "max_seq_len",
     "n_ctx_train",
     "n_ctx",
+    "ctx_size",
 )
 
 _MAX_COMPLETION_KEYS = (
@@ -218,7 +234,7 @@ def _auth_headers(api_key: str = "") -> Dict[str, str]:
 
 
 def _is_openrouter_base_url(base_url: str) -> bool:
-    return "openrouter.ai" in _normalize_base_url(base_url).lower()
+    return base_url_host_matches(base_url, "openrouter.ai")
 
 
 def _is_custom_endpoint(base_url: str) -> bool:
@@ -231,9 +247,12 @@ _URL_TO_PROVIDER: Dict[str, str] = {
     "chatgpt.com": "openai",
     "api.anthropic.com": "anthropic",
     "api.z.ai": "zai",
+    "open.bigmodel.cn": "zai",
     "api.moonshot.ai": "kimi-coding",
     "api.moonshot.cn": "kimi-coding-cn",
     "api.kimi.com": "kimi-coding",
+    "api.stepfun.ai": "stepfun",
+    "api.stepfun.com": "stepfun",
     "api.arcee.ai": "arcee",
     "api.minimax": "minimax",
     "dashscope.aliyuncs.com": "alibaba",
@@ -278,7 +297,15 @@ def _is_known_provider_base_url(base_url: str) -> bool:
 
 
 def is_local_endpoint(base_url: str) -> bool:
-    """Return True if base_url points to a local machine (localhost / RFC-1918 / WSL)."""
+    """Return True if base_url points to a local machine.
+
+    Recognises loopback (``localhost``, ``127.0.0.0/8``, ``::1``),
+    container-internal DNS names (``host.docker.internal`` et al.),
+    RFC-1918 private ranges (``10/8``, ``172.16/12``, ``192.168/16``),
+    link-local, and Tailscale CGNAT (``100.64.0.0/10``). Tailscale CGNAT
+    is included so remote-but-trusted Ollama boxes reached over a
+    Tailscale mesh get the same timeout auto-bumps as localhost Ollama.
+    """
     normalized = _normalize_base_url(base_url)
     if not normalized:
         return False
@@ -293,14 +320,17 @@ def is_local_endpoint(base_url: str) -> bool:
     # Docker / Podman / Lima internal DNS names (e.g. host.docker.internal)
     if any(host.endswith(suffix) for suffix in _CONTAINER_LOCAL_SUFFIXES):
         return True
-    # RFC-1918 private ranges and link-local
-    import ipaddress
+    # RFC-1918 private ranges, link-local, and Tailscale CGNAT
     try:
         addr = ipaddress.ip_address(host)
-        return addr.is_private or addr.is_loopback or addr.is_link_local
+        if addr.is_private or addr.is_loopback or addr.is_link_local:
+            return True
+        if isinstance(addr, ipaddress.IPv4Address) and addr in _TAILSCALE_CGNAT:
+            return True
     except ValueError:
         pass
     # Bare IP that looks like a private range (e.g. 172.26.x.x for WSL)
+    # or Tailscale CGNAT (100.64.x.x–100.127.x.x).
     parts = host.split(".")
     if len(parts) == 4:
         try:
@@ -310,6 +340,8 @@ def is_local_endpoint(base_url: str) -> bool:
             if first == 172 and 16 <= second <= 31:
                 return True
             if first == 192 and second == 168:
+                return True
+            if first == 100 and 64 <= second <= 127:
                 return True
         except ValueError:
             pass
@@ -1078,7 +1110,7 @@ def get_model_context_length(
 
     # 4. Anthropic /v1/models API (only for regular API keys, not OAuth)
     if provider == "anthropic" or (
-        base_url and "api.anthropic.com" in base_url
+        base_url and base_url_hostname(base_url) == "api.anthropic.com"
     ):
         ctx = _query_anthropic_context_length(model, base_url or "https://api.anthropic.com", api_key)
         if ctx:
@@ -1087,7 +1119,11 @@ def get_model_context_length(
     # 4b. AWS Bedrock — use static context length table.
     # Bedrock's ListFoundationModels doesn't expose context window sizes,
     # so we maintain a curated table in bedrock_adapter.py.
-    if provider == "bedrock" or (base_url and "bedrock-runtime" in base_url):
+    if provider == "bedrock" or (
+        base_url
+        and base_url_hostname(base_url).startswith("bedrock-runtime.")
+        and base_url_host_matches(base_url, "amazonaws.com")
+    ):
         try:
             from agent.bedrock_adapter import get_bedrock_context_length
             return get_bedrock_context_length(model)

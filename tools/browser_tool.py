@@ -1182,6 +1182,15 @@ def _run_browser_command(
         # used during CLI discovery.
         browser_env["PATH"] = _merge_browser_path(browser_env.get("PATH", ""))
         browser_env["AGENT_BROWSER_SOCKET_DIR"] = task_socket_dir
+
+        # Tell the agent-browser daemon to self-terminate after being idle
+        # for our configured inactivity timeout.  This is the daemon-side
+        # counterpart to our Python-side _cleanup_inactive_browser_sessions
+        # — the daemon kills itself and its Chrome children when no CLI
+        # commands arrive within the window.  Added in agent-browser 0.24.
+        if "AGENT_BROWSER_IDLE_TIMEOUT_MS" not in browser_env:
+            idle_ms = str(BROWSER_SESSION_INACTIVITY_TIMEOUT * 1000)
+            browser_env["AGENT_BROWSER_IDLE_TIMEOUT_MS"] = idle_ms
         
         # Use temp files for stdout/stderr instead of pipes.
         # agent-browser starts a background daemon that inherits file
@@ -1911,7 +1920,6 @@ def _maybe_start_recording(task_id: str):
         recordings_dir.mkdir(parents=True, exist_ok=True)
         _cleanup_old_recordings(max_age_hours=72)
         
-        import time
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         recording_path = recordings_dir / f"session_{timestamp}_{task_id[:16]}.webm"
         
@@ -2027,8 +2035,6 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
 
     import base64
     import uuid as uuid_mod
-    from pathlib import Path
-    
     effective_task_id = task_id or "default"
     
     # Save screenshot to persistent location so it can be shared with users
@@ -2210,7 +2216,6 @@ def _cleanup_old_screenshots(screenshots_dir, max_age_hours=24):
 
 def _cleanup_old_recordings(max_age_hours=72):
     """Remove browser recordings older than max_age_hours to prevent disk bloat."""
-    import time
     try:
         hermes_home = get_hermes_home()
         recordings_dir = hermes_home / "browser_recordings"

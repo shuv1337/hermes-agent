@@ -72,6 +72,8 @@ DEFAULT_QWEN_BASE_URL = "https://portal.qwen.ai/v1"
 DEFAULT_GITHUB_MODELS_BASE_URL = "https://api.githubcopilot.com"
 DEFAULT_COPILOT_ACP_BASE_URL = "acp://copilot"
 DEFAULT_OLLAMA_CLOUD_BASE_URL = "https://ollama.com/v1"
+STEPFUN_STEP_PLAN_INTL_BASE_URL = "https://api.stepfun.ai/step_plan/v1"
+STEPFUN_STEP_PLAN_CN_BASE_URL = "https://api.stepfun.com/step_plan/v1"
 CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token"
 CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 120
@@ -168,8 +170,11 @@ PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
         id="kimi-coding",
         name="Kimi / Moonshot",
         auth_type="api_key",
+        # Legacy platform.moonshot.ai keys use this endpoint (OpenAI-compat).
+        # sk-kimi- (Kimi Code) keys are auto-redirected to api.kimi.com/coding
+        # by _resolve_kimi_base_url() below.
         inference_base_url="https://api.moonshot.ai/v1",
-        api_key_env_vars=("KIMI_API_KEY",),
+        api_key_env_vars=("KIMI_API_KEY", "KIMI_CODING_API_KEY"),
         base_url_env_var="KIMI_BASE_URL",
     ),
     "kimi-coding-cn": ProviderConfig(
@@ -178,6 +183,14 @@ PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
         auth_type="api_key",
         inference_base_url="https://api.moonshot.cn/v1",
         api_key_env_vars=("KIMI_CN_API_KEY",),
+    ),
+    "stepfun": ProviderConfig(
+        id="stepfun",
+        name="StepFun Step Plan",
+        auth_type="api_key",
+        inference_base_url=STEPFUN_STEP_PLAN_INTL_BASE_URL,
+        api_key_env_vars=("STEPFUN_API_KEY",),
+        base_url_env_var="STEPFUN_BASE_URL",
     ),
     "arcee": ProviderConfig(
         id="arcee",
@@ -201,6 +214,7 @@ PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
         auth_type="api_key",
         inference_base_url="https://api.anthropic.com",
         api_key_env_vars=("ANTHROPIC_API_KEY", "ANTHROPIC_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"),
+        base_url_env_var="ANTHROPIC_BASE_URL",
     ),
     "alibaba": ProviderConfig(
         id="alibaba",
@@ -340,10 +354,16 @@ def get_anthropic_key() -> str:
 # =============================================================================
 
 # Kimi Code (kimi.com/code) issues keys prefixed "sk-kimi-" that only work
-# on api.kimi.com/coding/v1.  Legacy keys from platform.moonshot.ai work on
-# api.moonshot.ai/v1 (the default).  Auto-detect when user hasn't set
+# on api.kimi.com/coding.  Legacy keys from platform.moonshot.ai work on
+# api.moonshot.ai/v1 (the old default).  Auto-detect when user hasn't set
 # KIMI_BASE_URL explicitly.
-KIMI_CODE_BASE_URL = "https://api.kimi.com/coding/v1"
+#
+# Note: the base URL intentionally has NO /v1 suffix.  The /coding endpoint
+# speaks the Anthropic Messages protocol, and the anthropic SDK appends
+# "/v1/messages" internally — so "/coding" + SDK suffix → "/coding/v1/messages"
+# (the correct target). Using "/coding/v1" here would produce
+# "/coding/v1/v1/messages" (a 404).
+KIMI_CODE_BASE_URL = "https://api.kimi.com/coding"
 
 
 def _resolve_kimi_base_url(api_key: str, default_url: str, env_override: str) -> str:
@@ -983,6 +1003,7 @@ def resolve_provider(
         "x-ai": "xai", "x.ai": "xai", "grok": "xai",
         "kimi": "kimi-coding", "kimi-for-coding": "kimi-coding", "moonshot": "kimi-coding",
         "kimi-cn": "kimi-coding-cn", "moonshot-cn": "kimi-coding-cn",
+        "step": "stepfun", "stepfun-coding-plan": "stepfun",
         "arcee-ai": "arcee", "arceeai": "arcee",
         "minimax-china": "minimax-cn", "minimax_cn": "minimax-cn",
         "claude": "anthropic", "claude-code": "anthropic",
@@ -3375,7 +3396,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 )
 
             from hermes_cli.models import (
-                _PROVIDER_MODELS, get_pricing_for_provider, filter_nous_free_models,
+                _PROVIDER_MODELS, get_pricing_for_provider,
                 check_nous_free_tier, partition_nous_models_by_tier,
             )
             model_ids = _PROVIDER_MODELS.get("nous", [])
@@ -3384,7 +3405,6 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
             unavailable_models: list = []
             if model_ids:
                 pricing = get_pricing_for_provider("nous")
-                model_ids = filter_nous_free_models(model_ids, pricing)
                 free_tier = check_nous_free_tier()
                 if free_tier:
                     model_ids, unavailable_models = partition_nous_models_by_tier(

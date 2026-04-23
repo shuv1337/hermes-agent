@@ -72,11 +72,48 @@ from tools.tool_backend_helpers import (
 )
 
 
+def _safe_parse_import_env(
+    name: str,
+    default: Any,
+    converter,
+    type_label: str,
+):
+    """Parse module-level numeric env vars without breaking import.
+
+    Terminal tool is imported by CLI, ACP, tests, and tool discovery. A single
+    malformed env var must not make the whole module unloadable at import time.
+    """
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return converter(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid value for %s: %r (expected %s). Falling back to %r.",
+            name,
+            raw,
+            type_label,
+            default,
+        )
+        return default
+
+
 # Hard cap on foreground timeout; override via TERMINAL_MAX_FOREGROUND_TIMEOUT env var.
-FOREGROUND_MAX_TIMEOUT = int(os.getenv("TERMINAL_MAX_FOREGROUND_TIMEOUT", "600"))
+FOREGROUND_MAX_TIMEOUT = _safe_parse_import_env(
+    "TERMINAL_MAX_FOREGROUND_TIMEOUT",
+    600,
+    int,
+    "integer",
+)
 
 # Disk usage warning threshold (in GB)
-DISK_USAGE_WARNING_THRESHOLD_GB = float(os.getenv("TERMINAL_DISK_WARNING_GB", "500"))
+DISK_USAGE_WARNING_THRESHOLD_GB = _safe_parse_import_env(
+    "TERMINAL_DISK_WARNING_GB",
+    500.0,
+    float,
+    "number",
+)
 
 
 def _check_disk_usage_warning():
@@ -114,22 +151,44 @@ _cached_sudo_password: str = ""
 # Optional UI callbacks for interactive prompts. When set, these are called
 # instead of the default /dev/tty or input() readers. The CLI registers these
 # so prompts route through prompt_toolkit's event loop.
-#   _sudo_password_callback() -> str  (return password or "" to skip)
-#   _approval_callback(command, description) -> str  ("once"/"session"/"always"/"deny")
-_sudo_password_callback = None
-_approval_callback = None
+# Callback slots used by the approval prompt and sudo password prompt
+# routines. Stored in thread-local state so overlapping ACP sessions —
+# each running in its own ThreadPoolExecutor thread — don't stomp on
+# each other's callbacks. See GHSA-qg5c-hvr5-hjgr.
+#
+# CLI mode is single-threaded, so each thread (the only one) holds its
+# own callback exactly like before. Gateway mode resolves approvals via
+# the per-session queue in tools.approval, not through these callbacks,
+# so it's unaffected.
+import threading
+_callback_tls = threading.local()
+
+
+def _get_sudo_password_callback():
+    return getattr(_callback_tls, "sudo_password", None)
+
+
+def _get_approval_callback():
+    return getattr(_callback_tls, "approval", None)
 
 
 def set_sudo_password_callback(cb):
-    """Register a callback for sudo password prompts (used by CLI)."""
-    global _sudo_password_callback
-    _sudo_password_callback = cb
+    """Register a callback for sudo password prompts (used by CLI).
+
+    Per-thread scope — ACP sessions that run concurrently in a
+    ThreadPoolExecutor each have their own callback slot.
+    """
+    _callback_tls.sudo_password = cb
 
 
 def set_approval_callback(cb):
-    """Register a callback for dangerous command approval prompts (used by CLI)."""
-    global _approval_callback
-    _approval_callback = cb
+    """Register a callback for dangerous command approval prompts.
+
+    Per-thread scope — ACP sessions that run concurrently in a
+    ThreadPoolExecutor each have their own callback slot. See
+    GHSA-qg5c-hvr5-hjgr.
+    """
+    _callback_tls.approval = cb
 
 # =============================================================================
 # Dangerous Command Approval System
@@ -144,7 +203,7 @@ from tools.approval import (
 def _check_all_guards(command: str, env_type: str) -> dict:
     """Delegate to consolidated guard (tirith + dangerous cmd) with CLI callback."""
     return _check_all_guards_impl(command, env_type,
-                                  approval_callback=_approval_callback)
+                                  approval_callback=_get_approval_callback())
 
 
 # Allowlist: characters that can legitimately appear in directory paths.
@@ -217,12 +276,12 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
     directly from /dev/tty with echo disabled.
     """
     import sys
-    import time as time_module
     
     # Use the registered callback when available (prompt_toolkit-compatible)
-    if _sudo_password_callback is not None:
+    _sudo_cb = _get_sudo_password_callback()
+    if _sudo_cb is not None:
         try:
-            return _sudo_password_callback() or ""
+            return _sudo_cb() or ""
         except Exception:
             return ""
 
@@ -278,7 +337,7 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
     
     try:
         os.environ["HERMES_SPINNER_PAUSE"] = "1"
-        time_module.sleep(0.2)
+        time.sleep(0.2)
         
         print()
         print("┌" + "─" * 58 + "┐")
@@ -1488,6 +1547,8 @@ def terminal_tool(
                                 "modal_mode": config.get("modal_mode", "auto"),
                                 "docker_volumes": config.get("docker_volumes", []),
                                 "docker_mount_cwd_to_workspace": config.get("docker_mount_cwd_to_workspace", False),
+                                "docker_forward_env": config.get("docker_forward_env", []),
+                                "docker_env": config.get("docker_env", {}),
                             }
 
                         local_config = None

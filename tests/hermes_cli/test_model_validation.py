@@ -63,6 +63,11 @@ class TestParseModelInput:
         assert provider == "zai"
         assert model == "glm-5"
 
+    def test_stepfun_alias_resolved(self):
+        provider, model = parse_model_input("step:step-3.5-flash", "openrouter")
+        assert provider == "stepfun"
+        assert model == "step-3.5-flash"
+
     def test_no_slash_no_colon_keeps_provider(self):
         provider, model = parse_model_input("gpt-5.4", "openrouter")
         assert provider == "openrouter"
@@ -154,6 +159,7 @@ class TestNormalizeProvider:
         assert normalize_provider("glm") == "zai"
         assert normalize_provider("kimi") == "kimi-coding"
         assert normalize_provider("moonshot") == "kimi-coding"
+        assert normalize_provider("step") == "stepfun"
         assert normalize_provider("github-copilot") == "copilot"
 
     def test_case_insensitive(self):
@@ -164,6 +170,7 @@ class TestProviderLabel:
     def test_known_labels_and_auto(self):
         assert provider_label("anthropic") == "Anthropic"
         assert provider_label("kimi") == "Kimi / Kimi Coding Plan"
+        assert provider_label("stepfun") == "StepFun Step Plan"
         assert provider_label("copilot") == "GitHub Copilot"
         assert provider_label("copilot-acp") == "GitHub Copilot ACP"
         assert provider_label("auto") == "Auto"
@@ -192,6 +199,16 @@ class TestProviderModelIds:
 
     def test_zai_returns_glm_models(self):
         assert "glm-5" in provider_model_ids("zai")
+
+    def test_stepfun_prefers_live_catalog(self):
+        with patch(
+            "hermes_cli.auth.resolve_api_key_provider_credentials",
+            return_value={"api_key": "***", "base_url": "https://api.stepfun.com/step_plan/v1"},
+        ), patch(
+            "hermes_cli.models.fetch_api_models",
+            return_value=["step-3.5-flash", "step-3-agent-lite"],
+        ):
+            assert provider_model_ids("stepfun") == ["step-3.5-flash", "step-3-agent-lite"]
 
     def test_copilot_prefers_live_catalog(self):
         with patch("hermes_cli.auth.resolve_api_key_provider_credentials", return_value={"api_key": "gh-token"}), \
@@ -457,29 +474,62 @@ class TestValidateApiNotFound:
         assert "not found" in result["message"]
 
 
-# -- validate — API unreachable — reject with guidance ----------------
+# -- validate — API unreachable — soft-accept via catalog or warning --------
 
 class TestValidateApiFallback:
-    def test_any_model_rejected_when_api_down(self):
-        result = _validate("anthropic/claude-opus-4.6", api_models=None)
-        assert result["accepted"] is False
-        assert result["persist"] is False
+    """When /models is unreachable, the validator must accept the model (with
+    a warning) rather than reject it outright — otherwise provider switches
+    fail in the gateway for any provider whose /models endpoint is down or
+    doesn't exist (e.g. opencode-go returns 404 HTML).
 
-    def test_unknown_model_also_rejected_when_api_down(self):
-        result = _validate("anthropic/claude-next-gen", api_models=None)
-        assert result["accepted"] is False
-        assert result["persist"] is False
-        assert "could not reach" in result["message"].lower()
+    Two paths:
+      1. Provider has a curated catalog (``_PROVIDER_MODELS`` / live fetch):
+         validate against it (recognized=True for known models,
+         recognized=False with 'Note:' for unknown).
+      2. Provider has no catalog: accept with a generic 'Note:' warning.
 
-    def test_zai_model_rejected_when_api_down(self):
+    In both cases ``accepted`` and ``persist`` must be True so the gateway can
+    write the ``_session_model_overrides`` entry.
+    """
+
+    def test_known_model_accepted_via_catalog_when_api_down(self):
+        # Force the openrouter catalog lookup to return a deterministic list.
+        with patch(
+            "hermes_cli.models.provider_model_ids",
+            return_value=["anthropic/claude-opus-4.6", "openai/gpt-5.4"],
+        ):
+            result = _validate("anthropic/claude-opus-4.6", api_models=None)
+        assert result["accepted"] is True
+        assert result["persist"] is True
+        assert result["recognized"] is True
+
+    def test_unknown_model_accepted_with_note_when_api_down(self):
+        with patch(
+            "hermes_cli.models.provider_model_ids",
+            return_value=["anthropic/claude-opus-4.6", "openai/gpt-5.4"],
+        ):
+            result = _validate("anthropic/claude-next-gen", api_models=None)
+        assert result["accepted"] is True
+        assert result["persist"] is True
+        assert result["recognized"] is False
+        # Message flags it as unverified against the catalog.
+        assert "not found" in result["message"].lower() or "note" in result["message"].lower()
+
+    def test_zai_known_model_accepted_via_catalog_when_api_down(self):
+        # glm-5 is in the zai curated catalog (_PROVIDER_MODELS["zai"]).
         result = _validate("glm-5", provider="zai", api_models=None)
-        assert result["accepted"] is False
-        assert result["persist"] is False
+        assert result["accepted"] is True
+        assert result["persist"] is True
+        assert result["recognized"] is True
 
-    def test_unknown_provider_rejected_when_api_down(self):
-        result = _validate("some-model", provider="totally-unknown", api_models=None)
-        assert result["accepted"] is False
-        assert result["persist"] is False
+    def test_unknown_provider_soft_accepted_when_api_down(self):
+        # No catalog for unknown providers — soft-accept with a Note.
+        with patch("hermes_cli.models.provider_model_ids", return_value=[]):
+            result = _validate("some-model", provider="totally-unknown", api_models=None)
+        assert result["accepted"] is True
+        assert result["persist"] is True
+        assert result["recognized"] is False
+        assert "note" in result["message"].lower()
 
     def test_custom_endpoint_warns_with_probed_url_and_v1_hint(self):
         with patch(

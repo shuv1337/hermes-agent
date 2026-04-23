@@ -387,6 +387,26 @@ DEFAULT_CONFIG = {
         # (terminal and execute_code).  Skill-declared required_environment_variables
         # are passed through automatically; this list is for non-skill use cases.
         "env_passthrough": [],
+        # Extra files to source in the login shell when building the
+        # per-session environment snapshot.  Use this when tools like nvm,
+        # pyenv, asdf, or custom PATH entries are registered by files that
+        # a bash login shell would skip — most commonly ``~/.bashrc``
+        # (bash doesn't source bashrc in non-interactive login mode) or
+        # zsh-specific files like ``~/.zshrc`` / ``~/.zprofile``.
+        # Paths support ``~`` / ``${VAR}``. Missing files are silently
+        # skipped. When empty, Hermes auto-appends ``~/.bashrc`` if the
+        # snapshot shell is bash (this is the ``auto_source_bashrc``
+        # behaviour — disable with that key if you want strict login-only
+        # semantics).
+        "shell_init_files": [],
+        # When true (default), Hermes sources ``~/.bashrc`` in the login
+        # shell used to build the environment snapshot.  This captures
+        # PATH additions, shell functions, and aliases defined in the
+        # user's bashrc — which a plain ``bash -l -c`` would otherwise
+        # miss because bash skips bashrc in non-interactive login mode.
+        # Turn this off if you have a bashrc that misbehaves when sourced
+        # non-interactively (e.g. one that hard-exits on TTY checks).
+        "auto_source_bashrc": True,
         "docker_image": "nikolaik/python-nodejs:python3.11-nodejs20",
         "docker_forward_env": [],
         # Explicit environment variables to set inside Docker containers.
@@ -593,6 +613,10 @@ DEFAULT_CONFIG = {
     },
     
     # Text-to-speech configuration
+    # Each provider supports an optional `max_text_length:` override for the
+    # per-request input-character cap. Omit it to use the provider's documented
+    # limit (OpenAI 4096, xAI 15000, MiniMax 10000, ElevenLabs 5k-40k model-aware,
+    # Gemini 5000, Edge 5000, Mistral 4000, NeuTTS/KittenTTS 2000).
     "tts": {
         "provider": "edge",  # "edge" (free) | "elevenlabs" (premium) | "openai" | "xai" | "minimax" | "mistral" | "neutts" (local)
         "edge": {
@@ -645,6 +669,7 @@ DEFAULT_CONFIG = {
         "record_key": "ctrl+b",
         "max_recording_seconds": 120,
         "auto_tts": False,
+        "beep_enabled": True,         # Play record start/stop beeps in CLI voice mode
         "silence_threshold": 200,     # RMS below this = silence (0-32767)
         "silence_duration": 3.0,      # Seconds of silence before auto-stop
     },
@@ -687,10 +712,22 @@ DEFAULT_CONFIG = {
         "provider": "",    # e.g. "openrouter" (empty = inherit parent provider + credentials)
         "base_url": "",    # direct OpenAI-compatible endpoint for subagents
         "api_key": "",     # API key for delegation.base_url (falls back to OPENAI_API_KEY)
+        # When delegate_task narrows child toolsets explicitly, preserve any
+        # MCP toolsets the parent already has enabled. On by default so
+        # narrowing (e.g. toolsets=["web","browser"]) expresses "I want these
+        # extras" without silently stripping MCP tools the parent already has.
+        # Set to false for strict intersection.
+        "inherit_mcp_toolsets": True,
         "max_iterations": 50,  # per-subagent iteration cap (each subagent gets its own budget,
                                # independent of the parent's max_iterations)
         "reasoning_effort": "",  # reasoning effort for subagents: "xhigh", "high", "medium",
                                  # "low", "minimal", "none" (empty = inherit parent's level)
+        "max_concurrent_children": 3,  # max parallel children per batch; floor of 1 enforced, no ceiling
+        # Orchestrator role controls (see tools/delegate_tool.py:_get_max_spawn_depth
+        # and _get_orchestrator_enabled).  Values are clamped to [1, 3] with a
+        # warning log if out of range.
+        "max_spawn_depth": 1,        # depth cap (1 = flat [default], 2 = orchestrator→leaf, 3 = three-level)
+        "orchestrator_enabled": True,  # kill switch for role="orchestrator"
     },
 
     # Ephemeral prefill messages file — JSON list of {role, content} dicts
@@ -703,6 +740,20 @@ DEFAULT_CONFIG = {
     # always goes to ~/.hermes/skills/.
     "skills": {
         "external_dirs": [],   # e.g. ["~/.agents/skills", "/shared/team-skills"]
+        # Substitute ${HERMES_SKILL_DIR} and ${HERMES_SESSION_ID} in SKILL.md
+        # content with the absolute skill directory and the active session id
+        # before the agent sees it.  Lets skill authors reference bundled
+        # scripts without the agent having to join paths.
+        "template_vars": True,
+        # Pre-execute inline shell snippets written as !`cmd` in SKILL.md
+        # body.  Their stdout is inlined into the skill message before the
+        # agent reads it, so skills can inject dynamic context (dates, git
+        # state, detected tool versions, …).  Off by default because any
+        # content from the skill author runs on the host without approval;
+        # only enable for skill sources you trust.
+        "inline_shell": False,
+        # Timeout (seconds) for each !`cmd` snippet when inline_shell is on.
+        "inline_shell_timeout": 10,
     },
 
     # Honcho AI-native memory -- reads ~/.honcho/config.json as single source of truth.
@@ -795,6 +846,7 @@ DEFAULT_CONFIG = {
 
     # Pre-exec security scanning via tirith
     "security": {
+        "allow_private_urls": False,  # Allow requests to private/internal IPs (for OpenWrt, proxies, VPNs)
         "redact_secrets": True,
         "tirith_enabled": True,
         "tirith_path": "tirith",
@@ -848,8 +900,36 @@ DEFAULT_CONFIG = {
         "force_ipv4": False,
     },
 
+    # Session storage — controls automatic cleanup of ~/.hermes/state.db.
+    # state.db accumulates every session, message, tool call, and FTS5 index
+    # entry forever.  Without auto-pruning, a heavy user (gateway + cron)
+    # reports 384MB+ databases with 68K+ messages, which slows down FTS5
+    # inserts, /resume listing, and insights queries.
+    "sessions": {
+        # When true, prune ended sessions older than retention_days once
+        # per (roughly) min_interval_hours at CLI/gateway/cron startup.
+        # Only touches ended sessions — active sessions are always preserved.
+        # Default false: session history is valuable for search recall, and
+        # silently deleting it could surprise users.  Opt in explicitly.
+        "auto_prune": False,
+        # How many days of ended-session history to keep.  Matches the
+        # default of ``hermes sessions prune``.
+        "retention_days": 90,
+        # VACUUM after a prune that actually deleted rows.  SQLite does not
+        # reclaim disk space on DELETE — freed pages are just reused on
+        # subsequent INSERTs — so without VACUUM the file stays bloated
+        # even after pruning.  VACUUM blocks writes for a few seconds per
+        # 100MB, so it only runs at startup, and only when prune deleted
+        # ≥1 session.
+        "vacuum_after_prune": True,
+        # Minimum hours between auto-maintenance runs (avoids repeating
+        # the sweep on every CLI invocation).  Tracked via state_meta in
+        # state.db itself, so it's shared across all processes.
+        "min_interval_hours": 24,
+    },
+
     # Config schema version - bump this when adding new required fields
-    "_config_version": 21,
+    "_config_version": 22,
 }
 
 # =============================================================================
@@ -1002,6 +1082,22 @@ OPTIONAL_ENV_VARS = {
         "prompt": "Kimi (China) API key",
         "url": "https://platform.moonshot.cn/",
         "password": True,
+        "category": "provider",
+        "advanced": True,
+    },
+    "STEPFUN_API_KEY": {
+        "description": "StepFun Step Plan API key",
+        "prompt": "StepFun Step Plan API key",
+        "url": "https://platform.stepfun.com/",
+        "password": True,
+        "category": "provider",
+        "advanced": True,
+    },
+    "STEPFUN_BASE_URL": {
+        "description": "StepFun Step Plan base URL override",
+        "prompt": "StepFun Step Plan base URL (leave empty for default)",
+        "url": None,
+        "password": False,
         "category": "provider",
         "advanced": True,
     },
@@ -2057,6 +2153,7 @@ _KNOWN_ROOT_KEYS = {
     "fallback_providers", "credential_pool_strategies", "toolsets",
     "agent", "terminal", "display", "compression", "delegation",
     "auxiliary", "custom_providers", "context", "memory", "gateway",
+    "sessions",
 }
 
 # Valid fields inside a custom_providers list entry
@@ -2214,7 +2311,6 @@ def print_config_warnings(config: Optional[Dict[str, Any]] = None) -> None:
     if not issues:
         return
 
-    import sys
     lines = ["\033[33m⚠ Config issues detected in config.yaml:\033[0m"]
     for ci in issues:
         marker = "\033[31m✗\033[0m" if ci.severity == "error" else "\033[33m⚠\033[0m"
@@ -2229,7 +2325,6 @@ def warn_deprecated_cwd_env_vars(config: Optional[Dict[str, Any]] = None) -> Non
     These env vars are deprecated — the canonical setting is terminal.cwd
     in config.yaml.  Prints a migration hint to stderr.
     """
-    import os, sys
     messaging_cwd = os.environ.get("MESSAGING_CWD")
     terminal_cwd_env = os.environ.get("TERMINAL_CWD")
 
@@ -2572,8 +2667,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             # Scan ``$HERMES_HOME/plugins/`` for currently installed user plugins.
             grandfathered: List[str] = []
             try:
-                from hermes_constants import get_hermes_home as _ghome
-                user_plugins_dir = _ghome() / "plugins"
+                user_plugins_dir = get_hermes_home() / "plugins"
                 if user_plugins_dir.is_dir():
                     for child in sorted(user_plugins_dir.iterdir()):
                         if not child.is_dir():
@@ -3075,7 +3169,7 @@ def save_config(config: Dict[str, Any]):
     if not sec or sec.get("redact_secrets") is None:
         parts.append(_SECURITY_COMMENT)
     fb = normalized.get("fallback_model", {})
-    if not fb or not (fb.get("provider") and fb.get("model")):
+    if not fb or not isinstance(fb, dict) or not (fb.get("provider") and fb.get("model")):
         parts.append(_FALLBACK_COMMENT)
 
     atomic_yaml_write(
@@ -3238,7 +3332,6 @@ def _check_non_ascii_credential(key: str, value: str) -> str:
             bad_chars.append(f"  position {i}: {ch!r} (U+{ord(ch):04X})")
     sanitized = value.encode("ascii", errors="ignore").decode("ascii")
 
-    import sys
     print(
         f"\n  Warning: {key} contains non-ASCII characters that will break API requests.\n"
         f"  This usually happens when copy-pasting from a PDF, rich-text editor,\n"

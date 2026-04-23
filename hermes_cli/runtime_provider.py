@@ -29,6 +29,7 @@ from hermes_cli.auth import (
 )
 from hermes_cli.config import get_compatible_custom_providers, load_config
 from hermes_constants import OPENROUTER_BASE_URL
+from utils import base_url_host_matches, base_url_hostname
 
 
 def _normalize_custom_provider_name(value: str) -> str:
@@ -45,13 +46,19 @@ def _detect_api_mode_for_url(base_url: str) -> Optional[str]:
       protocol under a ``/anthropic`` suffix — treat those as
       ``anthropic_messages`` transport instead of the default
       ``chat_completions``.
+    - Kimi Code's ``api.kimi.com/coding`` endpoint also speaks the
+      Anthropic Messages protocol (the /coding route accepts Claude
+      Code's native request shape).
     """
     normalized = (base_url or "").strip().lower().rstrip("/")
-    if "api.x.ai" in normalized:
+    hostname = base_url_hostname(base_url)
+    if hostname == "api.x.ai":
         return "codex_responses"
-    if "api.openai.com" in normalized and "openrouter" not in normalized:
+    if hostname == "api.openai.com":
         return "codex_responses"
     if normalized.endswith("/anthropic"):
+        return "anthropic_messages"
+    if hostname == "api.kimi.com" and "/coding" in normalized:
         return "anthropic_messages"
     return None
 
@@ -203,7 +210,8 @@ def _resolve_runtime_from_pool_entry(
             api_mode = opencode_model_api_mode(provider, model_cfg.get("default", ""))
         else:
             # Auto-detect Anthropic-compatible endpoints (/anthropic suffix,
-            # api.openai.com → codex_responses, api.x.ai → codex_responses).
+            # Kimi /coding, api.openai.com → codex_responses, api.x.ai →
+            # codex_responses).
             detected = _detect_api_mode_for_url(base_url)
             if detected:
                 api_mode = detected
@@ -480,7 +488,7 @@ def _resolve_openrouter_runtime(
     # When hitting a custom endpoint (e.g. Z.ai, local LLM), prefer
     # OPENAI_API_KEY so the OpenRouter key doesn't leak to an unrelated
     # provider (issues #420, #560).
-    _is_openrouter_url = "openrouter.ai" in base_url
+    _is_openrouter_url = base_url_host_matches(base_url, "openrouter.ai")
     if _is_openrouter_url:
         api_key_candidates = [
             explicit_api_key,
@@ -490,8 +498,12 @@ def _resolve_openrouter_runtime(
     else:
         # Custom endpoint: use api_key from config when using config base_url (#1760).
         # When the endpoint is Ollama Cloud, check OLLAMA_API_KEY — it's
-        # the canonical env var for ollama.com authentication.
-        _is_ollama_url = "ollama.com" in base_url.lower()
+        # the canonical env var for ollama.com authentication. Match on
+        # HOST, not substring — a custom base_url whose path contains
+        # "ollama.com" (e.g. http://127.0.0.1/ollama.com/v1) or whose
+        # hostname is a look-alike (ollama.com.attacker.test) must not
+        # receive the Ollama credential. See GHSA-76xc-57q6-vm5m.
+        _is_ollama_url = base_url_host_matches(base_url, "ollama.com")
         api_key_candidates = [
             explicit_api_key,
             (cfg_api_key if use_config_base_url else ""),
@@ -654,7 +666,8 @@ def _resolve_explicit_runtime(
             if configured_mode:
                 api_mode = configured_mode
             else:
-                # Auto-detect Anthropic-compatible endpoints (/anthropic suffix).
+                # Auto-detect from URL (Anthropic /anthropic suffix,
+                # api.openai.com → Responses, Kimi /coding, etc.).
                 detected = _detect_api_mode_for_url(base_url)
                 if detected:
                     api_mode = detected
@@ -904,8 +917,7 @@ def resolve_runtime_provider(
                 code="no_aws_credentials",
             )
         # Read bedrock-specific config from config.yaml
-        from hermes_cli.config import load_config as _load_bedrock_config
-        _bedrock_cfg = _load_bedrock_config().get("bedrock", {})
+        _bedrock_cfg = load_config().get("bedrock", {})
         # Region priority: config.yaml bedrock.region → env var → us-east-1
         region = (_bedrock_cfg.get("region") or "").strip() or resolve_bedrock_region()
         auth_source = resolve_aws_auth_env_var() or "aws-sdk-default-chain"
