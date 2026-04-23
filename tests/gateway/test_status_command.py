@@ -431,7 +431,7 @@ async def test_status_command_includes_gateway_info_block(monkeypatch):
     result = await runner._handle_message(_make_event("/status"))
 
     assert "**Version:** v9.9.9 (2099.1.1)" in result
-    assert "**Commit:** `abc12345` · upstream `def67890` (+3 commits ahead)" in result
+    assert "**Commit (on disk):** `abc12345` · upstream `def67890` (+3 commits ahead)" in result
     assert "**Gateway Uptime:** 2m 5s (pid 12345)" in result
     # Existing session fields must still be present.
     assert "**Session ID:** `sess-1`" in result
@@ -502,7 +502,7 @@ async def test_status_command_clean_tree_omits_ahead_clause(monkeypatch):
     )
 
     result = await runner._handle_message(_make_event("/status"))
-    assert "**Commit:** `deadbeef`" in result
+    assert "**Commit (on disk):** `deadbeef`" in result
     assert "ahead" not in result  # no '+N commits ahead' suffix
     assert "upstream" not in result  # no 'upstream' label either
 
@@ -531,7 +531,8 @@ async def test_status_command_survives_gateway_info_failure(monkeypatch):
     assert "**Session ID:** `sess-1`" in result
     assert "**Tokens:** 7" in result
     assert "**Version:**" not in result
-    assert "**Commit:**" not in result
+    assert "**Commit (on disk):**" not in result
+    assert "**Running commit:**" not in result
     assert "**Gateway Uptime:**" not in result
 
 
@@ -561,6 +562,78 @@ def test_collect_gateway_info_handles_missing_started_at():
     assert "uptime_human" not in info
     assert info.get("pid")
     assert info.get("version")
+
+
+@pytest.mark.asyncio
+async def test_status_command_flags_stale_process_when_running_commit_differs(monkeypatch):
+    """When running_commit != local_commit, /status must surface the drift."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner._gateway_started_at = time.time()
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "1.0.0",
+            "release_date": "2026.1.1",
+            "running_commit": "aaaa1111",
+            "local_commit": "bbbb2222",
+            "upstream_commit": "cccc3333",
+            "comparison_label": "upstream",
+            "commits_ahead": 2,
+            "uptime_seconds": 3600,
+            "uptime_human": "1h 0m",
+            "pid": 42,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+    assert "**Commit (on disk):** `bbbb2222` · upstream `cccc3333` (+2 commits ahead)" in result
+    assert "**Running commit:** `aaaa1111`" in result
+    assert "gateway restart needed" in result
+
+
+@pytest.mark.asyncio
+async def test_status_command_hides_running_commit_when_matches_disk(monkeypatch):
+    """When running_commit == local_commit, only the on-disk line is shown (no duplicate)."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner._gateway_started_at = time.time()
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "1.0.0",
+            "release_date": "2026.1.1",
+            "running_commit": "abc12345",
+            "local_commit": "abc12345",
+            "upstream_commit": "def67890",
+            "comparison_label": "upstream",
+            "commits_ahead": 3,
+            "uptime_seconds": 60,
+            "uptime_human": "1m 0s",
+            "pid": 7,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+    assert "**Commit (on disk):** `abc12345`" in result
+    # Running-commit line must NOT appear when it matches on-disk.
+    assert "**Running commit:**" not in result
 
 
 @pytest.mark.asyncio

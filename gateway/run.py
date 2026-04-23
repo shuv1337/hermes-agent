@@ -368,6 +368,27 @@ def _format_gateway_uptime(seconds: float) -> str:
     return f"{days}d {hours}h {mins}m"
 
 
+def _capture_boot_commit() -> Optional[str]:
+    """Resolve HEAD at gateway-module import time.
+
+    This pins the commit the running process was actually loaded from, so
+    /status can distinguish "what's on disk right now" (which may have
+    been updated by a git pull) from "what this process is actually
+    running" (which only changes on restart).
+    """
+    try:
+        from hermes_cli.banner import _resolve_repo_dir, _git_short_hash
+        repo_dir = _resolve_repo_dir()
+        if repo_dir is None:
+            return None
+        return _git_short_hash(repo_dir, "HEAD")
+    except Exception:
+        return None
+
+
+_BOOT_COMMIT: Optional[str] = _capture_boot_commit()
+
+
 def _collect_gateway_info(started_at: Optional[float]) -> dict:
     """Gather gateway version/commit/uptime metadata for /status output.
 
@@ -375,9 +396,14 @@ def _collect_gateway_info(started_at: Optional[float]) -> dict:
     cannot break the whole /status response. Returns a dict with whichever
     keys resolve cleanly:
 
-        - ``version``       str   (e.g. ``"0.10.0"``)
-        - ``release_date``  str   (e.g. ``"2026.4.16"``)
-        - ``local_commit``  str   (short hash of HEAD, 8 chars)
+        - ``version``       str   (e.g. ``"0.10.0"``) — imported at boot; only
+          changes on restart after a version bump.
+        - ``release_date``  str   (e.g. ``"2026.4.16"``) — ditto.
+        - ``running_commit`` str  (short hash captured at gateway-module import;
+          reflects the commit the live process is actually running)
+        - ``local_commit``  str   (short hash of HEAD on disk *at call time* —
+          may have moved past ``running_commit`` if someone pulled new code
+          without restarting)
         - ``upstream_commit`` str (short hash of the comparison base ref, 8 chars)
         - ``comparison_label`` str (e.g. ``"upstream"`` or ``"origin"``)
         - ``commits_ahead`` int   (HEAD commits carried on top of that base ref)
@@ -393,6 +419,9 @@ def _collect_gateway_info(started_at: Optional[float]) -> dict:
         info["release_date"] = _rd
     except Exception:
         pass
+
+    if _BOOT_COMMIT:
+        info["running_commit"] = _BOOT_COMMIT
 
     try:
         from hermes_cli.banner import get_git_banner_state
@@ -5170,19 +5199,39 @@ class GatewayRunner:
 
             local_commit = gw_info.get("local_commit")
             upstream_commit = gw_info.get("upstream_commit")
+            running_commit = gw_info.get("running_commit")
             comparison_label = gw_info.get("comparison_label") or "upstream"
             ahead = gw_info.get("commits_ahead") or 0
+
+            # If the running process was booted from a different commit than
+            # what's currently on disk, surface that divergence explicitly so
+            # users don't conclude the gateway is running newer code than it is.
+            stale_process = bool(
+                running_commit and local_commit and running_commit != local_commit
+            )
+
             if local_commit and upstream_commit:
                 if ahead > 0 and local_commit != upstream_commit:
                     commits_word = "commit" if ahead == 1 else "commits"
                     lines.append(
-                        f"**Commit:** `{local_commit}` · {comparison_label} `{upstream_commit}` "
+                        f"**Commit (on disk):** `{local_commit}` · {comparison_label} `{upstream_commit}` "
                         f"(+{ahead} {commits_word} ahead)"
                     )
                 else:
-                    lines.append(f"**Commit:** `{local_commit}`")
+                    lines.append(f"**Commit (on disk):** `{local_commit}`")
             elif local_commit:
-                lines.append(f"**Commit:** `{local_commit}`")
+                lines.append(f"**Commit (on disk):** `{local_commit}`")
+
+            if running_commit:
+                if stale_process:
+                    lines.append(
+                        f"**Running commit:** `{running_commit}` ⚠️ (gateway restart needed — on-disk HEAD has moved)"
+                    )
+                elif not local_commit:
+                    # No git on disk, but we captured a boot commit somehow.
+                    lines.append(f"**Running commit:** `{running_commit}`")
+                # If running_commit == local_commit, we already showed it as
+                # "Commit (on disk)" — no need to duplicate.
 
             uptime_human = gw_info.get("uptime_human")
             pid = gw_info.get("pid")
