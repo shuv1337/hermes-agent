@@ -922,6 +922,12 @@ def _build_child_agent(
         else (getattr(parent_agent, "acp_args", []) or [])
     )
 
+    if override_acp_command:
+        # If explicitly forcing an ACP transport override, the provider MUST be copilot-acp
+        # so run_agent.py initializes the CopilotACPClient.
+        effective_provider = "copilot-acp"
+        effective_api_mode = "chat_completions"
+
     # Resolve reasoning config: delegation override > parent inherit
     parent_reasoning = getattr(parent_agent, "reasoning_config", None)
     child_reasoning = parent_reasoning
@@ -1552,7 +1558,18 @@ def delegate_task(
     # Load config
     cfg = _load_config()
     default_max_iter = cfg.get("max_iterations", DEFAULT_MAX_ITERATIONS)
-    effective_max_iter = max_iterations or default_max_iter
+    # Model-supplied max_iterations is ignored — the config value is authoritative
+    # so users get predictable budgets. The kwarg is retained for internal callers
+    # and tests; a model-emitted value here would only shrink the budget and
+    # surprise the user mid-run. Log and drop it if one slips through from a
+    # cached tool schema or a stale provider.
+    if max_iterations is not None and max_iterations != default_max_iter:
+        logger.debug(
+            "delegate_task: ignoring caller-supplied max_iterations=%s; "
+            "using delegation.max_iterations=%s from config",
+            max_iterations, default_max_iter,
+        )
+    effective_max_iter = default_max_iter
 
     # Resolve delegation credentials (provider:model pair).
     # When delegation.provider is configured, this resolves the full credential
@@ -2090,13 +2107,6 @@ DELEGATE_TASK_SCHEMA = {
                     "Batch mode: tasks to run in parallel (limit configurable via delegation.max_concurrent_children, default 3). Each gets "
                     "its own subagent with isolated context and terminal session. "
                     "When provided, top-level goal/context/toolsets are ignored."
-                ),
-            },
-            "max_iterations": {
-                "type": "integer",
-                "description": (
-                    "Max tool-calling turns per subagent (default: 50). "
-                    "Only set lower for simple tasks."
                 ),
             },
             "role": {

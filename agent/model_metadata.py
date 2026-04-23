@@ -123,6 +123,9 @@ DEFAULT_CONTEXT_LENGTHS = {
     "claude": 200000,
     # OpenAI — GPT-5 family (most have 400k; specific overrides first)
     # Source: https://developers.openai.com/api/docs/models
+    # GPT-5.5 (launched Apr 23 2026). Verified via live ChatGPT codex/models
+    # endpoint: bare slug `gpt-5.5`, no -pro/-mini variants. 400k context on Codex.
+    "gpt-5.5": 400000,
     "gpt-5.4-nano": 400000,           # 400k (not 1.05M like full 5.4)
     "gpt-5.4-mini": 400000,           # 400k (not 1.05M like full 5.4)
     "gpt-5.4": 1050000,               # GPT-5.4, GPT-5.4 Pro (1.05M context)
@@ -183,12 +186,12 @@ DEFAULT_CONTEXT_LENGTHS = {
     "moonshotai/Kimi-K2.6": 262144,
     "moonshotai/Kimi-K2-Thinking": 262144,
     "MiniMaxAI/MiniMax-M2.5": 204800,
-    "XiaomiMiMo/MiMo-V2-Flash": 256000,
-    "mimo-v2-pro": 1000000,
-    "mimo-v2-omni": 256000,
-    "mimo-v2-flash": 256000,
-    "mimo-v2.5-pro": 1000000,
-    "mimo-v2.5": 1000000,
+    "XiaomiMiMo/MiMo-V2-Flash": 262144,
+    "mimo-v2-pro": 1048576,
+    "mimo-v2.5-pro": 1048576,
+    "mimo-v2.5": 1048576,
+    "mimo-v2-omni": 262144,
+    "mimo-v2-flash": 262144,
     "zai-org/GLM-5": 202752,
 }
 

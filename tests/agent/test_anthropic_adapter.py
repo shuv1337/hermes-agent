@@ -18,12 +18,12 @@ from agent.anthropic_adapter import (
     convert_messages_to_anthropic,
     convert_tools_to_anthropic,
     is_claude_code_token_valid,
-    normalize_anthropic_response,
     normalize_model_name,
     read_claude_code_credentials,
     resolve_anthropic_token,
     run_oauth_setup_token,
 )
+from agent.transports import get_transport
 
 
 # ---------------------------------------------------------------------------
@@ -1390,6 +1390,8 @@ class TestBuildAnthropicKwargsOAuthToolEncoding:
     def test_oauth_round_trip_via_normalize_response(self):
         """A response with an encoded tool_use block must decode back to the
         canonical registry name when the caller threads canonical_tool_names."""
+        from agent.transports.anthropic import AnthropicTransport
+        transport = AnthropicTransport()
         canonical = {"terminal", "mcp_composio_get_prompt"}
         response = SimpleNamespace(
             content=[
@@ -1408,12 +1410,12 @@ class TestBuildAnthropicKwargsOAuthToolEncoding:
             ],
             stop_reason="tool_use",
         )
-        msg, _ = normalize_anthropic_response(
+        normalized = transport.normalize_response(
             response,
             strip_tool_prefix=True,
             canonical_tool_names=canonical,
         )
-        decoded = [tc.function.name for tc in msg.tool_calls]
+        decoded = [tc.name for tc in normalized.tool_calls]
         assert decoded == ["terminal", "mcp_composio_get_prompt"]
 
 
@@ -1526,10 +1528,10 @@ class TestNormalizeResponse:
 
     def test_text_response(self):
         block = SimpleNamespace(type="text", text="Hello world")
-        msg, reason = normalize_anthropic_response(self._make_response([block]))
-        assert msg.content == "Hello world"
-        assert reason == "stop"
-        assert msg.tool_calls is None
+        nr = get_transport("anthropic_messages").normalize_response(self._make_response([block]))
+        assert nr.content == "Hello world"
+        assert nr.finish_reason == "stop"
+        assert nr.tool_calls is None
 
     def test_tool_use_response(self):
         blocks = [
@@ -1541,24 +1543,24 @@ class TestNormalizeResponse:
                 input={"query": "test"},
             ),
         ]
-        msg, reason = normalize_anthropic_response(
+        nr = get_transport("anthropic_messages").normalize_response(
             self._make_response(blocks, "tool_use")
         )
-        assert msg.content == "Searching..."
-        assert reason == "tool_calls"
-        assert len(msg.tool_calls) == 1
-        assert msg.tool_calls[0].function.name == "search"
-        assert json.loads(msg.tool_calls[0].function.arguments) == {"query": "test"}
+        assert nr.content == "Searching..."
+        assert nr.finish_reason == "tool_calls"
+        assert len(nr.tool_calls) == 1
+        assert nr.tool_calls[0].name == "search"
+        assert json.loads(nr.tool_calls[0].arguments) == {"query": "test"}
 
     def test_thinking_response(self):
         blocks = [
             SimpleNamespace(type="thinking", thinking="Let me reason about this..."),
             SimpleNamespace(type="text", text="The answer is 42."),
         ]
-        msg, reason = normalize_anthropic_response(self._make_response(blocks))
-        assert msg.content == "The answer is 42."
-        assert msg.reasoning == "Let me reason about this..."
-        assert msg.reasoning_details == [{"type": "thinking", "thinking": "Let me reason about this..."}]
+        nr = get_transport("anthropic_messages").normalize_response(self._make_response(blocks))
+        assert nr.content == "The answer is 42."
+        assert nr.reasoning == "Let me reason about this..."
+        assert nr.provider_data["reasoning_details"] == [{"type": "thinking", "thinking": "Let me reason about this..."}]
 
     def test_thinking_response_preserves_signature(self):
         blocks = [
@@ -1569,24 +1571,24 @@ class TestNormalizeResponse:
                 redacted=False,
             ),
         ]
-        msg, _ = normalize_anthropic_response(self._make_response(blocks))
-        assert msg.reasoning_details[0]["signature"] == "opaque_signature"
-        assert msg.reasoning_details[0]["thinking"] == "Let me reason about this..."
+        nr = get_transport("anthropic_messages").normalize_response(self._make_response(blocks))
+        assert nr.provider_data["reasoning_details"][0]["signature"] == "opaque_signature"
+        assert nr.provider_data["reasoning_details"][0]["thinking"] == "Let me reason about this..."
 
     def test_stop_reason_mapping(self):
         block = SimpleNamespace(type="text", text="x")
-        _, r1 = normalize_anthropic_response(
+        nr1 = get_transport("anthropic_messages").normalize_response(
             self._make_response([block], "end_turn")
         )
-        _, r2 = normalize_anthropic_response(
+        nr2 = get_transport("anthropic_messages").normalize_response(
             self._make_response([block], "tool_use")
         )
-        _, r3 = normalize_anthropic_response(
+        nr3 = get_transport("anthropic_messages").normalize_response(
             self._make_response([block], "max_tokens")
         )
-        assert r1 == "stop"
-        assert r2 == "tool_calls"
-        assert r3 == "length"
+        assert nr1.finish_reason == "stop"
+        assert nr2.finish_reason == "tool_calls"
+        assert nr3.finish_reason == "length"
 
     def test_stop_reason_refusal_and_context_exceeded(self):
         # Claude 4.5+ introduced two new stop_reason values the Messages API
@@ -1594,24 +1596,24 @@ class TestNormalizeResponse:
         # handlers already understand, instead of silently collapsing to
         # "stop" (old behavior).
         block = SimpleNamespace(type="text", text="")
-        _, refusal_reason = normalize_anthropic_response(
+        nr_refusal = get_transport("anthropic_messages").normalize_response(
             self._make_response([block], "refusal")
         )
-        _, overflow_reason = normalize_anthropic_response(
+        nr_overflow = get_transport("anthropic_messages").normalize_response(
             self._make_response([block], "model_context_window_exceeded")
         )
-        assert refusal_reason == "content_filter"
-        assert overflow_reason == "length"
+        assert nr_refusal.finish_reason == "content_filter"
+        assert nr_overflow.finish_reason == "length"
 
     def test_no_text_content(self):
         block = SimpleNamespace(
             type="tool_use", id="tc_1", name="search", input={"q": "hi"}
         )
-        msg, reason = normalize_anthropic_response(
+        nr = get_transport("anthropic_messages").normalize_response(
             self._make_response([block], "tool_use")
         )
-        assert msg.content is None
-        assert len(msg.tool_calls) == 1
+        assert nr.content is None
+        assert len(nr.tool_calls) == 1
 
 
 # ---------------------------------------------------------------------------

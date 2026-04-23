@@ -361,6 +361,15 @@ DEFAULT_CONFIG = {
         # to finish, then interrupts any remaining runs after the timeout.
         # 0 = no drain, interrupt immediately.
         "restart_drain_timeout": 60,
+        # Max app-level retry attempts for API errors (connection drops,
+        # provider timeouts, 5xx, etc.) before the agent surfaces the
+        # failure.  The OpenAI SDK already does its own low-level retries
+        # (max_retries=2 default) for transient network errors; this is
+        # the Hermes-level retry loop that wraps the whole call.  Lower
+        # this to 1 if you use fallback providers and want fast failover
+        # on flaky primaries; raise it if you prefer to tolerate longer
+        # provider hiccups on a single provider.
+        "api_max_retries": 3,
         "service_tier": "",
         # Tool-use enforcement: injects system prompt guidance that tells the
         # model to actually call tools instead of describing intended actions.
@@ -375,7 +384,11 @@ DEFAULT_CONFIG = {
         # Periodic "still working" notification interval (seconds).
         # Sends a status message every N seconds so the user knows the
         # agent hasn't died during long tasks.  0 = disable notifications.
-        "gateway_notify_interval": 600,
+        # Lower values mean faster feedback on slow tasks but more chat
+        # noise; 180s is a compromise that catches spinning weak-model runs
+        # (60+ tool iterations with tiny output) before users assume the
+        # bot is dead and /restart.
+        "gateway_notify_interval": 180,
     },
     
     "terminal": {
@@ -394,17 +407,23 @@ DEFAULT_CONFIG = {
         # (bash doesn't source bashrc in non-interactive login mode) or
         # zsh-specific files like ``~/.zshrc`` / ``~/.zprofile``.
         # Paths support ``~`` / ``${VAR}``. Missing files are silently
-        # skipped. When empty, Hermes auto-appends ``~/.bashrc`` if the
+        # skipped. When empty, Hermes auto-sources ``~/.profile``,
+        # ``~/.bash_profile``, and ``~/.bashrc`` (in that order) if the
         # snapshot shell is bash (this is the ``auto_source_bashrc``
         # behaviour — disable with that key if you want strict login-only
         # semantics).
         "shell_init_files": [],
-        # When true (default), Hermes sources ``~/.bashrc`` in the login
-        # shell used to build the environment snapshot.  This captures
-        # PATH additions, shell functions, and aliases defined in the
-        # user's bashrc — which a plain ``bash -l -c`` would otherwise
-        # miss because bash skips bashrc in non-interactive login mode.
-        # Turn this off if you have a bashrc that misbehaves when sourced
+        # When true (default), Hermes sources the user's shell rc files
+        # (``~/.profile``, ``~/.bash_profile``, ``~/.bashrc``) in the
+        # login shell used to build the environment snapshot. This
+        # captures PATH additions, shell functions, and aliases — which a
+        # plain ``bash -l -c`` would otherwise miss because bash skips
+        # bashrc in non-interactive login mode, and because a default
+        # Debian/Ubuntu ``~/.bashrc`` short-circuits on non-interactive
+        # sources. ``~/.profile`` and ``~/.bash_profile`` are tried first
+        # because ``n`` / ``nvm`` / ``asdf`` installers typically write
+        # their PATH exports there without an interactivity guard. Turn
+        # this off if your rc files misbehave when sourced
         # non-interactively (e.g. one that hard-exits on TTY checks).
         "auto_source_bashrc": True,
         "docker_image": "nikolaik/python-nodejs:python3.11-nodejs20",
@@ -754,6 +773,17 @@ DEFAULT_CONFIG = {
         "inline_shell": False,
         # Timeout (seconds) for each !`cmd` snippet when inline_shell is on.
         "inline_shell_timeout": 10,
+        # Run the keyword/pattern security scanner on skills the agent
+        # writes via skill_manage (create/edit/patch).  Off by default
+        # because the agent can already execute the same code paths via
+        # terminal() with no gate, so the scan adds friction (blocks
+        # skills that mention risky keywords in prose) without meaningful
+        # security.  Turn on if you want the belt-and-suspenders — a
+        # dangerous verdict will then surface as a tool error to the
+        # agent, which can retry with the flagged content removed.
+        # External hub installs (trusted/community sources) are always
+        # scanned regardless of this setting.
+        "guard_agent_created": False,
     },
 
     # Honcho AI-native memory -- reads ~/.honcho/config.json as single source of truth.
@@ -1274,7 +1304,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "XIAOMI_API_KEY": {
-        "description": "Xiaomi MiMo API key for MiMo models (mimo-v2-pro, mimo-v2-omni, mimo-v2-flash)",
+        "description": "Xiaomi MiMo API key for MiMo models (mimo-v2.5-pro, mimo-v2.5, mimo-v2-pro, mimo-v2-omni, mimo-v2-flash)",
         "prompt": "Xiaomi MiMo API Key",
         "url": "https://platform.xiaomimimo.com",
         "password": True,
@@ -2055,6 +2085,14 @@ def _normalize_custom_provider_entry(
     models = entry.get("models")
     if isinstance(models, dict) and models:
         normalized["models"] = models
+    elif isinstance(models, list) and models:
+        # Hand-edited configs (and older Hermes versions) write ``models`` as
+        # a plain list of model ids. Preserve them by converting to the dict
+        # shape downstream code expects; otherwise normalize silently drops
+        # the list and /model shows the provider with (0) models.
+        normalized["models"] = {
+            str(m): {} for m in models if isinstance(m, str) and m.strip()
+        }
 
     context_length = entry.get("context_length")
     if isinstance(context_length, int) and context_length > 0:

@@ -250,6 +250,8 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "deepseek-reasoner",
     ],
     "xiaomi": [
+        "mimo-v2.5-pro",
+        "mimo-v2.5",
         "mimo-v2-pro",
         "mimo-v2-omni",
         "mimo-v2-flash",
@@ -301,6 +303,8 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "kimi-k2.5",
         "glm-5.1",
         "glm-5",
+        "mimo-v2.5-pro",
+        "mimo-v2.5",
         "mimo-v2-pro",
         "mimo-v2-omni",
         "minimax-m2.7",
@@ -692,7 +696,7 @@ CANONICAL_PROVIDERS: list[ProviderEntry] = [
     ProviderEntry("ai-gateway",     "Vercel AI Gateway",        "Vercel AI Gateway (200+ models, $5 free credit, no markup)"),
     ProviderEntry("anthropic",      "Anthropic",                "Anthropic (Claude models — API key or Claude Code)"),
     ProviderEntry("openai-codex",   "OpenAI Codex",             "OpenAI Codex"),
-    ProviderEntry("xiaomi",         "Xiaomi MiMo",              "Xiaomi MiMo (MiMo-V2 models — pro, omni, flash)"),
+    ProviderEntry("xiaomi",         "Xiaomi MiMo",              "Xiaomi MiMo (MiMo-V2.5 and V2 models — pro, omni, flash)"),
     ProviderEntry("nvidia",         "NVIDIA NIM",               "NVIDIA NIM (Nemotron models — build.nvidia.com or local NIM)"),
     ProviderEntry("qwen-oauth",     "Qwen OAuth (Portal)",      "Qwen OAuth (reuses local Qwen CLI login)"),
     ProviderEntry("copilot",        "GitHub Copilot",           "GitHub Copilot (uses GITHUB_TOKEN or gh auth token)"),
@@ -1674,7 +1678,19 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
     if normalized == "openai-codex":
         from hermes_cli.codex_models import get_codex_model_ids
 
-        return get_codex_model_ids()
+        # Pass the live OAuth access token so the picker matches whatever
+        # ChatGPT lists for this account right now (new models appear without
+        # a Hermes release). Falls back to the hardcoded catalog if no token
+        # or the endpoint is unreachable.
+        access_token = None
+        try:
+            from hermes_cli.auth import resolve_codex_runtime_credentials
+
+            creds = resolve_codex_runtime_credentials(refresh_if_expiring=True)
+            access_token = creds.get("api_key")
+        except Exception:
+            access_token = None
+        return get_codex_model_ids(access_token=access_token)
     if normalized in {"copilot", "copilot-acp"}:
         try:
             live = _fetch_github_models(_resolve_copilot_catalog_api_key())

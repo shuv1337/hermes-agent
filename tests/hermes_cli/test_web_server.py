@@ -110,12 +110,12 @@ class TestWebServerEndpoints:
 
         import hermes_state
         from hermes_constants import get_hermes_home
-        from hermes_cli.web_server import app, _SESSION_TOKEN
+        from hermes_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
         monkeypatch.setattr(hermes_state, "DEFAULT_DB_PATH", get_hermes_home() / "state.db")
 
         self.client = TestClient(app)
-        self.client.headers["Authorization"] = f"Bearer {_SESSION_TOKEN}"
+        self.client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
 
     def test_get_status(self):
         resp = self.client.get("/api/status")
@@ -221,12 +221,12 @@ class TestWebServerEndpoints:
     def test_reveal_env_var(self, tmp_path):
         """POST /api/env/reveal should return the real unredacted value."""
         from hermes_cli.config import save_env_value
-        from hermes_cli.web_server import _SESSION_TOKEN
+        from hermes_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN
         save_env_value("TEST_REVEAL_KEY", "super-secret-value-12345")
         resp = self.client.post(
             "/api/env/reveal",
             json={"key": "TEST_REVEAL_KEY"},
-            headers={"Authorization": f"Bearer {_SESSION_TOKEN}"},
+            headers={_SESSION_HEADER_NAME: _SESSION_TOKEN},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -235,11 +235,11 @@ class TestWebServerEndpoints:
 
     def test_reveal_env_var_not_found(self):
         """POST /api/env/reveal should 404 for unknown keys."""
-        from hermes_cli.web_server import _SESSION_TOKEN
+        from hermes_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN
         resp = self.client.post(
             "/api/env/reveal",
             json={"key": "NONEXISTENT_KEY_XYZ"},
-            headers={"Authorization": f"Bearer {_SESSION_TOKEN}"},
+            headers={_SESSION_HEADER_NAME: _SESSION_TOKEN},
         )
         assert resp.status_code == 404
 
@@ -249,7 +249,7 @@ class TestWebServerEndpoints:
         from hermes_cli.web_server import app
         from hermes_cli.config import save_env_value
         save_env_value("TEST_REVEAL_NOAUTH", "secret-value")
-        # Use a fresh client WITHOUT the Authorization header
+        # Use a fresh client WITHOUT the dashboard session header
         unauth_client = TestClient(app)
         resp = unauth_client.post(
             "/api/env/reveal",
@@ -260,13 +260,46 @@ class TestWebServerEndpoints:
     def test_reveal_env_var_bad_token(self, tmp_path):
         """POST /api/env/reveal with wrong token should return 401."""
         from hermes_cli.config import save_env_value
+        from hermes_cli.web_server import _SESSION_HEADER_NAME
         save_env_value("TEST_REVEAL_BADAUTH", "secret-value")
         resp = self.client.post(
             "/api/env/reveal",
             json={"key": "TEST_REVEAL_BADAUTH"},
-            headers={"Authorization": "Bearer wrong-token-here"},
+            headers={_SESSION_HEADER_NAME: "wrong-token-here"},
         )
         assert resp.status_code == 401
+
+    def test_reveal_env_var_custom_session_header_ignores_proxy_authorization(self, tmp_path):
+        """A valid dashboard session header should coexist with proxy auth."""
+        from hermes_cli.config import save_env_value
+        from hermes_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN
+
+        save_env_value("TEST_REVEAL_PROXY_AUTH", "secret-value")
+        resp = self.client.post(
+            "/api/env/reveal",
+            json={"key": "TEST_REVEAL_PROXY_AUTH"},
+            headers={
+                _SESSION_HEADER_NAME: _SESSION_TOKEN,
+                "Authorization": "Basic dXNlcjpwYXNz",
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["value"] == "secret-value"
+
+    def test_reveal_env_var_legacy_authorization_header_still_works(self, tmp_path):
+        """Keep old dashboard bundles working while the new header rolls out."""
+        from hermes_cli.config import save_env_value
+        from hermes_cli.web_server import _SESSION_TOKEN
+
+        save_env_value("TEST_REVEAL_LEGACY_AUTH", "secret-value")
+        resp = self.client.post(
+            "/api/env/reveal",
+            json={"key": "TEST_REVEAL_LEGACY_AUTH"},
+            headers={"Authorization": f"Bearer {_SESSION_TOKEN}"},
+        )
+
+        assert resp.status_code == 200
 
     def test_session_token_endpoint_removed(self):
         """GET /api/auth/session-token should no longer exist (token injected via HTML)."""
@@ -285,7 +318,7 @@ class TestWebServerEndpoints:
         """API requests without the session token should be rejected."""
         from starlette.testclient import TestClient
         from hermes_cli.web_server import app
-        # Create a client WITHOUT the Authorization header
+        # Create a client WITHOUT the dashboard session header
         unauth_client = TestClient(app)
         resp = unauth_client.get("/api/env")
         assert resp.status_code == 401
@@ -388,9 +421,9 @@ class TestConfigRoundTrip:
             from starlette.testclient import TestClient
         except ImportError:
             pytest.skip("fastapi/starlette not installed")
-        from hermes_cli.web_server import app, _SESSION_TOKEN
+        from hermes_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
         self.client = TestClient(app)
-        self.client.headers["Authorization"] = f"Bearer {_SESSION_TOKEN}"
+        self.client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
 
     def test_get_config_no_internal_keys(self):
         """GET /api/config should not expose _config_version or _model_meta."""
@@ -524,12 +557,12 @@ class TestNewEndpoints:
 
         import hermes_state
         from hermes_constants import get_hermes_home
-        from hermes_cli.web_server import app, _SESSION_TOKEN
+        from hermes_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
         monkeypatch.setattr(hermes_state, "DEFAULT_DB_PATH", get_hermes_home() / "state.db")
 
         self.client = TestClient(app)
-        self.client.headers["Authorization"] = f"Bearer {_SESSION_TOKEN}"
+        self.client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
 
     def test_get_logs_default(self):
         resp = self.client.get("/api/logs")
@@ -1176,9 +1209,9 @@ class TestStatusRemoteGateway:
         except ImportError:
             pytest.skip("fastapi/starlette not installed")
 
-        from hermes_cli.web_server import app, _SESSION_TOKEN
+        from hermes_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
         self.client = TestClient(app)
-        self.client.headers["Authorization"] = f"Bearer {_SESSION_TOKEN}"
+        self.client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
 
     def test_status_falls_back_to_remote_probe(self, monkeypatch):
         """When local PID check fails and remote probe succeeds, gateway shows running."""
@@ -1256,3 +1289,187 @@ class TestStatusRemoteGateway:
         assert data["gateway_running"] is True
         assert data["gateway_pid"] is None
         assert data["gateway_state"] == "running"
+
+
+# ---------------------------------------------------------------------------
+# Dashboard theme normaliser tests
+# ---------------------------------------------------------------------------
+
+
+class TestNormaliseThemeDefinition:
+    """Tests for _normalise_theme_definition() — parses YAML theme files."""
+
+    def test_rejects_missing_name(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        assert _normalise_theme_definition({}) is None
+        assert _normalise_theme_definition({"name": ""}) is None
+        assert _normalise_theme_definition({"name": "   "}) is None
+
+    def test_rejects_non_dict(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        assert _normalise_theme_definition("string") is None
+        assert _normalise_theme_definition(None) is None
+        assert _normalise_theme_definition([1, 2, 3]) is None
+
+    def test_loose_colors_shorthand(self):
+        """Bare hex strings under `colors` parse as {hex, alpha=1.0}."""
+        from hermes_cli.web_server import _normalise_theme_definition
+        result = _normalise_theme_definition({
+            "name": "loose",
+            "colors": {"background": "#000000", "midground": "#ffffff"},
+        })
+        assert result is not None
+        assert result["palette"]["background"] == {"hex": "#000000", "alpha": 1.0}
+        assert result["palette"]["midground"] == {"hex": "#ffffff", "alpha": 1.0}
+        # foreground falls back to default (transparent white)
+        assert result["palette"]["foreground"]["hex"] == "#ffffff"
+        assert result["palette"]["foreground"]["alpha"] == 0.0
+
+    def test_full_palette_form(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        result = _normalise_theme_definition({
+            "name": "full",
+            "palette": {
+                "background": {"hex": "#0a1628", "alpha": 1.0},
+                "midground": {"hex": "#a8d0ff", "alpha": 0.9},
+                "warmGlow": "rgba(255, 0, 0, 0.5)",
+                "noiseOpacity": 0.5,
+            },
+        })
+        assert result["palette"]["background"]["hex"] == "#0a1628"
+        assert result["palette"]["midground"]["alpha"] == 0.9
+        assert result["palette"]["warmGlow"] == "rgba(255, 0, 0, 0.5)"
+        assert result["palette"]["noiseOpacity"] == 0.5
+
+    def test_default_typography_applied_when_missing(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        result = _normalise_theme_definition({"name": "minimal"})
+        typo = result["typography"]
+        assert "fontSans" in typo
+        assert "fontMono" in typo
+        assert typo["baseSize"] == "15px"
+        assert typo["lineHeight"] == "1.55"
+        assert typo["letterSpacing"] == "0"
+
+    def test_partial_typography_merges_with_defaults(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        result = _normalise_theme_definition({
+            "name": "partial",
+            "typography": {
+                "fontSans": "MyFont, sans-serif",
+                "baseSize": "12px",
+            },
+        })
+        assert result["typography"]["fontSans"] == "MyFont, sans-serif"
+        assert result["typography"]["baseSize"] == "12px"
+        # fontMono defaulted
+        assert "monospace" in result["typography"]["fontMono"]
+
+    def test_layout_defaults(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        result = _normalise_theme_definition({"name": "minimal"})
+        assert result["layout"]["radius"] == "0.5rem"
+        assert result["layout"]["density"] == "comfortable"
+
+    def test_invalid_density_falls_back(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        result = _normalise_theme_definition({
+            "name": "bad",
+            "layout": {"density": "ultra-spacious"},
+        })
+        assert result["layout"]["density"] == "comfortable"
+
+    def test_valid_densities_accepted(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        for d in ("compact", "comfortable", "spacious"):
+            r = _normalise_theme_definition({"name": "x", "layout": {"density": d}})
+            assert r["layout"]["density"] == d
+
+    def test_color_overrides_filter_unknown_keys(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        result = _normalise_theme_definition({
+            "name": "o",
+            "colorOverrides": {
+                "card": "#123456",
+                "fakeToken": "#abcdef",
+                "primary": 42,  # non-string rejected
+                "destructive": "#ff0000",
+            },
+        })
+        assert result["colorOverrides"] == {
+            "card": "#123456",
+            "destructive": "#ff0000",
+        }
+
+    def test_color_overrides_omitted_when_empty(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        result = _normalise_theme_definition({"name": "x"})
+        assert "colorOverrides" not in result
+
+    def test_alpha_clamped_to_unit_range(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        r = _normalise_theme_definition({
+            "name": "c",
+            "palette": {"background": {"hex": "#000", "alpha": 99.5}},
+        })
+        assert r["palette"]["background"]["alpha"] == 1.0
+        r2 = _normalise_theme_definition({
+            "name": "c",
+            "palette": {"background": {"hex": "#000", "alpha": -5}},
+        })
+        assert r2["palette"]["background"]["alpha"] == 0.0
+
+    def test_invalid_alpha_uses_default(self):
+        from hermes_cli.web_server import _normalise_theme_definition
+        r = _normalise_theme_definition({
+            "name": "c",
+            "palette": {"background": {"hex": "#000", "alpha": "not a number"}},
+        })
+        assert r["palette"]["background"]["alpha"] == 1.0
+
+
+class TestDiscoverUserThemes:
+    """Tests for _discover_user_themes() — scans ~/.hermes/dashboard-themes/."""
+
+    def test_returns_empty_when_dir_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        from hermes_cli import web_server
+        assert web_server._discover_user_themes() == []
+
+    def test_loads_and_normalises_yaml(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        themes_dir = tmp_path / "dashboard-themes"
+        themes_dir.mkdir()
+        (themes_dir / "ocean.yaml").write_text(
+            "name: ocean\n"
+            "label: Ocean\n"
+            "palette:\n"
+            "  background:\n"
+            "    hex: \"#0a1628\"\n"
+            "    alpha: 1.0\n"
+            "layout:\n"
+            "  density: spacious\n"
+        )
+        from hermes_cli import web_server
+        results = web_server._discover_user_themes()
+        assert len(results) == 1
+        assert results[0]["name"] == "ocean"
+        assert results[0]["label"] == "Ocean"
+        assert results[0]["palette"]["background"]["hex"] == "#0a1628"
+        assert results[0]["layout"]["density"] == "spacious"
+        # defaults filled in
+        assert "fontSans" in results[0]["typography"]
+
+    def test_malformed_yaml_skipped(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        themes_dir = tmp_path / "dashboard-themes"
+        themes_dir.mkdir()
+        (themes_dir / "bad.yaml").write_text("::: not valid yaml :::\n\tindent wrong")
+        (themes_dir / "nameless.yaml").write_text("label: No Name Here\n")
+        (themes_dir / "ok.yaml").write_text("name: ok\n")
+        from hermes_cli import web_server
+        results = web_server._discover_user_themes()
+        names = [r["name"] for r in results]
+        assert "ok" in names
+        assert "bad" not in names  # malformed YAML
+        assert len(results) == 1  # only the valid one
