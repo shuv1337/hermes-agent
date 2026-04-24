@@ -2019,14 +2019,92 @@ def _make_check_fn(server_name: str):
 # ---------------------------------------------------------------------------
 
 def _normalize_mcp_input_schema(schema: dict | None) -> dict:
-    """Normalize MCP input schemas for LLM tool-calling compatibility."""
+    """Normalize MCP input schemas for LLM tool-calling compatibility.
+
+    MCP servers can emit plain JSON Schema with ``definitions`` /
+    ``#/definitions/...`` references.  Kimi / Moonshot rejects that form and
+    requires local refs to point into ``#/$defs/...`` instead.  Normalize the
+    common draft-07 shape here so MCP tool schemas remain portable across
+    OpenAI-compatible providers.
+
+    Additional MCP-server robustness repairs applied recursively:
+
+    * Missing or ``null`` ``type`` on an object-shaped node is coerced to
+      ``"object"`` (some servers omit it).  See PR #4897.
+    * When an ``object`` node lacks ``properties``, an empty ``properties``
+      dict is added so ``required`` entries don't dangle.
+    * ``required`` arrays are pruned to only names that exist in
+      ``properties``; otherwise Google AI Studio / Gemini 400s with
+      ``property is not defined``.  See PR #4651.
+
+    All repairs are provider-agnostic and ideally produce a schema valid on
+    OpenAI, Anthropic, Gemini, and Moonshot in one pass.
+    """
     if not schema:
         return {"type": "object", "properties": {}}
 
-    if schema.get("type") == "object" and "properties" not in schema:
-        return {**schema, "properties": {}}
+    def _rewrite_local_refs(node):
+        if isinstance(node, dict):
+            normalized = {}
+            for key, value in node.items():
+                out_key = "$defs" if key == "definitions" else key
+                normalized[out_key] = _rewrite_local_refs(value)
+            ref = normalized.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/definitions/"):
+                normalized["$ref"] = "#/$defs/" + ref[len("#/definitions/"):]
+            return normalized
+        if isinstance(node, list):
+            return [_rewrite_local_refs(item) for item in node]
+        return node
 
-    return schema
+    def _repair_object_shape(node):
+        """Recursively repair object-shaped nodes: fill type, prune required."""
+        if isinstance(node, list):
+            return [_repair_object_shape(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+
+        repaired = {k: _repair_object_shape(v) for k, v in node.items()}
+
+        # Coerce missing / null type when the shape is clearly an object
+        # (has properties or required but no type).
+        if not repaired.get("type") and (
+            "properties" in repaired or "required" in repaired
+        ):
+            repaired["type"] = "object"
+
+        if repaired.get("type") == "object":
+            # Ensure properties exists so required can reference it safely
+            if "properties" not in repaired or not isinstance(
+                repaired.get("properties"), dict
+            ):
+                repaired["properties"] = {} if "properties" not in repaired else repaired["properties"]
+                if not isinstance(repaired.get("properties"), dict):
+                    repaired["properties"] = {}
+
+            # Prune required to only include names that exist in properties
+            required = repaired.get("required")
+            if isinstance(required, list):
+                props = repaired.get("properties") or {}
+                valid = [r for r in required if isinstance(r, str) and r in props]
+                if len(valid) != len(required):
+                    if valid:
+                        repaired["required"] = valid
+                    else:
+                        repaired.pop("required", None)
+
+        return repaired
+
+    normalized = _rewrite_local_refs(schema)
+    normalized = _repair_object_shape(normalized)
+
+    # Ensure top-level is a well-formed object schema
+    if not isinstance(normalized, dict):
+        return {"type": "object", "properties": {}}
+    if normalized.get("type") == "object" and "properties" not in normalized:
+        normalized = {**normalized, "properties": {}}
+
+    return normalized
 
 
 def sanitize_mcp_name_component(value: str) -> str:
@@ -2057,7 +2135,7 @@ def _convert_mcp_schema(server_name: str, mcp_tool) -> dict:
     return {
         "name": prefixed_name,
         "description": mcp_tool.description or f"MCP tool {mcp_tool.name} from {server_name}",
-        "parameters": _normalize_mcp_input_schema(mcp_tool.inputSchema),
+        "parameters": _normalize_mcp_input_schema(getattr(mcp_tool, "inputSchema", None)),
     }
 
 

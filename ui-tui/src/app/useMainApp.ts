@@ -454,13 +454,20 @@ export function useMainApp(gw: GatewayClient) {
     composer: { actions: composerActions, refs: composerRefs, state: composerState },
     gateway,
     terminal: { hasSelection, scrollRef, scrollWithSelection, selection, stdout },
-    voice: { recording: voiceRecording, setProcessing: setVoiceProcessing, setRecording: setVoiceRecording },
+    voice: {
+      enabled: voiceEnabled,
+      recording: voiceRecording,
+      setProcessing: setVoiceProcessing,
+      setRecording: setVoiceRecording,
+      setVoiceEnabled
+    },
     wheelStep: WHEEL_SCROLL_STEP
   })
 
   const onEvent = useMemo(
     () =>
       createGatewayEventHandler({
+        composer: { setInput: composerActions.setInput },
         gateway,
         session: {
           STARTUP_RESUME_ID,
@@ -470,18 +477,29 @@ export function useMainApp(gw: GatewayClient) {
           resumeById: session.resumeById,
           setCatalog
         },
+        submission: { submitRef },
         system: { bellOnComplete, stdout, sys },
-        transcript: { appendMessage, panel, setHistoryItems }
+        transcript: { appendMessage, panel, setHistoryItems },
+        voice: {
+          setProcessing: setVoiceProcessing,
+          setRecording: setVoiceRecording,
+          setVoiceEnabled
+        }
       }),
     [
       appendMessage,
       bellOnComplete,
+      composerActions.setInput,
       gateway,
       panel,
       session.newSession,
       session.resetSession,
       session.resumeById,
+      setVoiceEnabled,
+      setVoiceProcessing,
+      setVoiceRecording,
       stdout,
+      submitRef,
       sys
     ]
   )
@@ -698,7 +716,9 @@ export function useMainApp(gw: GatewayClient) {
       statusColor: statusColorOf(ui.status, ui.theme.color),
       stickyPrompt,
       turnStartedAt: ui.sid ? turnStartedAt : null,
-      voiceLabel: voiceRecording ? 'REC' : voiceProcessing ? 'STT' : `voice ${voiceEnabled ? 'on' : 'off'}`
+      // CLI parity: the classic prompt_toolkit status bar shows a red dot
+      // on REC (cli.py:_get_voice_status_fragments line 2344).
+      voiceLabel: voiceRecording ? '● REC' : voiceProcessing ? '◉ STT' : `voice ${voiceEnabled ? 'on' : 'off'}`
     }),
     [
       cwd,
