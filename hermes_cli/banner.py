@@ -5,6 +5,7 @@ Pure display functions with no HermesCLI state dependency.
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import threading
@@ -122,49 +123,36 @@ def get_available_skills() -> Dict[str, List[str]]:
 # Cache update check results for 6 hours to avoid repeated git fetches
 _UPDATE_CHECK_CACHE_SECONDS = 6 * 3600
 
+# Sentinel returned when we know an update exists but can't count commits
+# (e.g. nix-built hermes — no local git history to count against).
+UPDATE_AVAILABLE_NO_COUNT = -1
 
-def _project_repo_dir() -> Optional[Path]:
-    """Return the repo containing this running Hermes code, if it is a git checkout."""
-    repo_dir = Path(__file__).parent.parent.resolve()
-    return repo_dir if (repo_dir / ".git").exists() else None
-
-
-def _legacy_install_repo_dir() -> Optional[Path]:
-    """Return the legacy installer checkout under HERMES_HOME, if present."""
-    hermes_home = get_hermes_home()
-    repo_dir = hermes_home / "hermes-agent"
-    return repo_dir if (repo_dir / ".git").exists() else None
+_UPSTREAM_REPO_URL = "https://github.com/NousResearch/hermes-agent.git"
 
 
-def check_for_updates() -> Optional[int]:
-    """Check how many commits behind origin/main the active repo is.
+def _check_via_rev(local_rev: str) -> Optional[int]:
+    """Compare an embedded git revision to upstream main via ls-remote.
 
-    Does a ``git fetch`` at most once every 6 hours (cached to
-    ``~/.hermes/.update_check``). Returns the number of commits behind,
-    or ``None`` if the check fails or isn't applicable.
-
-    Prefer the git checkout that contains the currently running Hermes code.
-    Fall back to the legacy installer checkout under ``$HERMES_HOME/hermes-agent``
-    only when this runtime is not itself running from a git repo.
+    Returns 0 if up-to-date, ``UPDATE_AVAILABLE_NO_COUNT`` if behind,
+    or ``None`` on failure.
     """
-    hermes_home = get_hermes_home()
-    cache_file = hermes_home / ".update_check"
-    repo_dir = _resolve_repo_dir()
-    if repo_dir is None:
-        return None
-
-    # Read cache. Invalidate when it was produced for a different checkout.
-    now = time.time()
     try:
-        if cache_file.exists():
-            cached = json.loads(cache_file.read_text())
-            cache_repo_dir = cached.get("repo_dir")
-            if cache_repo_dir == str(repo_dir) and now - cached.get("ts", 0) < _UPDATE_CHECK_CACHE_SECONDS:
-                return cached.get("behind")
+        result = subprocess.run(
+            ["git", "ls-remote", _UPSTREAM_REPO_URL, "refs/heads/main"],
+            capture_output=True, text=True, timeout=10,
+        )
     except Exception:
-        pass
+        return None
+    if result.returncode != 0 or not result.stdout:
+        return None
+    upstream_rev = result.stdout.split()[0]
+    if not upstream_rev:
+        return None
+    return 0 if upstream_rev == local_rev else UPDATE_AVAILABLE_NO_COUNT
 
-    # Fetch latest refs (fast — only downloads ref metadata, no files)
+
+def _check_via_local_git(repo_dir: Path) -> Optional[int]:
+    """Count commits behind origin/main in a local checkout."""
     try:
         subprocess.run(
             ["git", "fetch", "origin", "--quiet"],
@@ -174,7 +162,6 @@ def check_for_updates() -> Optional[int]:
     except Exception:
         pass  # Offline or timeout — use stale refs, that's fine
 
-    # Count commits behind
     try:
         result = subprocess.run(
             ["git", "rev-list", "--count", "HEAD..origin/main"],
@@ -182,15 +169,52 @@ def check_for_updates() -> Optional[int]:
             cwd=str(repo_dir),
         )
         if result.returncode == 0:
-            behind = int(result.stdout.strip())
-        else:
-            behind = None
+            return int(result.stdout.strip())
     except Exception:
-        behind = None
+        pass
+    return None
 
-    # Write cache
+
+def check_for_updates() -> Optional[int]:
+    """Check whether a Hermes update is available.
+
+    Two paths: if ``HERMES_REVISION`` is set (nix builds embed it), compare
+    it to upstream main via ``git ls-remote``. Otherwise look for a local
+    git checkout and count commits behind ``origin/main``.
+
+    Returns the number of commits behind, ``UPDATE_AVAILABLE_NO_COUNT`` (-1)
+    if behind but the count is unknown, ``0`` if up-to-date, or ``None`` if
+    the check failed or doesn't apply. Cached for 6 hours.
+    """
+    hermes_home = get_hermes_home()
+    cache_file = hermes_home / ".update_check"
+    embedded_rev = os.environ.get("HERMES_REVISION") or None
+
+    # Read cache — invalidate if the embedded rev has changed since last check
+    now = time.time()
     try:
-        cache_file.write_text(json.dumps({"ts": now, "behind": behind, "repo_dir": str(repo_dir)}))
+        if cache_file.exists():
+            cached = json.loads(cache_file.read_text())
+            if (
+                now - cached.get("ts", 0) < _UPDATE_CHECK_CACHE_SECONDS
+                and cached.get("rev") == embedded_rev
+            ):
+                return cached.get("behind")
+    except Exception:
+        pass
+
+    if embedded_rev:
+        behind = _check_via_rev(embedded_rev)
+    else:
+        repo_dir = hermes_home / "hermes-agent"
+        if not (repo_dir / ".git").exists():
+            repo_dir = Path(__file__).parent.parent.resolve()
+        if not (repo_dir / ".git").exists():
+            return None
+        behind = _check_via_local_git(repo_dir)
+
+    try:
+        cache_file.write_text(json.dumps({"ts": now, "behind": behind, "rev": embedded_rev}))
     except Exception:
         pass
 
@@ -199,7 +223,11 @@ def check_for_updates() -> Optional[int]:
 
 def _resolve_repo_dir() -> Optional[Path]:
     """Return the active Hermes git checkout, or None if this isn't a git install."""
-    return _project_repo_dir() or _legacy_install_repo_dir()
+    hermes_home = get_hermes_home()
+    repo_dir = hermes_home / "hermes-agent"
+    if not (repo_dir / ".git").exists():
+        repo_dir = Path(__file__).parent.parent.resolve()
+    return repo_dir if (repo_dir / ".git").exists() else None
 
 
 def _git_short_hash(repo_dir: Path, rev: str) -> Optional[str]:
@@ -220,30 +248,13 @@ def _git_short_hash(repo_dir: Path, rev: str) -> Optional[str]:
     return value or None
 
 
-def _resolve_banner_base_ref(repo_dir: Path) -> tuple[Optional[str], Optional[str]]:
-    """Return the preferred remote ref/label for banner and status comparisons.
-
-    Prefer the official ``upstream/main`` branch when available so forked
-    checkouts report against the real upstream. Fall back to ``origin/main``
-    for single-remote installs.
-    """
-    for ref, label in (("upstream/main", "upstream"), ("origin/main", "origin")):
-        if _git_short_hash(repo_dir, ref):
-            return ref, label
-    return None, None
-
-
 def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
-    """Return base/local git hashes for the startup banner."""
+    """Return upstream/local git hashes for the startup banner."""
     repo_dir = repo_dir or _resolve_repo_dir()
     if repo_dir is None:
         return None
 
-    base_ref, base_label = _resolve_banner_base_ref(repo_dir)
-    if not base_ref or not base_label:
-        return None
-
-    upstream = _git_short_hash(repo_dir, base_ref)
+    upstream = _git_short_hash(repo_dir, "origin/main")
     local = _git_short_hash(repo_dir, "HEAD")
     if not upstream or not local:
         return None
@@ -251,7 +262,7 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
     ahead = 0
     try:
         result = subprocess.run(
-            ["git", "rev-list", "--count", f"{base_ref}..HEAD"],
+            ["git", "rev-list", "--count", "origin/main..HEAD"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -262,13 +273,53 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
     except Exception:
         ahead = 0
 
-    return {
-        "upstream": upstream,
-        "base_ref": base_ref,
-        "base_label": base_label,
-        "local": local,
-        "ahead": max(ahead, 0),
-    }
+    return {"upstream": upstream, "local": local, "ahead": max(ahead, 0)}
+
+
+_RELEASE_URL_BASE = "https://github.com/NousResearch/hermes-agent/releases/tag"
+_latest_release_cache: Optional[tuple] = None  # (tag, url) once resolved
+
+
+def get_latest_release_tag(repo_dir: Optional[Path] = None) -> Optional[tuple]:
+    """Return ``(tag, release_url)`` for the latest git tag, or None.
+
+    Local-only — runs ``git describe --tags --abbrev=0`` against the
+    Hermes checkout. Cached per-process. Release URL always points at the
+    canonical NousResearch/hermes-agent repo (forks don't get a link).
+    """
+    global _latest_release_cache
+    if _latest_release_cache is not None:
+        return _latest_release_cache or None
+
+    repo_dir = repo_dir or _resolve_repo_dir()
+    if repo_dir is None:
+        _latest_release_cache = ()  # falsy sentinel — skip future lookups
+        return None
+
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            cwd=str(repo_dir),
+        )
+    except Exception:
+        _latest_release_cache = ()
+        return None
+
+    if result.returncode != 0:
+        _latest_release_cache = ()
+        return None
+
+    tag = (result.stdout or "").strip()
+    if not tag:
+        _latest_release_cache = ()
+        return None
+
+    url = f"{_RELEASE_URL_BASE}/{tag}"
+    _latest_release_cache = (tag, url)
+    return _latest_release_cache
 
 
 def format_banner_version_label() -> str:
@@ -279,15 +330,14 @@ def format_banner_version_label() -> str:
         return base
 
     upstream = state["upstream"]
-    base_label = state.get("base_label") or "upstream"
     local = state["local"]
     ahead = int(state.get("ahead") or 0)
 
     if ahead <= 0 or upstream == local:
-        return f"{base} · {base_label} {upstream}"
+        return f"{base} · upstream {upstream}"
 
     carried_word = "commit" if ahead == 1 else "commits"
-    return f"{base} · {base_label} {upstream} · local {local} (+{ahead} carried {carried_word})"
+    return f"{base} · upstream {upstream} · local {local} (+{ahead} carried {carried_word})"
 
 
 # =========================================================================
@@ -537,25 +587,41 @@ def build_welcome_banner(console: Console, model: str, cwd: str,
     # Update check — use prefetched result if available
     try:
         behind = get_update_result(timeout=0.5)
-        if behind and behind > 0:
-            from hermes_cli.config import recommended_update_command
-            commits_word = "commit" if behind == 1 else "commits"
-            right_lines.append(
-                f"[bold yellow]⚠ {behind} {commits_word} behind[/]"
-                f"[dim yellow] — run [bold]{recommended_update_command()}[/bold] to update[/]"
-            )
+        if behind is not None and behind != 0:
+            from hermes_cli.config import get_managed_update_command, recommended_update_command
+            if behind > 0:
+                commits_word = "commit" if behind == 1 else "commits"
+                right_lines.append(
+                    f"[bold yellow]⚠ {behind} {commits_word} behind[/]"
+                    f"[dim yellow] — run [bold]{recommended_update_command()}[/bold] to update[/]"
+                )
+            else:
+                # UPDATE_AVAILABLE_NO_COUNT: nix-built hermes; we know an update
+                # exists but not by how much, and we don't know how the user
+                # installed it (nix run, profile, system flake, home-manager).
+                managed_cmd = get_managed_update_command()
+                line = "[bold yellow]⚠ update available[/]"
+                if managed_cmd:
+                    line += f"[dim yellow] — run [bold]{managed_cmd}[/bold][/]"
+                right_lines.append(line)
     except Exception:
         pass  # Never break the banner over an update check
 
     right_content = "\n".join(right_lines)
     layout_table.add_row(left_content, right_content)
 
-    agent_name = _skin_branding("agent_name", "Hermes Agent")
     title_color = _skin_color("banner_title", "#FFD700")
     border_color = _skin_color("banner_border", "#CD7F32")
+    version_label = format_banner_version_label()
+    release_info = get_latest_release_tag()
+    if release_info:
+        _tag, _url = release_info
+        title_markup = f"[bold {title_color}][link={_url}]{version_label}[/link][/]"
+    else:
+        title_markup = f"[bold {title_color}]{version_label}[/]"
     outer_panel = Panel(
         layout_table,
-        title=f"[bold {title_color}]{format_banner_version_label()}[/]",
+        title=title_markup,
         border_style=border_color,
         padding=(0, 2),
     )

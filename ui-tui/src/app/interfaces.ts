@@ -4,11 +4,10 @@ import type { MutableRefObject, ReactNode, RefObject, SetStateAction } from 'rea
 import type { PasteEvent } from '../components/textInput.js'
 import type { GatewayClient } from '../gatewayClient.js'
 import type { ImageAttachResponse } from '../gatewayTypes.js'
+import type { ParsedVoiceRecordKey } from '../lib/platform.js'
 import type { RpcResult } from '../lib/rpc.js'
 import type { Theme } from '../theme.js'
 import type {
-  ActiveTool,
-  ActivityItem,
   ApprovalReq,
   ClarifyReq,
   ConfirmReq,
@@ -16,9 +15,9 @@ import type {
   Msg,
   PanelSection,
   SecretReq,
+  SectionVisibility,
   SessionInfo,
   SlashCatalog,
-  SubagentProgress,
   SudoReq,
   Usage
 } from '../types.js'
@@ -29,9 +28,25 @@ export interface StateSetter<T> {
 
 export type StatusBarMode = 'bottom' | 'off' | 'top'
 
+export type BusyInputMode = 'interrupt' | 'queue' | 'steer'
+
+// Single source of truth for indicator style names.  Union type is
+// derived from this tuple so adding/removing a style only touches one
+// line — `useConfigSync` (validation) and `session.ts` (slash arg
+// validation + usage hint) both import it.
+export const INDICATOR_STYLES = ['ascii', 'emoji', 'kaomoji', 'unicode'] as const
+export type IndicatorStyle = (typeof INDICATOR_STYLES)[number]
+export const DEFAULT_INDICATOR_STYLE: IndicatorStyle = 'kaomoji'
+
 export interface SelectionApi {
+  captureScrolledRows: (firstRow: number, lastRow: number, side: 'above' | 'below') => void
   clearSelection: () => void
-  copySelection: () => string
+  copySelection: () => Promise<string>
+  copySelectionNoClear: () => Promise<string>
+  getState: () => unknown
+  version: () => number
+  shiftAnchor: (dRow: number, minRow: number, maxRow: number) => void
+  shiftSelection: (dRow: number, minRow: number, maxRow: number) => void
 }
 
 export interface CompletionItem {
@@ -83,12 +98,17 @@ export interface TranscriptRow {
 export interface UiState {
   bgTasks: Set<string>
   busy: boolean
+  busyInputMode: BusyInputMode
   compact: boolean
   detailsMode: DetailsMode
+  detailsModeCommandOverride: boolean
   info: null | SessionInfo
   inlineDiffs: boolean
+  mouseTracking: boolean
+  sections: SectionVisibility
   showCost: boolean
   showReasoning: boolean
+  indicatorStyle: IndicatorStyle
   sid: null | string
   status: string
   statusBar: StatusBarMode
@@ -118,8 +138,9 @@ export interface ComposerActions {
   dequeue: () => string | undefined
   enqueue: (text: string) => void
   handleTextPaste: (event: PasteEvent) => MaybePromise<ComposerPasteResult | null>
-  openEditor: () => void
+  openEditor: () => Promise<void>
   pushHistory: (text: string) => void
+  removeQueue: (index: number) => void
   replaceQueue: (index: number, text: string) => void
   setCompIdx: StateSetter<number>
   setHistoryIdx: StateSetter<null | number>
@@ -190,6 +211,7 @@ export interface InputHandlerContext {
   }
   voice: {
     enabled: boolean
+    recordKey: ParsedVoiceRecordKey
     recording: boolean
     setProcessing: StateSetter<boolean>
     setRecording: StateSetter<boolean>
@@ -271,6 +293,7 @@ export interface SlashHandlerContext {
   }
   voice: {
     setVoiceEnabled: StateSetter<boolean>
+    setVoiceRecordKey: (v: ParsedVoiceRecordKey) => void
   }
 }
 
@@ -279,6 +302,7 @@ export interface AppLayoutActions {
   answerClarify: (answer: string) => void
   answerSecret: (value: string) => void
   answerSudo: (pw: string) => void
+  clearSelection: () => void
   onModelSelect: (value: string) => void
   resumeById: (id: string) => void
   setStickyPrompt: (value: string) => void
@@ -297,24 +321,11 @@ export interface AppLayoutComposerProps {
   queuedDisplay: string[]
   submit: (value: string) => void
   updateInput: StateSetter<string>
+  voiceRecordKey: ParsedVoiceRecordKey
 }
 
 export interface AppLayoutProgressProps {
-  activity: ActivityItem[]
-  outcome: string
-  reasoning: string
-  reasoningActive: boolean
-  reasoningStreaming: boolean
-  reasoningTokens: number
   showProgressArea: boolean
-  showStreamingArea: boolean
-  streamPendingTools: string[]
-  streamSegments: Msg[]
-  streaming: string
-  subagents: SubagentProgress[]
-  toolTokens: number
-  tools: ActiveTool[]
-  turnTrail: string[]
 }
 
 export interface AppLayoutStatusProps {

@@ -1,13 +1,11 @@
 """Tests for agent/skill_commands.py — skill slash command scanning and platform filtering."""
 
 import os
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
 import tools.skills_tool as skills_tool_module
 from agent.skill_commands import (
-    build_plan_path,
     build_preloaded_skills_prompt,
     build_skill_invocation_message,
     resolve_skill_command_key,
@@ -126,6 +124,58 @@ class TestScanSkillCommands:
 
         assert "/knowledge-brain" in result
         assert result["/knowledge-brain"]["name"] == "knowledge-brain"
+
+    def test_get_skill_commands_rescans_when_platform_scope_changes(self, tmp_path):
+        """Platform-specific disabled-skill caches must not leak across platforms.
+
+        Regression test for #14536: a gateway process serving Telegram
+        and Discord concurrently would seed the process-global cache
+        with whichever platform scanned first, and subsequent
+        ``get_skill_commands()`` calls from the other platform silently
+        inherited that filter.
+        """
+        import agent.skill_commands as sc_mod
+        from agent.skill_commands import get_skill_commands
+
+        def _disabled_skills():
+            platform = os.getenv("HERMES_PLATFORM")
+            if platform == "telegram":
+                return {"telegram-only"}
+            if platform == "discord":
+                return {"discord-only"}
+            return set()
+
+        with (
+            patch("tools.skills_tool.SKILLS_DIR", tmp_path),
+            patch("tools.skills_tool._get_disabled_skill_names", side_effect=_disabled_skills),
+            patch.object(sc_mod, "_skill_commands", {}),
+            patch.object(sc_mod, "_skill_commands_platform", None),
+        ):
+            _make_skill(tmp_path, "shared")
+            _make_skill(tmp_path, "telegram-only")
+            _make_skill(tmp_path, "discord-only")
+
+            with patch.dict(os.environ, {"HERMES_PLATFORM": "telegram"}):
+                telegram_commands = dict(get_skill_commands())
+
+            assert "/shared" in telegram_commands
+            assert "/discord-only" in telegram_commands
+            assert "/telegram-only" not in telegram_commands
+
+            with patch.dict(os.environ, {"HERMES_PLATFORM": "discord"}):
+                discord_commands = dict(get_skill_commands())
+
+            assert "/shared" in discord_commands
+            assert "/telegram-only" in discord_commands
+            assert "/discord-only" not in discord_commands
+
+            # Switching back to telegram must also rescan — not re-serve
+            # the discord view that was just cached.
+            with patch.dict(os.environ, {"HERMES_PLATFORM": "telegram"}):
+                telegram_again = dict(get_skill_commands())
+
+            assert "/telegram-only" not in telegram_again
+            assert "/discord-only" in telegram_again
 
 
     def test_special_chars_stripped_from_cmd_key(self, tmp_path):
@@ -397,40 +447,6 @@ Generate some audio.
 
         assert msg is not None
         assert 'file_path="<path>"' in msg
-
-
-class TestPlanSkillHelpers:
-    def test_build_plan_path_uses_workspace_relative_dir_and_slugifies_request(self):
-        path = build_plan_path(
-            "Implement OAuth login + refresh tokens!",
-            now=datetime(2026, 3, 15, 9, 30, 45),
-        )
-
-        assert path == Path(".hermes") / "plans" / "2026-03-15_093045-implement-oauth-login-refresh-tokens.md"
-
-    def test_plan_skill_message_can_include_runtime_save_path_note(self, tmp_path):
-        with patch("tools.skills_tool.SKILLS_DIR", tmp_path):
-            _make_skill(
-                tmp_path,
-                "plan",
-                body="Save plans under .hermes/plans in the active workspace and do not execute the work.",
-            )
-            scan_skill_commands()
-            msg = build_skill_invocation_message(
-                "/plan",
-                "Add a /plan command",
-                runtime_note=(
-                    "Save the markdown plan with write_file to this exact relative path inside "
-                    "the active workspace/backend cwd: .hermes/plans/plan.md"
-                ),
-            )
-
-        assert msg is not None
-        assert "Save plans under $HERMES_HOME/plans" not in msg
-        assert ".hermes/plans" in msg
-        assert "Add a /plan command" in msg
-        assert ".hermes/plans/plan.md" in msg
-        assert "Runtime note:" in msg
 
 
 class TestSkillDirectoryHeader:
