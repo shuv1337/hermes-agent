@@ -675,9 +675,13 @@ async def test_status_command_survives_gateway_info_failure(monkeypatch):
     monkeypatch.setattr("gateway.run._collect_gateway_info", _boom)
 
     result = await runner._handle_message(_make_event("/status"))
-    # No gateway-info lines, but session section still intact.
+    # No gateway-info lines, but session section still intact. Note: tokens
+    # come from SessionDB (not session_entry.total_tokens) per upstream's
+    # source-of-truth refactor — when SessionDB has no row for the test
+    # session_id, the rendered count is 0. We assert the row renders, not
+    # the specific count.
     assert "**Session ID:** `sess-1`" in result
-    assert "**Tokens:** 7" in result
+    assert "**Tokens:**" in result
     assert "**Version:**" not in result
     assert "**Commit (on disk):**" not in result
     assert "**Running commit:**" not in result

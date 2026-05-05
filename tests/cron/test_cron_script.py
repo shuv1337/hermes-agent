@@ -212,18 +212,23 @@ class TestScriptInterpreterSelection:
         assert success is True
         assert output == "extensionless ok"
 
-    def test_unknown_extension_runs_directly(self, cron_env):
-        """Unknown extensions (e.g. .rb) should run directly (relying on shebang)."""
+    def test_unknown_extension_runs_via_python(self, cron_env):
+        """Unknown extensions fall back to the Python interpreter (upstream contract).
+
+        Upstream deliberately ignores the file's own shebang for non-.sh/.bash
+        scripts to keep the trusted-scripts-dir attack surface small. Previously
+        we ran unknown extensions directly via shebang/OS exec; that's gone.
+        """
         from cron.scheduler import _run_job_script
 
-        # Use a "ruby" script that is actually a shell script with a shebang
         script = cron_env / "scripts" / "test.rb"
-        script.write_text("#!/bin/bash\necho 'not really ruby'\n")
+        # Has to be valid Python now since upstream pipes everything else through python.
+        script.write_text("print('hello from python')\n")
         script.chmod(0o755)
 
         success, output = _run_job_script("test.rb")
         assert success is True
-        assert output == "not really ruby"
+        assert output == "hello from python"
 
 
 class TestBuildJobPromptWithScript:
@@ -265,6 +270,12 @@ class TestBuildJobPromptWithScript:
         assert "Simple job." in prompt
 
     def test_script_empty_output_noted(self, cron_env):
+        """Empty script output skips the AI call entirely (returns None).
+
+        Upstream contract change: silent-on-empty is the foundation of the
+        no_agent watchdog pattern. Previously this returned a "(no output)"
+        prompt; now it short-circuits the whole job run.
+        """
         from cron.scheduler import _build_job_prompt
 
         script = cron_env / "scripts" / "noop.py"
@@ -275,8 +286,7 @@ class TestBuildJobPromptWithScript:
             "script": str(script),
         }
         prompt = _build_job_prompt(job)
-        assert "no output" in prompt.lower()
-        assert "Check status." in prompt
+        assert prompt is None
 
 
 class TestCronjobToolScript:

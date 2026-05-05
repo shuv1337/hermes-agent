@@ -179,6 +179,11 @@ class TestResolveChannelName:
         Regression: prefix-matching 'C0ALYH76U3C' against a session-based
         entry like 'C0ALYH76U3C / topic ...' would return a composite
         'C0ALYH76U3C:thread_ts' ID that breaks chat.postMessage.
+
+        Updated 2026-05-05: upstream's `test_id_match_takes_precedence_over_name`
+        expects raw IDs to round-trip to themselves (not None), so we now hand
+        the stripped ID back instead of returning None — directory lookup is
+        still skipped, which is the actual safety property this test guards.
         """
         platforms = {
             "slack": [
@@ -186,8 +191,8 @@ class TestResolveChannelName:
             ]
         }
         with self._setup(tmp_path, platforms):
-            # Raw channel ID → None (no resolution, caller keeps the ID as-is)
-            assert resolve_channel_name("slack", "C0ALYH76U3C") is None
+            # Raw channel ID → returned unchanged (no composite-key promotion)
+            assert resolve_channel_name("slack", "C0ALYH76U3C") == "C0ALYH76U3C"
             # Human-friendly name still works
             assert resolve_channel_name("slack", "C0ALYH76U3C / topic 1776183941.931459") == "C0ALYH76U3C:1776183941.931459"
 
@@ -196,7 +201,7 @@ class TestResolveChannelName:
             "slack": [{"id": "D01ABC", "name": "Alice (dm)", "type": "dm"}]
         }
         with self._setup(tmp_path, platforms):
-            assert resolve_channel_name("slack", "D01ABCDEFGH") is None
+            assert resolve_channel_name("slack", "D01ABCDEFGH") == "D01ABCDEFGH"
             assert resolve_channel_name("slack", "Alice (dm)") == "D01ABC"
 
     def test_raw_discord_snowflake_skips_resolution(self, tmp_path):
@@ -204,7 +209,7 @@ class TestResolveChannelName:
             "discord": [{"id": "123456789012345678", "name": "general", "guild": "MyServer", "type": "channel"}]
         }
         with self._setup(tmp_path, platforms):
-            assert resolve_channel_name("discord", "123456789012345678") is None
+            assert resolve_channel_name("discord", "123456789012345678") == "123456789012345678"
             assert resolve_channel_name("discord", "general") == "123456789012345678"
 
     def test_raw_telegram_id_skips_resolution(self, tmp_path):
@@ -212,7 +217,7 @@ class TestResolveChannelName:
             "telegram": [{"id": "-1001234567", "name": "My Group", "type": "group"}]
         }
         with self._setup(tmp_path, platforms):
-            assert resolve_channel_name("telegram", "-1001234567") is None
+            assert resolve_channel_name("telegram", "-1001234567") == "-1001234567"
             assert resolve_channel_name("telegram", "My Group") == "-1001234567"
 
     def test_human_name_still_resolves_for_slack(self, tmp_path):
@@ -226,8 +231,8 @@ class TestResolveChannelName:
         with self._setup(tmp_path, platforms):
             # Human name → resolved
             assert resolve_channel_name("slack", "engineering") == "C01CHANNELS"
-            # Raw ID → skipped
-            assert resolve_channel_name("slack", "C0ALYH76U3C") is None
+            # Raw ID → returned as-is (no composite-key promotion)
+            assert resolve_channel_name("slack", "C0ALYH76U3C") == "C0ALYH76U3C"
 
 
 class TestBuildFromSessions:

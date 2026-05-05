@@ -278,8 +278,11 @@ def resolve_channel_name(platform_name: str, name: str) -> Optional[str]:
     Resolve a human-friendly channel name to a numeric ID.
 
     If *name* is already a raw platform ID (Slack C/D/G-prefixed, Discord
-    snowflake, Telegram numeric chat_id), returns ``None`` immediately —
-    there is nothing to resolve.
+    snowflake, Telegram numeric chat_id), returns it unchanged — the caller
+    already has a concrete ID, no resolution needed. This guards against the
+    channel directory's prefix-match step matching a raw ID against a
+    session entry with a composite thread-qualified key (e.g.
+    ``C0ABC123:1776183941.931459``).
 
     Matching strategy (case-insensitive, first match wins):
     - Discord: "bot-home", "#bot-home", "GuildName/bot-home"
@@ -288,13 +291,16 @@ def resolve_channel_name(platform_name: str, name: str) -> Optional[str]:
     """
     stripped = name.strip()
 
-    # Fast exit: the caller already has a concrete platform ID.
+    # Fast exit: the caller already has a concrete platform ID. Hand it back
+    # so downstream code can keep treating resolve_channel_name as a
+    # name-or-id resolver, but skip the directory lookup that could otherwise
+    # promote a composite session key over the clean ID.
     if platform_name == "slack" and _SLACK_ID_RE.match(stripped):
-        return None
+        return stripped
     if platform_name == "discord" and _DISCORD_SNOWFLAKE_RE.match(stripped):
-        return None
+        return stripped
     if platform_name == "telegram" and stripped.lstrip("-").isdigit():
-        return None
+        return stripped
 
     directory = load_directory()
     channels = directory.get("platforms", {}).get(platform_name, [])
