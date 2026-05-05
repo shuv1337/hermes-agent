@@ -692,12 +692,6 @@ class SignalAdapter(BasePlatformAdapter):
         chat_id = sender if not is_group else f"group:{group_id}"
         chat_type = "group" if is_group else "dm"
 
-        # Extract text and render mentions
-        text = data_message.get("message", "")
-        mentions = data_message.get("mentions", [])
-        if text and mentions:
-            text = _render_mentions(text, mentions)
-
         # Extract quote (reply-to) context from Signal dataMessage
         quote_data = data_message.get("quote") or {}
         reply_to_id = str(quote_data.get("id")) if quote_data.get("id") else None
