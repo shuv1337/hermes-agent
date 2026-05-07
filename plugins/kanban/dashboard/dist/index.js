@@ -112,17 +112,30 @@
 
   function writeSelectedBoard(slug) {
     try {
-      if (slug && slug !== "default") window.localStorage.setItem(LS_BOARD_KEY, slug);
+      // Persist the user's dashboard-side board pin even for "default".
+      // Previously this stripped "default" to keep localStorage empty,
+      // but the fetch layer read that absence as "no opinion" and fell
+      // through to the server-side ``current`` file — which the board
+      // switcher also writes. Result: selecting the default tab after
+      // creating a new board with "switch" checked showed the new
+      // board's (wrong) data because the URL omitted ``?board=`` and
+      // the backend happily returned whichever board was "current".
+      // Persisting every selection keeps the dashboard's board opinion
+      // independent of the CLI's active board, which was the original
+      // design intent. Regression: #20879.
+      if (slug) window.localStorage.setItem(LS_BOARD_KEY, slug);
       else window.localStorage.removeItem(LS_BOARD_KEY);
     } catch (_e) { /* ignore quota / private mode */ }
   }
 
   function withBoard(url, board) {
-    // Append ?board=<slug> when a non-default board is active. Omitted
-    // for default so the URL stays clean and the backend falls through
-    // to its own resolution chain (env var → ``current`` file →
-    // default) which is already correct.
-    if (!board || board === "default") return url;
+    // Always append ?board=<slug> when we have one picked — including
+    // "default". Omitting the param would fall through to the backend's
+    // resolution chain (env var → ``current`` file → default), which
+    // means the dashboard's tab selection gets silently overridden by
+    // whatever board the CLI or "switch" checkbox last activated.
+    // Regression: #20879.
+    if (!board) return url;
     const sep = url.indexOf("?") >= 0 ? "&" : "?";
     return `${url}${sep}board=${encodeURIComponent(board)}`;
   }
@@ -447,9 +460,11 @@
           token: token,
         };
         // Pin the WS stream to the currently-selected board so events
-        // from other boards don't bleed in. Only set for non-default so
-        // single-board installs keep the cleaner URL.
-        if (board && board !== "default") qsParams.board = board;
+        // from other boards don't bleed in. Includes "default" so the
+        // dashboard's own board pin always wins over the server-side
+        // ``current`` file — same rationale as ``withBoard()`` above.
+        // Regression: #20879.
+        if (board) qsParams.board = board;
         const qs = new URLSearchParams(qsParams);
         const url = `${proto}//${window.location.host}${API}/events?${qs}`;
         let ws;
@@ -496,6 +511,7 @@
       if (!boardData) return null;
       const q = search.trim().toLowerCase();
       const filterTask = function (t) {
+        if (tenantFilter && t.tenant !== tenantFilter) return false;
         if (assigneeFilter && t.assignee !== assigneeFilter) return false;
         if (q) {
           const hay = `${t.id} ${t.title || ""} ${t.assignee || ""} ${t.tenant || ""}`.toLowerCase();
@@ -508,7 +524,7 @@
           return Object.assign({}, col, { tasks: col.tasks.filter(filterTask) });
         }),
       });
-    }, [boardData, assigneeFilter, search]);
+    }, [boardData, tenantFilter, assigneeFilter, search]);
 
     // --- actions ------------------------------------------------------------
     const moveTask = useCallback(function (taskId, newStatus) {
@@ -1741,18 +1757,19 @@
       : "workspace path (optional, derived from assignee if blank)";
 
     return h("div", { className: "hermes-kanban-inline-create" },
-      h(Input, {
+      h("textarea", {
         value: title,
         onChange: function (e) { setTitle(e.target.value); },
         onKeyDown: function (e) {
-          if (e.key === "Enter") { e.preventDefault(); submit(); }
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
           if (e.key === "Escape") props.onCancel();
         },
         placeholder: props.columnName === "triage"
           ? "Rough idea — AI will spec it…"
           : "New task title…",
         autoFocus: true,
-        className: "h-8 text-sm",
+        className: "text-sm min-h-[2rem] max-h-32 resize-y w-full border border-input bg-transparent px-2 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-ring",
+        rows: 2,
       }),
       h("div", { className: "flex gap-2" },
         h(Input, {
@@ -1888,6 +1905,29 @@
       }).then(function () { load(); props.onRefresh(); });
     };
 
+    // Triage specifier — calls the auxiliary LLM to flesh out a rough
+    // idea in the Triage column into a concrete spec (title + body with
+    // goal, approach, acceptance criteria) and promotes it to todo.
+    // Not a PATCH: runs through a dedicated POST endpoint because the
+    // LLM call can take tens of seconds, and its outcome is richer than
+    // a status flip (may update title AND body AND emit an audit
+    // comment — or fail with a human-readable reason that the UI
+    // surfaces inline without treating it as an HTTP error).
+    const doSpecify = function () {
+      return SDK.fetchJSON(
+        withBoard(`${API}/tasks/${encodeURIComponent(props.taskId)}/specify`, boardSlug),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
+      ).then(function (res) {
+        load();
+        props.onRefresh();
+        return res;
+      });
+    };
+
     const addLink = function (parentId) {
       return SDK.fetchJSON(withBoard(`${API}/links`, boardSlug), {
         method: "POST",
@@ -1977,6 +2017,7 @@
           assignees: props.assignees || [],
           boardSlug: boardSlug,
           onPatch: doPatch,
+          onSpecify: doSpecify,
           onAddParent: addLink,
           onRemoveParent: removeLink,
           onAddChild: addChild,
@@ -2045,7 +2086,11 @@
         }) : null,
         t.created_by ? h(MetaRow, { label: "Created by", value: t.created_by }) : null,
       ),
-      h(StatusActions, { task: t, onPatch: props.onPatch }),
+      h(StatusActions, {
+        task: t,
+        onPatch: props.onPatch,
+        onSpecify: props.onSpecify,
+      }),
       h(DiagnosticsSection, {
         task: t,
         boardSlug: props.boardSlug,
@@ -2478,6 +2523,8 @@
 
   function StatusActions(props) {
     const t = props.task;
+    const [specifyBusy, setSpecifyBusy] = useState(false);
+    const [specifyMsg, setSpecifyMsg] = useState(null);
     const b = function (label, patch, enabled, confirmMsg) {
       return h(Button, {
         onClick: function () { if (enabled !== false) props.onPatch(patch, { confirm: confirmMsg }); },
@@ -2485,22 +2532,67 @@
         size: "sm",
       }, label);
     };
-    return h("div", { className: "hermes-kanban-actions" },
-      b("→ triage",  { status: "triage" },   t.status !== "triage"),
-      b("→ ready",   { status: "ready" },    t.status !== "ready"),
-      // No direct → running button: /tasks/:id PATCH rejects status=running
-      // with 400 (issue #19535). Tasks enter running only through the
-      // dispatcher's claim_task path, which atomically creates the run row,
-      // claim lock, and worker process metadata.
-      b("Block",     { status: "blocked" },
-        t.status === "running" || t.status === "ready",
-        DESTRUCTIVE_TRANSITIONS.blocked),
-      b("Unblock",   { status: "ready" },    t.status === "blocked"),
-      b("Complete",  { status: "done" },
-        t.status === "running" || t.status === "ready" || t.status === "blocked",
-        DESTRUCTIVE_TRANSITIONS.done),
-      b("Archive",   { status: "archived" }, t.status !== "archived",
-        DESTRUCTIVE_TRANSITIONS.archived),
+
+    // "Specify" appears only when the task is in the Triage column — the
+    // one column where an auxiliary LLM pass is meaningful. Elsewhere
+    // the backend would return ok:false with "not in triage" anyway,
+    // so hiding the button keeps the action row uncluttered.
+    const specifyButton = (t.status === "triage" && props.onSpecify)
+      ? h(Button, {
+          onClick: function () {
+            if (specifyBusy) return;
+            setSpecifyBusy(true);
+            setSpecifyMsg(null);
+            props.onSpecify().then(function (res) {
+              if (res && res.ok) {
+                const suffix = res.new_title
+                  ? ` — retitled: ${res.new_title}`
+                  : "";
+                setSpecifyMsg({ ok: true, text: `Specified${suffix}` });
+              } else {
+                setSpecifyMsg({
+                  ok: false,
+                  text: "Specify failed: " + ((res && res.reason) || "unknown error"),
+                });
+              }
+            }).catch(function (err) {
+              setSpecifyMsg({
+                ok: false,
+                text: "Specify failed: " + (err.message || String(err)),
+              });
+            }).then(function () {
+              setSpecifyBusy(false);
+            });
+          },
+          disabled: specifyBusy,
+          size: "sm",
+        }, specifyBusy ? "Specifying…" : "✨ Specify")
+      : null;
+
+    return h("div", null,
+      h("div", { className: "hermes-kanban-actions" },
+        specifyButton,
+        b("→ triage",  { status: "triage" },   t.status !== "triage"),
+        b("→ ready",   { status: "ready" },    t.status !== "ready"),
+        // No direct → running button: /tasks/:id PATCH rejects status=running
+        // with 400 (issue #19535). Tasks enter running only through the
+        // dispatcher's claim_task path, which atomically creates the run row,
+        // claim lock, and worker process metadata.
+        b("Block",     { status: "blocked" },
+          t.status === "running" || t.status === "ready",
+          DESTRUCTIVE_TRANSITIONS.blocked),
+        b("Unblock",   { status: "ready" },    t.status === "blocked"),
+        b("Complete",  { status: "done" },
+          t.status === "running" || t.status === "ready" || t.status === "blocked",
+          DESTRUCTIVE_TRANSITIONS.done),
+        b("Archive",   { status: "archived" }, t.status !== "archived",
+          DESTRUCTIVE_TRANSITIONS.archived),
+      ),
+      specifyMsg ? h("div", {
+        className: specifyMsg.ok
+          ? "hermes-kanban-msg-ok"
+          : "hermes-kanban-msg-err",
+      }, specifyMsg.text) : null,
     );
   }
 
