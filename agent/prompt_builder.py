@@ -580,12 +580,12 @@ PLATFORM_HINTS = {
         "Full Markdown rendering is supported — headings, bold, italic, code "
         "blocks, tables, math (LaTeX), and Mermaid diagrams all render natively. "
         "To display local or remote media/files inline, include "
-        "MEDIA:/absolute/path/to/file or MEDIA:https://... in your response. "
+        "MEDIA:/path/to/file or MEDIA:https://... in your response. "
         "Local file paths must be absolute. Images, audio (with playback speed "
         "controls), video, PDFs, HTML, CSV, diffs/patches, and Excalidraw files "
         "render as rich previews. Do not use Markdown image syntax like "
         "![alt](/path) for local files; local paths are not served that way. "
-        "Use MEDIA:/absolute/path instead."
+        "Use MEDIA:/path instead."
     ),
 }
 
