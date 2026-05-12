@@ -202,6 +202,32 @@ class TestSafetyGuards:
 
 
 # ---------------------------------------------------------------------------
+# cua-driver backend compatibility
+# ---------------------------------------------------------------------------
+
+class TestCuaDriverBackend:
+    def test_type_text_uses_consolidated_type_text_tool(self):
+        from tools.computer_use.cua_backend import CuaDriverBackend
+
+        calls = []
+
+        class FakeSession:
+            def call_tool(self, name, args):
+                calls.append((name, args))
+                return {"data": {"message": "typed"}, "images": [],
+                        "structuredContent": None, "isError": False}
+
+        backend = CuaDriverBackend()
+        backend._session = FakeSession()
+        backend._active_pid = 123
+
+        result = backend.type_text("hello")
+
+        assert result.ok is True
+        assert calls == [("type_text", {"pid": 123, "text": "hello"})]
+
+
+# ---------------------------------------------------------------------------
 # Capture → multimodal envelope
 # ---------------------------------------------------------------------------
 
