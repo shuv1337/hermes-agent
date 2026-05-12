@@ -1796,7 +1796,7 @@
       h("div", { className: "flex gap-2" },
         h(Select, {
           value: workspaceKind,
-          onChange: function (e) { setWorkspaceKind(e.target.value); },
+          ...selectChangeHandler(setWorkspaceKind),
           title: "scratch: isolated temp dir (default). worktree: git worktree on the assignee profile. dir: exact path (required below).",
           className: "h-7 text-xs w-28",
         },
@@ -1813,7 +1813,7 @@
       ),
       h(Select, {
         value: parent,
-        onChange: function (e) { setParent(e.target.value); },
+        ...selectChangeHandler(setParent),
         className: "h-7 text-xs",
       },
         h(SelectOption, { value: "" }, "— no parent —"),

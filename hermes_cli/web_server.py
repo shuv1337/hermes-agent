@@ -176,6 +176,14 @@ def _is_accepted_host(host_header: str, bound_host: str) -> bool:
         host_only = h.rsplit(":", 1)[0] if ":" in h else h
     host_only = host_only.lower()
 
+    extra_hosts = {
+        item.strip().lower()
+        for item in os.environ.get("HERMES_DASHBOARD_ALLOWED_HOSTS", "").split(",")
+        if item.strip()
+    }
+    if host_only in extra_hosts:
+        return True
+
     # 0.0.0.0 bind means operator explicitly opted into all-interfaces
     # (requires --insecure per web_server.start_server). No Host-layer
     # defence can protect that mode; rely on operator network controls.

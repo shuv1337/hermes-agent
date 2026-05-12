@@ -374,6 +374,16 @@ def _load_local_whisper_model(model_name: str):
     library load failure fall back to CPU + int8.
     """
     from faster_whisper import WhisperModel
+    # Honor an explicit stt.local.device / stt.local.compute_type override so
+    # users can pin to CPU when their host CUDA version mismatches the bundled
+    # CTranslate2 (e.g. CUDA 13 host vs faster-whisper's CUDA 12 build) without
+    # paying the one-time CUDA load failure on every model swap.
+    _local_cfg = _load_stt_config().get("local", {}) or {}
+    _device = (_local_cfg.get("device") or "").strip().lower()
+    _compute = (_local_cfg.get("compute_type") or "").strip().lower()
+    if _device and _device != "auto":
+        logger.info("faster-whisper: pinning device=%s compute_type=%s from stt.local config", _device, _compute or "auto")
+        return WhisperModel(model_name, device=_device, compute_type=_compute or "auto")
     try:
         return WhisperModel(model_name, device="auto", compute_type="auto")
     except Exception as exc:

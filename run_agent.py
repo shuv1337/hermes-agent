@@ -3706,6 +3706,15 @@ class AIAgent:
                         credential_pool=getattr(self, "_credential_pool", None),
                         parent_session_id=self.session_id,
                         enabled_toolsets=["memory", "skills"],
+                        # Don't auto-init the memory provider on the review fork.
+                        # Otherwise sync_all() at end of run_conversation() writes
+                        # the synthetic review prompt to Honcho as a `user` message
+                        # under whatever peer the parent inherited, and the deriver
+                        # then attributes the prompt text to the actual user (e.g.
+                        # "u_telegram_<id> is asked to review a conversation...").
+                        # The fork shares the parent's _memory_store for built-in
+                        # memory writes — that's what's wired below.
+                        skip_memory=True,
                     )
                     review_agent._memory_write_origin = "background_review"
                     review_agent._memory_write_context = "background_review"
@@ -9687,6 +9696,8 @@ class AIAgent:
             toolsets=function_args.get("toolsets"),
             tasks=function_args.get("tasks"),
             max_iterations=function_args.get("max_iterations"),
+            provider=function_args.get("provider"),
+            model=function_args.get("model"),
             acp_command=function_args.get("acp_command"),
             acp_args=function_args.get("acp_args"),
             role=function_args.get("role"),

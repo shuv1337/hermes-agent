@@ -883,6 +883,7 @@ def _build_child_agent(
     # 'leaf' (default) cannot; 'orchestrator' retains the delegation
     # toolset subject to depth/kill-switch bounds applied below.
     role: str = "leaf",
+    model_explicitly_supplied: bool = True,
 ):
     """
     Build a child AIAgent on the main thread (thread-safe construction).
@@ -1013,8 +1014,18 @@ def _build_child_agent(
         child_thinking_cb = _child_thinking
 
     # Resolve effective credentials: config override > parent inherit
+    _parent_provider = getattr(parent_agent, "provider", None)
+    # When delegating to a different provider without an explicit model,
+    # inheriting the parent's model (e.g. a Fireworks slug) would send an
+    # invalid model name to the child's provider. Guard that footgun.
+    if override_provider and override_provider != _parent_provider and not model_explicitly_supplied:
+        raise ValueError(
+            f"Cannot delegate to provider '{override_provider}' without a model. "
+            f"Set delegation.model to a valid model for this provider, or pass "
+            f"model explicitly in the delegate_task call."
+        )
     effective_model = model or parent_agent.model
-    effective_provider = override_provider or getattr(parent_agent, "provider", None)
+    effective_provider = override_provider or _parent_provider
     effective_base_url = override_base_url or parent_agent.base_url
     effective_api_key = override_api_key or parent_api_key
     effective_api_mode = override_api_mode or getattr(parent_agent, "api_mode", None)
@@ -1873,6 +1884,8 @@ def delegate_task(
     toolsets: Optional[List[str]] = None,
     tasks: Optional[List[Dict[str, Any]]] = None,
     max_iterations: Optional[int] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
     acp_command: Optional[str] = None,
     acp_args: Optional[List[str]] = None,
     role: Optional[str] = None,
@@ -1944,8 +1957,13 @@ def delegate_task(
     # bundle (base_url, api_key, api_mode) via the same runtime provider system
     # used by CLI/gateway startup.  When unconfigured, returns None values so
     # children inherit from the parent.
+    # Per-call provider/model override the global delegation config, so a single
+    # parent can route different subtasks to different backends (e.g. Anthropic
+    # for reasoning, OpenAI Codex for code generation).
     try:
-        creds = _resolve_delegation_credentials(cfg, parent_agent)
+        creds = _resolve_delegation_credentials(
+            cfg, parent_agent, requested_provider=provider, requested_model=model
+        )
     except ValueError as exc:
         return tool_error(str(exc))
 
@@ -2022,6 +2040,7 @@ def delegate_task(
                     else (acp_args if acp_args is not None else creds.get("args"))
                 ),
                 role=effective_role,
+                model_explicitly_supplied=creds.get("model_explicitly_supplied", True),
             )
             # Override with correct parent tool names (before child construction mutated global)
             child._delegate_saved_tool_names = _parent_tool_names
@@ -2284,7 +2303,9 @@ def _resolve_child_credential_pool(effective_provider: Optional[str], parent_age
     return None
 
 
-def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
+def _resolve_delegation_credentials(
+    cfg: dict, parent_agent, *, requested_provider: Optional[str] = None, requested_model: Optional[str] = None
+) -> dict:
     """Resolve credentials for subagent delegation.
 
     If ``delegation.base_url`` is configured, subagents use that direct
@@ -2303,10 +2324,20 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
     If neither base_url nor provider is configured, returns None values so the
     child inherits everything from the parent agent.
 
+    Per-call ``requested_provider`` and ``requested_model`` override the global
+    delegation config, so a single parent can route subtasks to different
+    backends (e.g. Anthropic for reasoning, OpenAI Codex for code generation).
+
     Raises ValueError with a user-friendly message on credential failure.
     """
     configured_model = str(cfg.get("model") or "").strip() or None
     configured_provider = str(cfg.get("provider") or "").strip() or None
+    # Per-call overrides beat the global delegation config.
+    effective_model = (requested_model or configured_model) or None
+    effective_provider = (requested_provider or configured_provider) or None
+    # Track whether the caller explicitly supplied a model so _build_child_agent
+    # can guard against inheriting a global-config model on a per-call provider.
+    model_explicitly_supplied = requested_model is not None and str(requested_model).strip() != ""
     configured_base_url = str(cfg.get("base_url") or "").strip() or None
     configured_api_key = str(cfg.get("api_key") or "").strip() or None
 
@@ -2336,31 +2367,33 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
             api_mode = "anthropic_messages"
 
         return {
-            "model": configured_model,
+            "model": effective_model,
             "provider": provider,
             "base_url": configured_base_url,
             "api_key": api_key,
             "api_mode": api_mode,
+            "model_explicitly_supplied": model_explicitly_supplied,
         }
 
-    if not configured_provider:
+    if not effective_provider:
         # No provider override — child inherits everything from parent
         return {
-            "model": configured_model,
+            "model": effective_model,
             "provider": None,
             "base_url": None,
             "api_key": None,
             "api_mode": None,
+            "model_explicitly_supplied": model_explicitly_supplied,
         }
 
     # Provider is configured — resolve full credentials
     try:
         from hermes_cli.runtime_provider import resolve_runtime_provider
 
-        runtime = resolve_runtime_provider(requested=configured_provider, target_model=configured_model)
+        runtime = resolve_runtime_provider(requested=effective_provider, target_model=effective_model)
     except Exception as exc:
         raise ValueError(
-            f"Cannot resolve delegation provider '{configured_provider}': {exc}. "
+            f"Cannot resolve delegation provider '{effective_provider}': {exc}. "
             f"Check that the provider is configured (API key set, valid provider name), "
             f"or set delegation.base_url/delegation.api_key for a direct endpoint. "
             f"Available providers: openrouter, nous, zai, kimi-coding, minimax."
@@ -2369,18 +2402,19 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
     api_key = runtime.get("api_key", "")
     if not api_key:
         raise ValueError(
-            f"Delegation provider '{configured_provider}' resolved but has no API key. "
+            f"Delegation provider '{effective_provider}' resolved but has no API key. "
             f"Set the appropriate environment variable or run 'hermes auth'."
         )
 
     return {
-        "model": configured_model or runtime.get("model") or None,
+        "model": effective_model or runtime.get("model") or None,
         "provider": runtime.get("provider"),
         "base_url": runtime.get("base_url"),
         "api_key": api_key,
         "api_mode": runtime.get("api_mode"),
         "command": runtime.get("command"),
         "args": list(runtime.get("args") or []),
+        "model_explicitly_supplied": model_explicitly_supplied,
     }
 
 
@@ -2568,6 +2602,21 @@ DELEGATE_TASK_SCHEMA = {
                     "Only used when acp_command is set."
                 ),
             },
+            "provider": {
+                "type": "string",
+                "description": (
+                    "Override the inference provider for this subagent (e.g. 'anthropic', "
+                    "'openai-codex', 'openrouter'). When set, the subagent uses this "
+                    "provider instead of the parent's provider or the delegation config default."
+                ),
+            },
+            "model": {
+                "type": "string",
+                "description": (
+                    "Override the model for this subagent (e.g. 'claude-opus-4-7', "
+                    "'gpt-5.5'). Required when provider differs from the parent's provider."
+                ),
+            },
         },
         "required": [],
     },
@@ -2587,6 +2636,8 @@ registry.register(
         toolsets=args.get("toolsets"),
         tasks=args.get("tasks"),
         max_iterations=args.get("max_iterations"),
+        provider=args.get("provider"),
+        model=args.get("model"),
         acp_command=args.get("acp_command"),
         acp_args=args.get("acp_args"),
         role=args.get("role"),
