@@ -509,8 +509,12 @@ def check_computer_use_requirements() -> bool:
     """Return True iff computer_use can run on this host.
 
     Conditions: macOS + cua-driver binary installed (or override via env).
+
+    Linux escape hatch: setting HERMES_CUA_DRIVER_CMD to a remote-MCP shim
+    (see ~/.hermes/plans/remote-macos-computer-use.md) bypasses the darwin
+    gate, since the actual cua-driver runs on a remote Mac.
     """
-    if sys.platform != "darwin":
+    if sys.platform != "darwin" and not os.environ.get("HERMES_CUA_DRIVER_CMD"):
         return False
     from tools.computer_use.cua_backend import cua_driver_binary_available
     return cua_driver_binary_available()

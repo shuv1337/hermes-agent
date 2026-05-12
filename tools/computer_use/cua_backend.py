@@ -332,7 +332,9 @@ class CuaDriverBackend(ComputerUseBackend):
             self._bridge.stop()
 
     def is_available(self) -> bool:
-        if not _is_macos():
+        # Allow non-darwin only when HERMES_CUA_DRIVER_CMD points at a remote
+        # MCP shim (see ~/.hermes/plans/remote-macos-computer-use.md).
+        if not _is_macos() and not os.environ.get("HERMES_CUA_DRIVER_CMD"):
             return False
         return cua_driver_binary_available()
 
