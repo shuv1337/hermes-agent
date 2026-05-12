@@ -188,8 +188,8 @@ class _NoopBackend(ComputerUseBackend):  # pragma: no cover
         self.calls.append(("type", {"text": text}))
         return ActionResult(ok=True, action="type")
 
-    def key(self, keys: str) -> ActionResult:
-        self.calls.append(("key", {"keys": keys}))
+    def key(self, keys: str, modifiers: Optional[List[str]] = None) -> ActionResult:
+        self.calls.append(("key", {"keys": keys, "modifiers": modifiers}))
         return ActionResult(ok=True, action="key")
 
     def list_apps(self) -> List[Dict[str, Any]]:
@@ -384,7 +384,7 @@ def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any]) ->
         return _maybe_follow_capture(backend, res, capture_after)
 
     if action == "key":
-        res = backend.key(args.get("keys", ""))
+        res = backend.key(args.get("keys", ""), modifiers=args.get("modifiers"))
         return _maybe_follow_capture(backend, res, capture_after)
 
     if action == "set_value":
@@ -484,21 +484,42 @@ def _format_elements(elements: List[UIElement], max_lines: int = 40) -> List[str
     out: List[str] = []
     for e in elements[:max_lines]:
         label = e.label.replace("\n", " ")[:60]
-        out.append(f"  #{e.index} {e.role} {label!r} @ {e.bounds}"
-                   + (f" [{e.app}]" if e.app else ""))
+        actions = e.attributes.get("actions") or []
+        disabled = bool(e.attributes.get("disabled"))
+        suffix = ""
+        if actions:
+            suffix += f" actions={list(actions)}"
+        if disabled:
+            suffix += " DISABLED"
+        if e.bounds and e.bounds[2] > 0 and e.bounds[3] > 0:
+            suffix += f" bounds={tuple(e.bounds)}"
+        out.append(
+            f"  #{e.index} {e.role} {label!r}"
+            + (f" hint={e.attributes['hint']!r}" if e.attributes.get("hint") else "")
+            + suffix
+        )
     if len(elements) > max_lines:
         out.append(f"  ... +{len(elements) - max_lines} more (call capture with app= to narrow)")
     return out
 
 
 def _element_to_dict(e: UIElement) -> Dict[str, Any]:
-    return {
+    d: Dict[str, Any] = {
         "index": e.index,
         "role": e.role,
         "label": e.label,
         "bounds": list(e.bounds),
         "app": e.app,
     }
+    if e.attributes.get("actions"):
+        d["actions"] = list(e.attributes["actions"])
+    if e.attributes.get("disabled"):
+        d["disabled"] = True
+    if e.attributes.get("hint"):
+        d["hint"] = e.attributes["hint"]
+    if e.attributes.get("id"):
+        d["id"] = e.attributes["id"]
+    return d
 
 
 # ---------------------------------------------------------------------------

@@ -19,11 +19,15 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
         "Drive the macOS desktop in the background — screenshots, mouse, "
         "keyboard, scroll, drag — without stealing the user's cursor, "
         "keyboard focus, or Space. Preferred workflow: call with "
-        "action='capture' (mode='som' gives numbered element overlays), "
-        "then click by `element` index for reliability. Pixel coordinates "
-        "are supported for models trained on them. Works on any window — "
-        "hidden, minimized, on another Space, or behind another app. "
-        "macOS only; requires cua-driver to be installed."
+        "action='capture' (mode='som' gives numbered element overlays plus "
+        "the AX action set for each element), then click by `element` index "
+        "for reliability. Element actions require capture(mode='som'|'ax') "
+        "first for the SAME target window — the cache is per (pid, "
+        "window_id). Coordinates are interpreted in window-local screenshot "
+        "pixels (top-left origin of the capture PNG), not global screen "
+        "coordinates. Works on any window — hidden, minimized, on another "
+        "Space, or behind another app. macOS only; requires cua-driver to "
+        "be installed."
     ),
     "parameters": {
         "type": "object",
@@ -50,7 +54,12 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
                     "effects). All other actions require approval unless "
                     "auto-approved. Use `set_value` for select/popup elements "
                     "and sliders — it selects the matching option directly "
-                    "without opening the native menu (no focus steal)."
+                    "without opening the native menu (no focus steal). "
+                    "Backend caveat: `middle_click` is not supported by the "
+                    "cua-driver backend (returns an explicit unsupported "
+                    "error). Element drag and `focus_app(raise_window=true)` "
+                    "are supported when the installed cua-driver advertises "
+                    "structured element bounds and the `raise_window` tool."
                 ),
             },
             # ── capture ────────────────────────────────────────────
@@ -90,15 +99,20 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
                 "minItems": 2,
                 "maxItems": 2,
                 "description": (
-                    "Pixel coordinates [x, y] in logical screen space (as "
-                    "returned by capture width/height). Only use this if "
-                    "no element index is available."
+                    "Pixel coordinates [x, y] in **window-local screenshot "
+                    "pixels** (top-left origin of the PNG returned by the "
+                    "last capture for the active target window) — NOT "
+                    "global screen coordinates. Use only when no element "
+                    "index is available."
                 ),
             },
             "button": {
                 "type": "string",
                 "enum": ["left", "right", "middle"],
-                "description": "Mouse button. Defaults to left.",
+                "description": (
+                    "Mouse button. Defaults to left. "
+                    "`middle` is not supported by the cua-driver backend."
+                ),
             },
             "modifiers": {
                 "type": "array",
@@ -109,21 +123,37 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
                 "description": "Modifier keys held during the action.",
             },
             # ── drag ───────────────────────────────────────────────
-            "from_element": {"type": "integer",
-                              "description": "Source element index (drag)."},
-            "to_element": {"type": "integer",
-                            "description": "Target element index (drag)."},
+            "from_element": {
+                "type": "integer",
+                "description": (
+                    "Source element index for drag. Requires a prior capture "
+                    "whose structured elements include non-zero bounds."
+                ),
+            },
+            "to_element": {
+                "type": "integer",
+                "description": (
+                    "Target element index for drag. Requires a prior capture "
+                    "whose structured elements include non-zero bounds."
+                ),
+            },
             "from_coordinate": {
                 "type": "array",
                 "items": {"type": "integer"},
                 "minItems": 2, "maxItems": 2,
-                "description": "Source [x,y] (drag; use when no element available).",
+                "description": (
+                    "Source [x,y] for drag in window-local screenshot pixels. "
+                    "Use this when an element endpoint has no bounds."
+                ),
             },
             "to_coordinate": {
                 "type": "array",
                 "items": {"type": "integer"},
                 "minItems": 2, "maxItems": 2,
-                "description": "Target [x,y] (drag; use when no element available).",
+                "description": (
+                    "Target [x,y] for drag in window-local screenshot pixels. "
+                    "Use this when an element endpoint has no bounds."
+                ),
             },
             # ── scroll ─────────────────────────────────────────────
             "direction": {
@@ -165,10 +195,12 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
             "raise_window": {
                 "type": "boolean",
                 "description": (
-                    "Only for action='focus_app'. If true, brings the "
-                    "window to front (DISRUPTS the user). Default false "
-                    "— input is routed to the app without raising, "
-                    "matching the background co-work model."
+                    "Only for action='focus_app'. Default false routes input "
+                    "to the app without raising the window, matching the "
+                    "background co-work model. Set true only on explicit user "
+                    "request; it deliberately brings the target window "
+                    "foreground when the installed cua-driver supports "
+                    "`raise_window`."
                 ),
             },
             # ── return shape ───────────────────────────────────────
