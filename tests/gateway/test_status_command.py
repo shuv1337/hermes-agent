@@ -105,6 +105,61 @@ async def test_status_command_reports_running_agent_without_interrupt(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_status_command_includes_model_from_running_agent():
+    """Issue: /status must surface the actual model serving this session.
+
+    Priority is running agent → cached agent → session override → config
+    default. This test exercises the top-priority path: a live running
+    agent on the session—its model/provider must win."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+        total_tokens=0,
+    )
+    runner = _make_runner(session_entry)
+    running_agent = SimpleNamespace(
+        model="claude-sonnet-4-5",
+        provider="anthropic",
+        interrupt=MagicMock(),
+    )
+    runner._running_agents[build_session_key(_make_source())] = running_agent
+
+    result = await runner._handle_message(_make_event("/status"))
+
+    assert "**Model:** `claude-sonnet-4-5` (anthropic)" in result
+
+
+@pytest.mark.asyncio
+async def test_status_command_includes_model_from_session_override(monkeypatch):
+    """When there is no live or cached agent, /status falls back to the
+    per-session model override set by /model (without --global)."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+        total_tokens=0,
+    )
+    runner = _make_runner(session_entry)
+    runner._session_model_overrides = {
+        build_session_key(_make_source()): {
+            "model": "gpt-5-codex",
+            "provider": "openai",
+        }
+    }
+
+    result = await runner._handle_message(_make_event("/status"))
+
+    assert "**Model:** `gpt-5-codex` (openai)" in result
+
+
+@pytest.mark.asyncio
 async def test_status_command_includes_session_title_when_present():
     session_entry = SessionEntry(
         session_key=build_session_key(_make_source()),

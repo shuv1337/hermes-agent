@@ -8614,6 +8614,63 @@ class GatewayRunner:
         lines.append(t("gateway.status.session_id", session_id=session_entry.session_id))
         if title:
             lines.append(t("gateway.status.title", title=title))
+
+        # Resolve the model/provider that will actually serve the next turn
+        # for this session. Priority:
+        #   1. Live running agent (mid-turn) — authoritative.
+        #   2. Cached agent (between turns) — what we'd reuse on next prompt.
+        #   3. Per-session model override (set via /model without --global).
+        #   4. Config default from config.yaml.
+        # Failures at any layer are swallowed so /status never breaks on
+        # missing config / cache state.
+        current_model = ""
+        current_provider = ""
+        try:
+            running_agent = self._running_agents.get(session_key)
+            if running_agent is not None and running_agent is not _AGENT_PENDING_SENTINEL:
+                current_model = str(getattr(running_agent, "model", "") or "")
+                current_provider = str(getattr(running_agent, "provider", "") or "")
+        except Exception:
+            pass
+        if not current_model:
+            _cache_lock = getattr(self, "_agent_cache_lock", None)
+            _cache = getattr(self, "_agent_cache", None)
+            if _cache_lock is not None and _cache is not None:
+                try:
+                    with _cache_lock:
+                        _cached = _cache.get(session_key)
+                    _cached_agent = _cached[0] if isinstance(_cached, tuple) and _cached else None
+                    if _cached_agent is not None:
+                        current_model = str(getattr(_cached_agent, "model", "") or "")
+                        current_provider = str(getattr(_cached_agent, "provider", "") or "")
+                except Exception:
+                    pass
+        if not current_model:
+            try:
+                override = self._session_model_overrides.get(session_key) or {}
+                if override.get("model"):
+                    current_model = str(override.get("model") or "")
+                    current_provider = str(override.get("provider") or current_provider)
+            except Exception:
+                pass
+        if not current_model:
+            try:
+                cfg = _load_gateway_config() or {}
+                model_cfg = cfg.get("model", {}) if isinstance(cfg, dict) else {}
+                if isinstance(model_cfg, dict):
+                    current_model = str(model_cfg.get("default", "") or "")
+                    if not current_provider:
+                        current_provider = str(model_cfg.get("provider", "") or "")
+            except Exception:
+                pass
+
+        if current_model:
+            if current_provider:
+                model_display = f"`{current_model}` ({current_provider})"
+            else:
+                model_display = f"`{current_model}`"
+            lines.append(t("gateway.status.model", model=model_display))
+
         lines.extend([
             t("gateway.status.created", timestamp=session_entry.created_at.strftime('%Y-%m-%d %H:%M')),
             t("gateway.status.last_activity", timestamp=session_entry.updated_at.strftime('%Y-%m-%d %H:%M')),

@@ -264,6 +264,7 @@ gateway:
     header:                "📊 **Hermes Gateway Status**"
     session_id:            "**Session ID:** `{session_id}`"
     title:                 "**Title:** {title}"
+    model:                 "**Model:** {model}"
     created:               "**Created:** {timestamp}"
     last_activity:         "**Last Activity:** {timestamp}"
     tokens:                "**Tokens:** {tokens}"
