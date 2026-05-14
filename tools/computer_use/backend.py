@@ -130,7 +130,7 @@ class ComputerUseBackend(ABC):
     def type_text(self, text: str) -> ActionResult: ...
 
     @abstractmethod
-    def key(self, keys: str) -> ActionResult:
+    def key(self, keys: str, modifiers: Optional[List[str]] = None) -> ActionResult:
         """Send a key combo, e.g. 'cmd+s', 'ctrl+alt+t', 'return'."""
 
     # ── Introspection ───────────────────────────────────────────────
