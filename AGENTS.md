@@ -1020,3 +1020,28 @@ not the specific names.
 
 Reviewers should reject new change-detector tests; authors should convert
 them into invariants before re-requesting review.
+
+## Local patches on this checkout
+
+This checkout (`~/repos/hermes-agent` on shuvdev) carries a few patches on
+top of upstream `main` that solve site-specific needs. They live as regular
+commits and should be re-applied / preserved across upstream merges.
+
+- **`feat(computer_use): allow remote macOS over HERMES_CUA_DRIVER_CMD on Linux`**
+  Relaxes the two `sys.platform != "darwin"` gates in `tools/computer_use/`
+  so the toolset is usable on Linux when `HERMES_CUA_DRIVER_CMD` is set.
+  Together with `/usr/local/bin/cua-remote` (a tiny MCP stdio shim that SSHs
+  to shuvbot and talks to the local cua-driver daemon), this drives a remote
+  Mac desktop from Linux Hermes. Full design: `~/.hermes/plans/remote-macos-computer-use.md`.
+  **Don't** lose this on the next upstream merge — without it, the
+  `computer_use` toolset is hard-gated to macOS.
+
+- **`fix(prompt_builder): replace blocked MEDIA:/absolute/path literal for Anthropic OAuth safety`**
+  Local hardening for the Anthropic OAuth provider config. Keep.
+
+- **`fix: preserve local gateway and delegation patches`**
+  Squash-marker commit for older local gateway/delegation tweaks. Keep.
+
+When merging upstream, run a diff against `upstream/main` and confirm these
+commits are still on top. If a merge wipes them, cherry-pick back from the
+backup branches.
