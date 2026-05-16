@@ -2208,9 +2208,9 @@ class TelegramAdapter(BasePlatformAdapter):
 
             provider_label = get_label(current_provider)
             text = (
-                f"⚙ *Model Configuration*\n\n"
-                f"Current model: `{current_model or 'unknown'}`\n"
-                f"Provider: {provider_label}\n\n"
+                f"⚙ <b>Model Configuration</b>\n\n"
+                f"Current model: <code>{_html.escape(current_model or 'unknown')}</code>\n"
+                f"Provider: {_html.escape(provider_label)}\n\n"
                 f"Select a provider:"
             )
 
@@ -2219,7 +2219,7 @@ class TelegramAdapter(BasePlatformAdapter):
             msg = await self._send_message_with_thread_fallback(
                 chat_id=int(chat_id),
                 text=text,
-                parse_mode=ParseMode.MARKDOWN,
+                parse_mode=ParseMode.HTML,
                 reply_markup=keyboard,
                 reply_to_message_id=reply_to_id,
                 **self._thread_kwargs_for_send(
