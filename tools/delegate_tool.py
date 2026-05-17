@@ -2395,7 +2395,9 @@ def _resolve_delegation_credentials(
     effective_provider = (requested_provider or configured_provider) or None
     # Track whether the caller explicitly supplied a model so _build_child_agent
     # can guard against inheriting a global-config model on a per-call provider.
-    model_explicitly_supplied = requested_model is not None and str(requested_model).strip() != ""
+    # A configured delegation.model also counts — if the config pairs a provider
+    # with a model, that model is valid for that provider by definition.
+    model_explicitly_supplied = bool(effective_model)
     configured_base_url = str(cfg.get("base_url") or "").strip() or None
     configured_api_key = str(cfg.get("api_key") or "").strip() or None
     configured_api_mode = str(cfg.get("api_mode") or "").strip().lower() or None
