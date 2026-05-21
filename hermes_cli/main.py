@@ -9744,7 +9744,7 @@ _BUILTIN_SUBCOMMANDS = frozenset(
         "model", "pairing", "plugins", "postinstall", "profile", "proxy",
         "send", "sessions", "setup",
         "skills", "slack", "status", "tools", "uninstall", "update",
-        "version", "webhook", "whatsapp", "chat",
+        "version", "webhook", "whatsapp", "chat", "secrets",
         # Help-ish invocations — plugin commands not being listed in
         # top-level --help is an acceptable trade-off for skipping an
         # expensive eager import of every bundled plugin module.
@@ -9936,6 +9936,80 @@ def main():
         help="Remove all fallback entries",
     )
     fallback_parser.set_defaults(func=cmd_fallback)
+
+    # =========================================================================
+    # secrets command — external secret managers (currently: Bitwarden)
+    # =========================================================================
+    secrets_parser = subparsers.add_parser(
+        "secrets",
+        help="Manage external secret sources (Bitwarden Secrets Manager)",
+        description=(
+            "Pull API keys from an external secret manager at process startup "
+            "instead of storing them in ~/.hermes/.env.  Currently supports "
+            "Bitwarden Secrets Manager.  See: "
+            "https://hermes-agent.nousresearch.com/docs/user-guide/secrets/bitwarden"
+        ),
+    )
+    secrets_subparsers = secrets_parser.add_subparsers(dest="secrets_command")
+
+    secrets_bw = secrets_subparsers.add_parser(
+        "bitwarden",
+        aliases=["bw"],
+        help="Bitwarden Secrets Manager integration",
+    )
+
+    # Lazy import — only pays for itself when this subcommand is actually used.
+    from hermes_cli import secrets_cli as _secrets_cli
+
+    _secrets_cli.register_cli(secrets_bw)
+
+    def _dispatch_secrets(args):  # noqa: ANN001
+        sub = getattr(args, "secrets_command", None)
+        bw_sub = getattr(args, "secrets_bw_command", None)
+        if sub in ("bitwarden", "bw") and bw_sub is not None:
+            return args.func(args)
+        secrets_parser.print_help()
+        return 0
+
+    secrets_parser.set_defaults(func=_dispatch_secrets)
+
+    # =========================================================================
+    # migrate command
+    # =========================================================================
+    from hermes_cli.migrate import cmd_migrate, cmd_migrate_xai
+
+    migrate_parser = subparsers.add_parser(
+        "migrate",
+        help="Migrate configuration for retired models or deprecated settings",
+        description=(
+            "Diagnose and (optionally) rewrite the active config.yaml to "
+            "replace references to retired models or deprecated settings."
+        ),
+    )
+    migrate_subparsers = migrate_parser.add_subparsers(dest="migrate_type")
+
+    migrate_xai = migrate_subparsers.add_parser(
+        "xai",
+        help="Migrate xAI models scheduled for retirement on May 15, 2026",
+        description=(
+            "Scan config.yaml for references to xAI models retiring on "
+            "May 15, 2026 and, with --apply, rewrite them in-place to the "
+            "official replacements per the xAI migration guide. The original "
+            "config.yaml is backed up before any rewrite."
+        ),
+    )
+    migrate_xai.add_argument(
+        "--apply",
+        action="store_true",
+        help="Rewrite config.yaml in-place (default: dry-run, no writes)",
+    )
+    migrate_xai.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Skip the timestamped backup of config.yaml when applying",
+    )
+    migrate_xai.set_defaults(func=cmd_migrate_xai)
+    migrate_parser.set_defaults(func=cmd_migrate)
 
     # =========================================================================
     # gateway command
