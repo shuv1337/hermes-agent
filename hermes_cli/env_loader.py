@@ -21,6 +21,67 @@ _CREDENTIAL_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET", "_KEY")
 # tests) don't spam the same warning multiple times.
 _WARNED_KEYS: set[str] = set()
 
+# Map of env-var name → source label ("bitwarden", etc.) for credentials
+# that were injected by an external secret source during load_hermes_dotenv().
+# Used by setup / `hermes model` flows to label detected credentials so
+# users understand WHERE a key came from when their .env doesn't contain it
+# directly (otherwise the "credentials detected ✓" line looks identical to
+# the .env case and they don't know Bitwarden is wired up).
+_SECRET_SOURCES: dict[str, str] = {}
+
+# HERMES_HOME paths we've already pulled external secrets for during this
+# process.  ``load_hermes_dotenv()`` is called at module-import time from
+# several hot modules (cli.py, hermes_cli/main.py, run_agent.py,
+# trajectory_compressor.py, gateway/run.py, ...), so without this guard the
+# Bitwarden status line gets printed 3-5x per startup.  Bitwarden's own
+# in-process cache prevents redundant network calls, but the print, the
+# config re-parse, and the ASCII sanitization sweep still ran every time.
+_APPLIED_HOMES: set[str] = set()
+
+
+def get_secret_source(env_var: str) -> str | None:
+    """Return the label of the secret source that supplied ``env_var``, if any.
+
+    Returns ``"bitwarden"`` for keys pulled from Bitwarden Secrets Manager
+    during the current process's ``load_hermes_dotenv()`` call.  Returns
+    ``None`` for keys that came from ``.env``, the shell environment, or
+    aren't tracked.  The returned label is metadata only: credential-pool
+    persistence may store it to explain the origin of a borrowed secret, but
+    must never treat it as authorization to persist the raw value.
+    """
+    return _SECRET_SOURCES.get(env_var)
+
+
+def reset_secret_source_cache() -> None:
+    """Forget which HERMES_HOME paths have already had external secrets applied.
+
+    The first call to ``_apply_external_secret_sources(home_path)`` in a
+    process pulls from Bitwarden (or other configured backend), records the
+    applied keys in ``_SECRET_SOURCES``, and remembers ``home_path`` so
+    subsequent calls in the same process are no-ops.  Call this to force the
+    next call to re-pull — useful for tests, and for long-running processes
+    that want to refresh after a config change.
+    """
+    _APPLIED_HOMES.clear()
+
+
+def format_secret_source_suffix(env_var: str) -> str:
+    """Return a human-readable suffix like ``" (from Bitwarden)"`` or ``""``.
+
+    Use this when printing a detected credential so the user can see where
+    it came from.  Empty string when the credential came from ``.env`` or
+    the shell — those are the implicit / "default" cases users already
+    understand.
+    """
+    source = get_secret_source(env_var)
+    if not source:
+        return ""
+    if source == "bitwarden":
+        return " (from Bitwarden)"
+    # Generic fallback — future-proofing for additional secret sources
+    # (e.g. 1Password, HashiCorp Vault) without having to update every
+    # call site.
+    return f" (from {source})"
 
 def _format_offending_chars(value: str, limit: int = 3) -> str:
     """Return a compact 'U+XXXX ('c'), ...' summary of non-ASCII codepoints."""
@@ -184,7 +245,21 @@ def _apply_external_secret_sources(home_path: Path) -> None:
     locate the access token) but BEFORE the rest of Hermes reads
     ``os.environ`` for credentials.  Any failure here is logged and
     swallowed — external secret sources must never block startup.
+
+    Idempotent within a process: subsequent calls for the same
+    ``home_path`` are no-ops.  ``load_hermes_dotenv()`` runs at import
+    time from several hot modules (cli.py, hermes_cli/main.py,
+    run_agent.py, trajectory_compressor.py, ...), so without this guard
+    the Bitwarden status line would print 3-5x per CLI startup.  Use
+    ``reset_secret_source_cache()`` if you need to force a re-pull
+    (tests, future ``hermes secrets bitwarden sync`` from a long-running
+    process).
     """
+    home_key = str(Path(home_path).resolve())
+    if home_key in _APPLIED_HOMES:
+        return
+    _APPLIED_HOMES.add(home_key)
+
     try:
         cfg = _load_secrets_config(home_path)
     except Exception:  # noqa: BLE001 — config errors must not block startup
