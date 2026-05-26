@@ -438,7 +438,7 @@ class MCPOAuthManager:
         # Fork fix 1ed507da: pass the full server URL (including path) so the
         # SDK's resource validation matches the Protected Resource Metadata
         # returned by the server. Stripping the path breaks servers whose PRM
-        # resource includes a path component (e.g. https://connect.composio.dev/mcp).
+        # resource includes a path component (e.g. https://connect.example.dev/mcp).
         return _HERMES_PROVIDER_CLS(
             server_name=server_name,
             server_url=entry.server_url,

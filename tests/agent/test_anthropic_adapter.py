@@ -1306,7 +1306,7 @@ class TestOAuthToolNameEncoding:
             "mcp_foo_bar",
             "mcp_f",
             "mcp_ha_call_service",
-            "mcp_composio_get_prompt",
+            "mcp_example_get_prompt",
             "mcp_terminal",
         ):
             assert R.match(blocked), f"regex should block {blocked!r}"
@@ -1317,8 +1317,8 @@ class TestOAuthToolNameEncoding:
             "mcp_Foo",              # PascalCase after prefix
             "mcp_fooBar",           # camelCase after prefix
             "mcp_FOO",              # UPPERCASE after prefix
-            "mcp_Composio_get_prompt",
-            "mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS",  # upper late in suffix
+            "mcp_example_get_prompt",
+            "mcp_example_EXAMPLE_GET_TOOL_SCHEMAS",
             "MCP_foo",              # uppercase prefix
             "Mcp_foo",              # titled prefix
             "mcp-foo",              # hyphen separator
@@ -1339,16 +1339,16 @@ class TestOAuthToolNameEncoding:
 
         # All-lowercase MCP tool — must be re-cased so the shipped name is
         # outside the blocklist pattern. Prefix is NOT duplicated.
-        assert enc("mcp_composio_get_prompt") == "mcp_Composio_get_prompt"
-        assert enc("mcp_composio_list_prompts") == "mcp_Composio_list_prompts"
+        assert enc("mcp_example_get_prompt") == "mcp_Example_get_prompt"
+        assert enc("mcp_example_list_prompts") == "mcp_Example_list_prompts"
 
     def test_encode_leaves_already_safe_prefixed_tools_alone(self):
         from agent.anthropic_adapter import _encode_oauth_tool_name as enc
 
         # Already has uppercase in the suffix — must not be re-capitalized or
         # the decoder would route it wrong.
-        assert enc("mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS") == (
-            "mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS"
+        assert enc("mcp_example_EXAMPLE_GET_TOOL_SCHEMAS") == (
+            "mcp_example_EXAMPLE_GET_TOOL_SCHEMAS"
         )
 
     def test_encode_handles_empty_name(self):
@@ -1392,8 +1392,8 @@ class TestOAuthToolNameEncoding:
         canonical = {
             "terminal",
             "read_file",
-            "mcp_composio_get_prompt",
-            "mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS",
+            "mcp_example_get_prompt",
+            "mcp_example_EXAMPLE_GET_TOOL_SCHEMAS",
         }
         for name in canonical:
             assert dec(enc(name), canonical_names=canonical) == name, (
@@ -1430,8 +1430,8 @@ class TestBuildAnthropicKwargsOAuthToolEncoding:
             for n in (
                 "terminal",
                 "read_file",
-                "mcp_composio_get_prompt",
-                "mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS",
+                "mcp_example_get_prompt",
+                "mcp_example_EXAMPLE_GET_TOOL_SCHEMAS",
             )
         ]
         kwargs = build_anthropic_kwargs(
@@ -1446,8 +1446,8 @@ class TestBuildAnthropicKwargsOAuthToolEncoding:
         assert sent_names == [
             "mcp_Terminal",
             "mcp_Read_file",
-            "mcp_Composio_get_prompt",
-            "mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS",
+            "mcp_example_get_prompt",
+            "mcp_example_EXAMPLE_GET_TOOL_SCHEMAS",
         ]
         for name in sent_names:
             assert not _OAUTH_BLOCKED_TOOL_NAME_RE.match(name), (
@@ -1544,7 +1544,7 @@ class TestBuildAnthropicKwargsOAuthToolEncoding:
         canonical registry name when the caller threads canonical_tool_names."""
         from agent.transports.anthropic import AnthropicTransport
         transport = AnthropicTransport()
-        canonical = {"terminal", "mcp_composio_get_prompt"}
+        canonical = {"terminal", "mcp_example_get_prompt"}
         response = SimpleNamespace(
             content=[
                 SimpleNamespace(
@@ -1556,7 +1556,7 @@ class TestBuildAnthropicKwargsOAuthToolEncoding:
                 SimpleNamespace(
                     type="tool_use",
                     id="toolu_02",
-                    name="mcp_Composio_get_prompt",
+                    name="mcp_Example_get_prompt",
                     input={},
                 ),
             ],
@@ -1568,7 +1568,7 @@ class TestBuildAnthropicKwargsOAuthToolEncoding:
             canonical_tool_names=canonical,
         )
         decoded = [tc.name for tc in normalized.tool_calls]
-        assert decoded == ["terminal", "mcp_composio_get_prompt"]
+        assert decoded == ["terminal", "mcp_example_get_prompt"]
 
 
 # ---------------------------------------------------------------------------

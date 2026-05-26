@@ -218,9 +218,9 @@ class TestBuildOAuthAuth:
             pytest.skip("MCP SDK auth not available")
 
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-        provider = build_oauth_auth("composio", "https://connect.composio.dev/mcp")
+        provider = build_oauth_auth("example-vendor", "https://connect.example.dev/mcp")
         assert isinstance(provider, OAuthClientProvider)
-        assert provider.context.server_url == "https://connect.composio.dev/mcp"
+        assert provider.context.server_url == "https://connect.example.dev/mcp"
 
 
 # ---------------------------------------------------------------------------

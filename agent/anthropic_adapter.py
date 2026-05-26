@@ -343,11 +343,11 @@ def _encode_oauth_tool_name(name: str) -> str:
       - Canonical MCP tool (already starts with ``mcp_``) whose full name
         already contains an uppercase letter: leave untouched. It's already
         outside the blocklist pattern.
-        ``mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS`` is unchanged.
+        ``mcp_example_EXAMPLE_GET_TOOL_SCHEMAS`` is unchanged.
       - Canonical MCP tool whose full name is entirely lowercase/digits:
         uppercase the first char after the prefix in place. The prefix is
         NOT duplicated, so dispatch keeps working and logs stay readable.
-        ``mcp_composio_get_prompt`` → ``mcp_Composio_get_prompt``.
+        ``mcp_example_get_prompt`` → ``mcp_Example_get_prompt``.
 
     Bisect results (see ``tests/integration/test_oauth_blocklist_bisect.py``):
     any uppercase character anywhere in the suffix breaks the heuristic.
@@ -384,7 +384,7 @@ def _decode_oauth_tool_name(
     falls back to the historical 'drop the prefix' behavior.
 
     Names that were pass-through encoded (already contain uppercase, e.g.
-    ``mcp_composio_COMPOSIO_GET_TOOL_SCHEMAS``) round-trip exactly because
+    ``mcp_example_EXAMPLE_GET_TOOL_SCHEMAS``) round-trip exactly because
     the decoder prefers the canonical-match branch when it has the set.
     """
     if not encoded.startswith(_MCP_TOOL_PREFIX):
@@ -394,7 +394,7 @@ def _decode_oauth_tool_name(
         return encoded
 
     # Candidate A: the name the encoder produced from a prefixed canonical
-    # (``mcp_Composio_get_prompt`` → ``mcp_composio_get_prompt``).
+    # (``mcp_Example_get_prompt`` → ``mcp_example_get_prompt``).
     mcp_style = _MCP_TOOL_PREFIX + stripped[0].lower() + stripped[1:]
     # Candidate B: the name the encoder produced from an unprefixed canonical
     # (``mcp_Terminal`` → ``terminal``).

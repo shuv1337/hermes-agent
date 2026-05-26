@@ -1005,7 +1005,10 @@ class SessionStore:
                 entry = self._entries[session_key]
                 # Never override an explicit ``suspended`` — that is a hard
                 # forced-wipe signal (from /stop or stuck-loop escalation).
-                if entry.suspended:
+                # Also skip sessions that were just explicitly reset; the
+                # user started fresh and does not want a restart-interruption
+                # note on a brand-new conversation.
+                if entry.suspended or getattr(entry, "is_fresh_reset", False):
                     return False
                 entry.resume_pending = True
                 entry.resume_reason = reason

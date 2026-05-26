@@ -3393,6 +3393,12 @@ class GatewayRunner:
                 source=source,
                 internal=True,
             )
+            logger.info(
+                "Auto-resuming session %s (id=%s, reason=%s)",
+                entry.session_key,
+                entry.session_id,
+                getattr(entry, "resume_reason", "unknown"),
+            )
             task = asyncio.create_task(adapter.handle_message(event))
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
@@ -8496,6 +8502,15 @@ class GatewayRunner:
 
         # Reset the session
         new_entry = self.session_store.reset_session(session_key)
+
+        # Defense-in-depth: a freshly-reset session must never be
+        # auto-resumed.  If the gateway shuts down before the next
+        # real message arrives, the new session would otherwise pick
+        # up a spurious restart-interruption note.
+        try:
+            self.session_store.clear_resume_pending(session_key)
+        except Exception:
+            pass
 
         # Clear any session-scoped model/reasoning overrides so the next agent
         # picks up configured defaults instead of previous session switches.

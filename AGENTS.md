@@ -981,8 +981,8 @@ characteristic <200ms latency (genuine inference takes >250ms).
   rejected (any uppercase letter in the suffix takes them outside the pattern). Our OAuth path
   used to prepend a plain `mcp_` prefix so every lowercase snake_case Hermes tool tripped it.
   Fixed in `agent/anthropic_adapter.py::_encode_oauth_tool_name` — prepends `mcp_` AND uppercases
-  the first char (or capitalizes an existing prefixed-lowercase name in place so `mcp_composio_get_prompt`
-  → `mcp_Composio_get_prompt`). `_decode_oauth_tool_name` reverses it via the caller's
+  the first char (or capitalizes an existing prefixed-lowercase name in place so `mcp_example_get_prompt`
+  → `mcp_Example_get_prompt`). `_decode_oauth_tool_name` reverses it via the caller's
   `canonical_tool_names` set. Static guards in `tests/agent/test_anthropic_adapter.py::TestOAuthToolNameEncoding`
   and `TestBuildAnthropicKwargsOAuthToolEncoding`.
 

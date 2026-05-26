@@ -643,7 +643,7 @@ def build_oauth_auth(
     # SDK's resource validation matches the Protected Resource Metadata
     # returned by the server. Stripping the path via `_parse_base_url` causes
     # "Protected resource … does not match expected …" errors for servers
-    # whose PRM includes a path component (e.g. https://connect.composio.dev/mcp).
+    # whose PRM includes a path component (e.g. https://connect.example.dev/mcp).
     # See fork commit 1ed507da. `_parse_base_url` is still used for discovery
     # elsewhere (e.g. mcp_oauth_manager internals) where the base origin is
     # appropriate.
