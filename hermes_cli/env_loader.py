@@ -83,6 +83,7 @@ def format_secret_source_suffix(env_var: str) -> str:
     # call site.
     return f" (from {source})"
 
+
 def _format_offending_chars(value: str, limit: int = 3) -> str:
     """Return a compact 'U+XXXX ('c'), ...' summary of non-ASCII codepoints."""
     seen: list[str] = []
@@ -163,6 +164,10 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
     This produces mangled values — e.g. a bot token duplicated 8×
     (see #8908).
 
+    Also strips embedded null bytes which crash ``os.environ[k] = v``
+    with ``ValueError: embedded null byte`` — typically introduced by
+    copy-pasting API keys from terminals or rich-text editors.
+
     We delegate to ``hermes_cli.config._sanitize_env_lines`` which
     already knows all valid Hermes env-var names and can split
     concatenated lines correctly.
@@ -178,7 +183,11 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
     try:
         with open(path, **read_kw) as f:
             original = f.readlines()
-        sanitized = _sanitize_env_lines(original)
+        # Strip null bytes before _sanitize_env_lines so they never
+        # reach python-dotenv (which passes them to os.environ and
+        # crashes with ValueError).
+        stripped = [line.replace("\x00", "") for line in original]
+        sanitized = _sanitize_env_lines(stripped)
         if sanitized != original:
             import tempfile
             fd, tmp = tempfile.mkstemp(
@@ -282,6 +291,7 @@ def _apply_external_secret_sources(home_path: Path) -> None:
         cache_ttl_seconds=float(bw_cfg.get("cache_ttl_seconds", 300)),
         auto_install=bool(bw_cfg.get("auto_install", True)),
         server_url=str(bw_cfg.get("server_url", "") or "").strip(),
+        home_path=home_path,
     )
 
     if result.applied:
@@ -289,6 +299,12 @@ def _apply_external_secret_sources(home_path: Path) -> None:
         # and might have the same copy-paste corruption as a manually
         # edited .env (see #6843).
         _sanitize_loaded_credentials()
+        # Remember where these came from so the setup / `hermes model`
+        # flows can label detected credentials with "(from Bitwarden)" —
+        # otherwise users see "credentials ✓" with no hint that the value
+        # came from BSM rather than .env.
+        for name in result.applied:
+            _SECRET_SOURCES[name] = "bitwarden"
         print(
             f"  Bitwarden Secrets Manager: applied {len(result.applied)} "
             f"secret{'s' if len(result.applied) != 1 else ''} "

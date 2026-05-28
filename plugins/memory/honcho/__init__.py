@@ -321,10 +321,8 @@ class HonchoMemoryProvider(MemoryProvider):
             except Exception as e:
                 logger.debug("Honcho cost-awareness config parse error: %s", e)
 
-            # ----- Port #1969: aiPeer sync from SOUL.md — REMOVED -----
-            # SOUL.md is persona content, not identity config. aiPeer should
-            # only come from honcho.json (host block or root) or the default.
-            # See scratch/memory-plugin-ux-specs.md #10 for rationale.
+            # aiPeer comes from honcho.json (host block or root) only.
+            # SOUL.md is persona content, not identity config.
 
             # ----- Port #1957: lazy session init for tools-only mode -----
             if self._recall_mode == "tools":
@@ -355,34 +353,12 @@ class HonchoMemoryProvider(MemoryProvider):
         from plugins.memory.honcho.session import HonchoSessionManager
 
         client = get_honcho_client(cfg)
-        # ---- shuvdev local patch: build human-/deriver-legible peer name ----
-        # Upstream commit 5b6792f0 ("fix(honcho): scope gateway sessions by
-        # runtime user id") passes the bare gateway user_id (e.g. Telegram
-        # numeric ID "1614192390") straight through as the Honcho peer name.
-        # The deriver formats every line as "<time> <peer_name>: <content>",
-        # so a bare numeric ID becomes the grammatical subject of every
-        # observation -- ugly, opaque, and prone to attribution flips when
-        # an agent posts long status updates that include numbers.
-        #
-        # Fix: prefix the runtime user_id with the platform name (e.g.
-        # "u_telegram_1614192390"), which matches the pre-regression naming
-        # already seeded in shuvoncho's ws_061844db69359e33 workspace and
-        # gives the deriver a clear "this is a user" signal.
-        runtime_user_id = kwargs.get("user_id") or None
-        platform = kwargs.get("platform") or ""
-        runtime_user_peer_name = runtime_user_id
-        if runtime_user_id:
-            already_prefixed = (
-                runtime_user_id.startswith(("u_", "a_"))
-                or "_" in runtime_user_id
-            )
-            if not already_prefixed and platform:
-                runtime_user_peer_name = f"u_{platform.lower()}_{runtime_user_id}"
         self._manager = HonchoSessionManager(
             honcho=client,
             config=cfg,
             context_tokens=cfg.context_tokens,
-            runtime_user_peer_name=runtime_user_peer_name,
+            runtime_user_peer_name=kwargs.get("user_id") or None,
+            runtime_user_peer_name_alt=kwargs.get("user_id_alt") or None,
         )
 
         # ----- B3: resolve_session_name -----
