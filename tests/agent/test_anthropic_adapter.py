@@ -1383,7 +1383,7 @@ class TestOAuthToolNameEncoding:
             "mcp_Foo",              # PascalCase after prefix
             "mcp_fooBar",           # camelCase after prefix
             "mcp_FOO",              # UPPERCASE after prefix
-            "mcp_example_get_prompt",
+            "mcp_Example_get_prompt",  # capitalized-first-char encoding
             "mcp_example_EXAMPLE_GET_TOOL_SCHEMAS",
             "MCP_foo",              # uppercase prefix
             "Mcp_foo",              # titled prefix
@@ -1512,8 +1512,8 @@ class TestBuildAnthropicKwargsOAuthToolEncoding:
         assert sent_names == [
             "mcp_Terminal",
             "mcp_Read_file",
-            "mcp_example_get_prompt",
-            "mcp_example_EXAMPLE_GET_TOOL_SCHEMAS",
+            "mcp_Example_get_prompt",  # already-prefixed all-lowercase: first char capitalized in place
+            "mcp_example_EXAMPLE_GET_TOOL_SCHEMAS",  # has uppercase already; pass-through
         ]
         for name in sent_names:
             assert not _OAUTH_BLOCKED_TOOL_NAME_RE.match(name), (

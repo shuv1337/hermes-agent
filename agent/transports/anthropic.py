@@ -84,10 +84,11 @@ class AnthropicTransport(ProviderTransport):
         to OpenAI finish_reason, and collects reasoning_details in provider_data.
         """
         import json
-        from agent.anthropic_adapter import _to_plain_data
+        from agent.anthropic_adapter import _to_plain_data, _decode_oauth_tool_name
         from agent.transports.types import ToolCall
 
         strip_tool_prefix = kwargs.get("strip_tool_prefix", False)
+        canonical_tool_names = kwargs.get("canonical_tool_names")
         _MCP_PREFIX = "mcp_"
 
         text_parts = []
@@ -106,17 +107,30 @@ class AnthropicTransport(ProviderTransport):
             elif block.type == "tool_use":
                 name = block.name
                 if strip_tool_prefix and name.startswith(_MCP_PREFIX):
-                    stripped = name[len(_MCP_PREFIX):]
-                    # Only strip the mcp_ prefix for OAuth-injected tools
-                    # (where Hermes adds the prefix when sending to Anthropic
-                    # and must remove it on the way back).  Native MCP server
-                    # tools (from mcp_servers: in config.yaml) are registered
-                    # in the tool registry under their FULL mcp_<server>_<tool>
-                    # name and must NOT be stripped.  GH-25255.
+                    # Anthropic's April 2026 OAuth blocklist rejects
+                    # ``mcp_<lowercase>`` tool names, so the encoder
+                    # uppercases the first char of the suffix (see
+                    # ``_encode_oauth_tool_name``). The decoder must reverse
+                    # that AND strip the synthetic ``mcp_`` prefix for
+                    # canonical Hermes tools, while leaving native MCP
+                    # server tools (registered in the registry under their
+                    # full ``mcp_<server>_<tool>`` name) untouched.
+                    # GH-25255.
                     from tools.registry import registry as _tool_registry
-                    if (_tool_registry.get_entry(stripped)
-                            and not _tool_registry.get_entry(name)):
-                        name = stripped
+                    canonical_names = canonical_tool_names
+                    if canonical_names is None:
+                        canonical_names = set(_tool_registry.get_all_tool_names())
+                    decoded = _decode_oauth_tool_name(
+                        name, canonical_names=canonical_names
+                    )
+                    if decoded in canonical_names:
+                        name = decoded
+                    else:
+                        # Legacy fallback: naive prefix strip + registry probe.
+                        stripped = name[len(_MCP_PREFIX):]
+                        if (_tool_registry.get_entry(stripped)
+                                and not _tool_registry.get_entry(name)):
+                            name = stripped
                 tool_calls.append(
                     ToolCall(
                         id=block.id,

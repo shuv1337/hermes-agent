@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import platform
+import re
 import secrets
 import stat
 import subprocess
@@ -2249,15 +2250,20 @@ def build_anthropic_kwargs(
                 text = text.replace("Nous Research", "Anthropic")
                 block["text"] = text
 
-        # 3. Prefix tool names with mcp_ (Claude Code convention)
-        #    Skip names that already begin with the marker — native MCP server
-        #    tools (from mcp_servers: in config.yaml) are registered under their
-        #    full mcp_<server>_<tool> name and would double-prefix otherwise,
-        #    breaking round-trip registry lookup in normalize_response. GH-25255.
+        # 3. Encode tool names for Claude Code OAuth compatibility.
+        #    Historically this was a simple ``mcp_`` prefix. Anthropic's April
+        #    2026 blocklist rejects ``mcp_<lowercase>`` names with a misleading
+        #    'out of extra usage' 400, so we use ``_encode_oauth_tool_name``
+        #    which prepends ``mcp_`` AND uppercases the first char of the
+        #    suffix (or capitalizes the first suffix char in place for tools
+        #    already prefixed ``mcp_<lowercase>``) so the resulting name never
+        #    matches the blocklist regex. Round-trip preserved via
+        #    ``_decode_oauth_tool_name`` (threaded through ``valid_tool_names``
+        #    on the response side). See that helper for details. GH-25255.
         if anthropic_tools:
             for tool in anthropic_tools:
-                if "name" in tool and not tool["name"].startswith(_MCP_TOOL_PREFIX):
-                    tool["name"] = _MCP_TOOL_PREFIX + tool["name"]
+                if "name" in tool:
+                    tool["name"] = _encode_oauth_tool_name(tool["name"])
 
         # 4. Encode tool names in message history (tool_use blocks).
         # tool_result blocks reference IDs, not names, so they're untouched.

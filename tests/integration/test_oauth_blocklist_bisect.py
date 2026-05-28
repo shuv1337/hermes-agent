@@ -212,7 +212,6 @@ def _build_full_prompt(
         skip_memory=skip_memory,
         quiet_mode=True,
         save_trajectories=False,
-        persist_session=False,
     )
     prompt = agent._build_system_prompt()
     assert prompt, f"Empty prompt for platform={platform!r}"
