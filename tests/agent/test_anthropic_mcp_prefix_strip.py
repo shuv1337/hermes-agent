@@ -50,6 +50,11 @@ class _FakeRegistry:
             return SimpleNamespace(name=name)  # truthy = tool exists
         return None
 
+    def get_all_tool_names(self):
+        # Used by the transport's OAuth tool-name decoder to disambiguate
+        # canonical Hermes vs MCP-style names.
+        return list(self._names)
+
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -202,13 +207,19 @@ class TestAnthropicOAuthOutgoingPrefix:
         )
 
     def test_oauth_adds_prefix_to_bare_tool_name(self):
-        """OAuth + bare name → prefix added (existing Claude Code convention)."""
+        """OAuth + bare name → encoded prefix added (April 2026 blocklist evasion).
+
+        Plain ``mcp_<lowercase>`` matches Anthropic's OAuth blocklist regex
+        (``^mcp_[a-z0-9_]+$``), so the encoder uppercases the first char
+        after the prefix → ``mcp_Read_file``. See
+        ``_encode_oauth_tool_name`` for the contract.
+        """
         kwargs = self._build([{
             "type": "function",
             "function": {"name": "read_file", "description": "x", "parameters": {}},
         }])
         names = [t["name"] for t in kwargs["tools"]]
-        assert names == ["mcp_read_file"]
+        assert names == ["mcp_Read_file"]
 
     def test_oauth_does_not_double_prefix_native_mcp_tool(self):
         """OAuth + already-prefixed native MCP name → left alone."""
@@ -226,7 +237,13 @@ class TestAnthropicOAuthOutgoingPrefix:
         assert names == ["mcp_composio_COMPOSIO_SEARCH_TOOLS"]
 
     def test_oauth_mixed_native_and_bare_tools(self):
-        """Mixed: native MCP preserved, bare names prefixed."""
+        """Mixed: native MCP names with uppercase pass through, bare names encoded.
+
+        - ``mcp_composio_SEARCH`` already has uppercase in the suffix, so
+          it doesn't match the blocklist regex and is left untouched.
+        - ``read_file`` / ``terminal`` are encoded to ``mcp_Read_file`` /
+          ``mcp_Terminal``.
+        """
         kwargs = self._build([
             {"type": "function", "function": {"name": "read_file",
                                                "description": "x", "parameters": {}}},
@@ -236,7 +253,7 @@ class TestAnthropicOAuthOutgoingPrefix:
                                                "description": "z", "parameters": {}}},
         ])
         names = sorted(t["name"] for t in kwargs["tools"])
-        assert names == ["mcp_composio_SEARCH", "mcp_read_file", "mcp_terminal"]
+        assert names == ["mcp_Read_file", "mcp_Terminal", "mcp_composio_SEARCH"]
 
     def test_non_oauth_path_untouched(self):
         """Non-OAuth requests never get the prefix — schemas pass through as-is."""

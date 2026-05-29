@@ -1933,8 +1933,16 @@ class TestThinkingBlockSignatureManagement:
         assert len(thinking) == 1
         assert thinking[0]["signature"] == "sig_valid"
 
-    def test_unsigned_thinking_downgraded_to_text_on_last_turn(self):
-        """Unsigned thinking blocks on the last turn become text blocks."""
+    def test_unsigned_thinking_dropped_on_last_turn(self):
+        """Unsigned thinking blocks on the last assistant turn are dropped.
+
+        Pre-Opus-4.8 we downgraded unsigned thinking blocks on the latest
+        assistant to text so the reasoning content wasn't lost. Opus 4.8+
+        rejects ANY mutation of thinking blocks on the latest assistant
+        message with HTTP 400 'thinking ... blocks in the latest assistant
+        message cannot be modified', so a synthesised text-block is no
+        longer safe — Anthropic accepts omission, not transformation.
+        """
         messages = [
             {
                 "role": "assistant",
@@ -1948,11 +1956,13 @@ class TestThinkingBlockSignatureManagement:
         _, result = convert_messages_to_anthropic(messages)
         blocks = result[0]["content"]
 
-        # No thinking blocks should remain
+        # No thinking blocks should remain (dropped, not downgraded)…
         assert not any(b.get("type") == "thinking" for b in blocks)
-        # The reasoning text should be preserved as a text block
+        # …and the reasoning text must NOT leak into a synthetic text block.
         text_contents = [b.get("text", "") for b in blocks if b.get("type") == "text"]
-        assert "Unsigned reasoning." in text_contents
+        assert "Unsigned reasoning." not in text_contents
+        # The model's actual response text is still there.
+        assert "Response text." in text_contents
 
     def test_redacted_thinking_with_data_preserved(self):
         """Redacted thinking with 'data' field is kept on last turn."""
@@ -1987,8 +1997,15 @@ class TestThinkingBlockSignatureManagement:
         blocks = result[0]["content"]
         assert not any(b.get("type") == "redacted_thinking" for b in blocks)
 
-    def test_cache_control_stripped_from_thinking_blocks(self):
-        """cache_control markers are removed from thinking/redacted_thinking blocks."""
+    def test_cache_control_stripped_from_non_latest_assistant_thinking_blocks(self):
+        """cache_control is removed from thinking blocks on non-latest assistants.
+
+        On direct Anthropic, only the latest assistant message's thinking
+        blocks must be preserved byte-exact (Opus 4.8+ contract). Earlier
+        assistants get their thinking blocks fully stripped anyway, so any
+        cache_control marker on those blocks is moot — verify the resulting
+        content has no thinking blocks at all.
+        """
         messages = [
             {
                 "role": "assistant",
@@ -1999,19 +2016,96 @@ class TestThinkingBlockSignatureManagement:
                 "reasoning_details": [
                     {
                         "type": "thinking",
-                        "thinking": "Reasoning.",
+                        "thinking": "First reasoning.",
                         "signature": "sig_1",
                         "cache_control": {"type": "ephemeral"},
                     },
                 ],
             },
             {"role": "tool", "tool_call_id": "tc_1", "content": "result"},
+            {
+                "role": "assistant",
+                "content": "Final.",
+                "reasoning_details": [
+                    {"type": "thinking", "thinking": "Last.", "signature": "sig_2"},
+                ],
+            },
+        ]
+        _, result = convert_messages_to_anthropic(messages)
+        assistants = [m for m in result if m["role"] == "assistant"]
+        # Non-latest assistant: thinking blocks stripped entirely.
+        first = assistants[0]
+        assert not any(
+            isinstance(b, dict) and b.get("type") in {"thinking", "redacted_thinking"}
+            for b in first["content"]
+        )
+
+    def test_latest_assistant_thinking_blocks_preserved_byte_exact(self):
+        """Latest assistant on direct Anthropic must NOT be mutated.
+
+        Opus 4.8+ rejects any modification of ``thinking`` /
+        ``redacted_thinking`` blocks on the latest assistant message with
+        HTTP 400 "blocks in the latest assistant message cannot be
+        modified." That includes stripping ``cache_control`` markers.
+        """
+        messages = [
+            {"role": "user", "content": "hi"},
+            {
+                "role": "assistant",
+                "content": "Final.",
+                "reasoning_details": [
+                    {
+                        "type": "thinking",
+                        "thinking": "Reasoning.",
+                        "signature": "sig_1",
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                ],
+            },
         ]
         _, result = convert_messages_to_anthropic(messages)
         assistant = next(m for m in result if m["role"] == "assistant")
-        for block in assistant["content"]:
-            if block.get("type") in {"thinking", "redacted_thinking"}:
-                assert "cache_control" not in block
+        thinking = next(
+            b for b in assistant["content"]
+            if isinstance(b, dict) and b.get("type") == "thinking"
+        )
+        # Byte-exact preservation — including the cache_control marker.
+        assert thinking["thinking"] == "Reasoning."
+        assert thinking["signature"] == "sig_1"
+        assert thinking["cache_control"] == {"type": "ephemeral"}
+
+    def test_latest_assistant_unsigned_thinking_dropped_not_downgraded(self):
+        """Latest assistant unsigned thinking is dropped (not downgraded to text).
+
+        Pre-Opus-4.8 we downgraded unsigned blocks to text so the reasoning
+        wasn't lost, but that's a modification under the new contract.
+        Drop the block entirely instead — Anthropic accepts omission.
+        """
+        messages = [
+            {"role": "user", "content": "hi"},
+            {
+                "role": "assistant",
+                "content": "Final answer.",
+                "reasoning_details": [
+                    # No signature — simulates context compression having
+                    # stripped it. We must NOT resurrect this as a text block.
+                    {"type": "thinking", "thinking": "Reasoning."},
+                ],
+            },
+        ]
+        _, result = convert_messages_to_anthropic(messages)
+        assistant = next(m for m in result if m["role"] == "assistant")
+        # No thinking block survived…
+        assert not any(
+            isinstance(b, dict) and b.get("type") == "thinking"
+            for b in assistant["content"]
+        )
+        # …and no spurious text block carrying the reasoning either.
+        assert not any(
+            isinstance(b, dict) and b.get("type") == "text"
+            and "Reasoning." in (b.get("text") or "")
+            for b in assistant["content"]
+        )
 
     def test_thinking_stripped_from_merged_consecutive_assistants(self):
         """When consecutive assistants are merged, second one's thinking is dropped."""

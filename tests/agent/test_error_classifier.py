@@ -661,6 +661,25 @@ class TestClassifyApiError:
         # Without "thinking" in the message, it shouldn't be thinking_signature
         assert result.reason != FailoverReason.thinking_signature
 
+    def test_anthropic_opus48_thinking_cannot_be_modified(self):
+        """Opus 4.8+ rejects thinking-block mutation with a new error variant.
+
+        Surface text: "`thinking` or `redacted_thinking` blocks in the
+        latest assistant message cannot be modified." The classifier
+        must route this to ``thinking_signature`` recovery so the
+        gateway strips reasoning_details and retries instead of
+        treating it as a hard non-retryable client error.
+        """
+        e = MockAPIError(
+            "messages.21.content.4: `thinking` or `redacted_thinking` blocks "
+            "in the latest assistant message cannot be modified. These blocks "
+            "must remain as they were in the original response.",
+            status_code=400,
+        )
+        result = classify_api_error(e, provider="anthropic")
+        assert result.reason == FailoverReason.thinking_signature
+        assert result.retryable is True
+
     def test_invalid_encrypted_content_classified_as_retryable_replay_failure(self):
         body = {
             "error": {

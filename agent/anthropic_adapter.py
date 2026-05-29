@@ -2019,6 +2019,12 @@ def _manage_thinking_signatures(
                     continue
                 new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
+            # Strip cache_control from any remaining thinking blocks —
+            # cache markers interfere with signature validation on the
+            # endpoints that DO preserve thinking blocks.
+            for b in m["content"]:
+                if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
+                    b.pop("cache_control", None)
         elif _is_third_party or idx != last_assistant_idx:
             # Third-party: strip ALL thinking blocks (signatures are proprietary).
             # Direct Anthropic: strip from non-latest assistant messages only.
@@ -2027,32 +2033,40 @@ def _manage_thinking_signatures(
                 if not (isinstance(b, dict) and b.get("type") in _THINKING_TYPES)
             ]
             m["content"] = stripped or [{"type": "text", "text": "(thinking elided)"}]
+            # No surviving thinking blocks here, so nothing to strip cache_control from.
         else:
-            # Latest assistant on direct Anthropic: keep signed, downgrade unsigned
-            # to text so the reasoning isn't lost.
+            # Latest assistant on direct Anthropic: pass thinking blocks
+            # through BYTE-EXACT. Opus 4.8+ rejects any mutation of
+            # ``thinking`` / ``redacted_thinking`` blocks on the latest
+            # assistant message with HTTP 400 "`thinking` or
+            # `redacted_thinking` blocks in the latest assistant message
+            # cannot be modified." That includes downgrading unsigned
+            # blocks to text AND removing ``cache_control`` keys.
+            #
+            # Defensive drops (no signature → will be rejected anyway):
+            # we only drop a block when the validator is guaranteed to
+            # reject it, leaving the rest UNTOUCHED.  This matches
+            # Anthropic's documented contract: blocks must be sent back
+            # exactly as received, or omitted entirely.
             new_content = []
             for b in m["content"]:
                 if not isinstance(b, dict) or b.get("type") not in _THINKING_TYPES:
                     new_content.append(b)
                     continue
                 if b.get("type") == "redacted_thinking":
-                    # Redacted blocks use 'data' for the signature payload —
-                    # drop the block when 'data' is missing (can't be validated).
+                    # Redacted blocks need 'data' to validate; drop otherwise.
                     if b.get("data"):
                         new_content.append(b)
-                elif b.get("signature"):
-                    new_content.append(b)
-                else:
-                    thinking_text = b.get("thinking", "")
-                    if thinking_text:
-                        new_content.append({"type": "text", "text": thinking_text})
+                    continue
+                if not b.get("signature"):
+                    # Unsigned thinking would be rejected; drop the whole
+                    # block rather than downgrade-to-text (which counts as
+                    # a modification under the Opus 4.8+ contract).
+                    continue
+                # Signed: pass through with ALL keys intact, including any
+                # cache_control marker. Stripping it counts as a modification.
+                new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
-
-        # Strip cache_control from any remaining thinking/redacted_thinking
-        # blocks — cache markers interfere with signature validation.
-        for b in m["content"]:
-            if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
-                b.pop("cache_control", None)
 
 
 def _evict_old_screenshots(result: List[Dict[str, Any]]) -> None:
