@@ -16,6 +16,7 @@ import base64
 import json
 import logging
 import os
+import re
 import random
 import time
 import uuid
@@ -552,6 +553,18 @@ class SignalAdapter(BasePlatformAdapter):
                     "Signal: ignoring group message (require_mention=true, bot not mentioned)"
                 )
                 return
+
+        # Strip a leading self-@mention so slash commands typed as
+        # ``@<bot> /status`` reach ``is_command()`` as ``/status``. Without
+        # this the gateway routes the message to the agent as plain text and
+        # the model tries to interpret the command itself. Mirrors WeCom's
+        # leading-@ strip (gateway/platforms/wecom.py).
+        if text and self._account_normalized:
+            text = re.sub(
+                rf"^@{re.escape(self._account_normalized)}\s*",
+                "",
+                text,
+            ).lstrip()
 
         # Extract quote (reply-to) context from Signal dataMessage
         quote_data = data_message.get("quote") or {}
