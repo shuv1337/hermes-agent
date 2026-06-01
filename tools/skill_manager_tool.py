@@ -287,7 +287,10 @@ def _find_skill(name: str) -> Optional[Dict[str, Any]]:
     for skills_dir in get_all_skills_dirs():
         if not skills_dir.exists():
             continue
-        for skill_md in skills_dir.rglob("SKILL.md"):
+        for root, _dirs, files in os.walk(skills_dir, followlinks=True):
+            if "SKILL.md" not in files:
+                continue
+            skill_md = Path(root) / "SKILL.md"
             if is_excluded_skill_path(skill_md):
                 continue
             if skill_md.parent.name == name:
@@ -350,7 +353,10 @@ def _find_skill_in_other_profiles(name: str) -> List[Tuple[str, Path]]:
         if not skills_dir.is_dir():
             continue
         try:
-            for skill_md in skills_dir.rglob("SKILL.md"):
+            for root, _dirs, files in os.walk(skills_dir, followlinks=True):
+                if "SKILL.md" not in files:
+                    continue
+                skill_md = Path(root) / "SKILL.md"
                 if is_excluded_skill_path(skill_md):
                     continue
                 if skill_md.parent.name == name:
