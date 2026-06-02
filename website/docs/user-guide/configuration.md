@@ -1563,6 +1563,21 @@ timezone: "America/New_York"   # IANA timezone (default: "" = server-local time)
 
 Supported values: any IANA timezone identifier (e.g. `America/New_York`, `Europe/London`, `Asia/Kolkata`, `UTC`). Leave empty or omit for server-local time.
 
+## Signal
+
+Configure Signal-specific group gating for the messaging gateway:
+
+```yaml
+signal:
+  require_mention: true                    # Require @mention to respond in groups
+  reply_to_bot_bypasses_mention: true      # Allow inline replies to bot messages without @mention
+  free_response_chats: ""                  # Comma-separated group IDs where no mention is needed
+```
+
+- `require_mention` — when `true` (default), group messages need an explicit bot mention unless another narrow bypass applies.
+- `reply_to_bot_bypasses_mention` — when `true` (default), a direct inline reply to a bot-authored Signal message is processed without an @mention.
+- `free_response_chats` — comma-separated list of group IDs where every message is processed without requiring a mention.
+
 ## Discord
 
 Configure Discord-specific behavior for the messaging gateway:

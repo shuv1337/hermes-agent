@@ -950,6 +950,63 @@ class TestSignalShouldProcessGroupMessage:
         adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
         assert adapter._should_process_group_message("hey there", {"mentions": []}, "group123") is False
 
+    def test_group_reply_to_bot_accepted_without_mention(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "message": "good bot - all fixed",
+            "mentions": [],
+            "quote": {"id": 99, "author": "+10005550100", "text": "Fixed. Here's what was wrong."},
+        }
+        assert adapter._should_process_group_message(
+            "good bot - all fixed",
+            data_message,
+            "group123",
+        ) is True
+
+    def test_group_reply_to_other_user_rejected_without_mention(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        data_message = {
+            "message": "good bot - all fixed",
+            "mentions": [],
+            "quote": {"id": 99, "author": "+10005559999", "text": "Fixed. Here's what was wrong."},
+        }
+        assert adapter._should_process_group_message(
+            "good bot - all fixed",
+            data_message,
+            "group123",
+        ) is False
+
+    def test_group_reply_to_bot_bypass_can_be_disabled(self, monkeypatch):
+        adapter = _make_signal_adapter(
+            monkeypatch,
+            account="+10005550100",
+            reply_to_bot_bypasses_mention=False,
+        )
+        data_message = {
+            "message": "good bot - all fixed",
+            "mentions": [],
+            "quote": {"id": 99, "author": "+10005550100"},
+        }
+        assert adapter._should_process_group_message(
+            "good bot - all fixed",
+            data_message,
+            "group123",
+        ) is False
+
+    def test_group_reply_to_bot_uuid_accepted_without_mention(self, monkeypatch):
+        adapter = _make_signal_adapter(monkeypatch, account="+10005550100")
+        adapter._account_uuid = "abc-def-123"
+        data_message = {
+            "message": "good bot - all fixed",
+            "mentions": [],
+            "quote": {"id": 99, "author": "abc-def-123"},
+        }
+        assert adapter._should_process_group_message(
+            "good bot - all fixed",
+            data_message,
+            "group123",
+        ) is True
+
     def test_slash_command_always_accepted(self, monkeypatch):
         adapter = _make_signal_adapter(monkeypatch)
         assert adapter._should_process_group_message("/help", {"mentions": []}, "group123") is True
@@ -963,6 +1020,44 @@ class TestSignalShouldProcessGroupMessage:
         monkeypatch.setenv("SIGNAL_FREE_RESPONSE_CHATS", "group123")
         adapter = _make_signal_adapter(monkeypatch)
         assert adapter._should_process_group_message("random msg", {"mentions": []}, "group123") is True
+
+    @pytest.mark.asyncio
+    async def test_handle_envelope_group_reply_to_bot_dispatches_without_mention(self, monkeypatch):
+        adapter = _make_signal_adapter(
+            monkeypatch,
+            account="+10005550100",
+            group_allowed="group123",
+        )
+        captured = {}
+
+        async def fake_handle(event):
+            captured["event"] = event
+
+        adapter.handle_message = fake_handle
+
+        await adapter._handle_envelope({
+            "envelope": {
+                "sourceNumber": "+15550001111",
+                "sourceUuid": "uuid-sender",
+                "sourceName": "Tester",
+                "timestamp": 1000000000,
+                "dataMessage": {
+                    "message": "good bot - all fixed",
+                    "mentions": [],
+                    "groupV2": {"id": "group123"},
+                    "quote": {
+                        "id": 99,
+                        "author": "+10005550100",
+                        "text": "Fixed. Here's what was wrong.",
+                    },
+                },
+            }
+        })
+
+        event = captured["event"]
+        assert event.text == "good bot - all fixed"
+        assert event.reply_to_message_id == "99"
+        assert event.reply_to_text == "Fixed. Here's what was wrong."
 
 
 class TestSignalCleanBotMention:
@@ -1979,7 +2074,7 @@ class TestSignalGroupV2Routing:
 
     @pytest.mark.asyncio
     async def test_group_v2_id_routes_as_group(self, monkeypatch):
-        adapter = _make_signal_adapter(monkeypatch, group_allowed="*")
+        adapter = _make_signal_adapter(monkeypatch, group_allowed="*", require_mention=False)
         captured = []
 
         async def _capture(event):
@@ -2001,7 +2096,7 @@ class TestSignalGroupV2Routing:
 
     @pytest.mark.asyncio
     async def test_legacy_group_info_still_works(self, monkeypatch):
-        adapter = _make_signal_adapter(monkeypatch, group_allowed="*")
+        adapter = _make_signal_adapter(monkeypatch, group_allowed="*", require_mention=False)
         captured = []
 
         async def _capture(event):
@@ -2023,7 +2118,7 @@ class TestSignalGroupV2Routing:
     @pytest.mark.asyncio
     async def test_group_v2_preferred_over_group_info(self, monkeypatch):
         """When both fields are present, groupV2 wins — it's the authoritative V2 id."""
-        adapter = _make_signal_adapter(monkeypatch, group_allowed="*")
+        adapter = _make_signal_adapter(monkeypatch, group_allowed="*", require_mention=False)
         captured = []
 
         async def _capture(event):
@@ -2063,7 +2158,11 @@ class TestSignalGroupV2Routing:
     @pytest.mark.asyncio
     async def test_group_v2_respects_allowlist(self, monkeypatch):
         """V2 group ids flow through the same SIGNAL_GROUP_ALLOWED_USERS filter."""
-        adapter = _make_signal_adapter(monkeypatch, group_allowed="allowed-v2==")
+        adapter = _make_signal_adapter(
+            monkeypatch,
+            group_allowed="allowed-v2==",
+            require_mention=False,
+        )
         captured = []
 
         async def _capture(event):

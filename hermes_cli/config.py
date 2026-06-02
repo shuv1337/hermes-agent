@@ -1599,6 +1599,13 @@ DEFAULT_CONFIG = {
         # Supports \n for newlines, e.g. "🤖 *My Bot*\n──────\n"
     },
 
+    # Signal platform settings (gateway mode)
+    "signal": {
+        "require_mention": True,                # Require @mention to respond in groups
+        "reply_to_bot_bypasses_mention": True,  # Inline replies to bot messages respond without @mention
+        "free_response_chats": "",              # Comma-separated group IDs where no mention is needed
+    },
+
     # Telegram platform settings (gateway mode)
     "telegram": {
         "reactions": False,            # Add 👀/✅/❌ reactions to messages during processing

@@ -1064,6 +1064,18 @@ def load_gateway_config() -> GatewayConfig:
             if isinstance(signal_cfg, dict):
                 if "require_mention" in signal_cfg and not os.getenv("SIGNAL_REQUIRE_MENTION"):
                     os.environ["SIGNAL_REQUIRE_MENTION"] = str(signal_cfg["require_mention"]).lower()
+                if (
+                    "reply_to_bot_bypasses_mention" in signal_cfg
+                    and not os.getenv("SIGNAL_REPLY_TO_BOT_BYPASSES_MENTION")
+                ):
+                    os.environ["SIGNAL_REPLY_TO_BOT_BYPASSES_MENTION"] = str(
+                        signal_cfg["reply_to_bot_bypasses_mention"]
+                    ).lower()
+                frc = signal_cfg.get("free_response_chats")
+                if frc is not None and not os.getenv("SIGNAL_FREE_RESPONSE_CHATS"):
+                    if isinstance(frc, list):
+                        frc = ",".join(str(v) for v in frc)
+                    os.environ["SIGNAL_FREE_RESPONSE_CHATS"] = str(frc)
 
             # DingTalk settings → env vars (env vars take precedence)
             dingtalk_cfg = yaml_cfg.get("dingtalk", {})
