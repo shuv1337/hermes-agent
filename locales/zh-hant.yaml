@@ -253,6 +253,7 @@ gateway:
     header:                "📊 **Hermes 閘道狀態**"
     session_id:            "**工作階段 ID：** `{session_id}`"
     title:                 "**標題：** {title}"
+    model:                 "**模型：** {model}"
     created:               "**建立時間：** {timestamp}"
     last_activity:         "**最近活動：** {timestamp}"
     tokens:                "**Token 數：** {tokens}"

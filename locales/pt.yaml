@@ -253,6 +253,7 @@ gateway:
     header:                "📊 **Estado do Hermes Gateway**"
     session_id:            "**ID da sessão:** `{session_id}`"
     title:                 "**Título:** {title}"
+    model:                 "**Modelo:** {model}"
     created:               "**Criada:** {timestamp}"
     last_activity:         "**Última atividade:** {timestamp}"
     tokens:                "**Tokens de API cumulativos (reenviados a cada chamada):** {tokens}"

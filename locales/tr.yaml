@@ -253,6 +253,7 @@ gateway:
     header:                "📊 **Hermes Gateway Durumu**"
     session_id:            "**Oturum kimliği:** `{session_id}`"
     title:                 "**Başlık:** {title}"
+    model:                 "**Model:** {model}"
     created:               "**Oluşturuldu:** {timestamp}"
     last_activity:         "**Son etkinlik:** {timestamp}"
     tokens:                "**Token:** {tokens}"

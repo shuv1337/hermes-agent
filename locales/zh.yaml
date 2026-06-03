@@ -253,6 +253,7 @@ gateway:
     header:                "📊 **Hermes 网关状态**"
     session_id:            "**会话 ID：** `{session_id}`"
     title:                 "**标题：** {title}"
+    model:                 "**模型：** {model}"
     created:               "**创建时间：** {timestamp}"
     last_activity:         "**最近活动：** {timestamp}"
     tokens:                "**Token 数：** {tokens}"

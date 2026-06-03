@@ -257,6 +257,7 @@ gateway:
     header:                "📊 **Stádas Hermes Gateway**"
     session_id:            "**ID Seisiúin:** `{session_id}`"
     title:                 "**Teideal:** {title}"
+    model:                 "**Samhail:** {model}"
     created:               "**Cruthaithe:** {timestamp}"
     last_activity:         "**Gníomhaíocht is déanaí:** {timestamp}"
     tokens:                "**Comharthaí:** {tokens}"

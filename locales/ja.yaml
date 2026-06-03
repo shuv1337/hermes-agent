@@ -253,6 +253,7 @@ gateway:
     header:                "📊 **Hermes ゲートウェイ状態**"
     session_id:            "**セッション ID:** `{session_id}`"
     title:                 "**タイトル:** {title}"
+    model:                 "**モデル:** {model}"
     created:               "**作成日時:** {timestamp}"
     last_activity:         "**最終アクティビティ:** {timestamp}"
     tokens:                "**トークン:** {tokens}"

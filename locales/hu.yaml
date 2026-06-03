@@ -253,6 +253,7 @@ gateway:
     header:                "📊 **Hermes Gateway állapot**"
     session_id:            "**Munkamenet-azonosító:** `{session_id}`"
     title:                 "**Cím:** {title}"
+    model:                 "**Modell:** {model}"
     created:               "**Létrehozva:** {timestamp}"
     last_activity:         "**Utolsó tevékenység:** {timestamp}"
     tokens:                "**Tokenek:** {tokens}"

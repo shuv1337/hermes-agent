@@ -253,6 +253,7 @@ gateway:
     header:                "📊 **Стан Hermes Gateway**"
     session_id:            "**ID сесії:** `{session_id}`"
     title:                 "**Назва:** {title}"
+    model:                 "**Модель:** {model}"
     created:               "**Створено:** {timestamp}"
     last_activity:         "**Остання активність:** {timestamp}"
     tokens:                "**Токени:** {tokens}"

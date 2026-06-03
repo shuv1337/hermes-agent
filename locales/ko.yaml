@@ -253,6 +253,7 @@ gateway:
     header:                "📊 **Hermes 게이트웨이 상태**"
     session_id:            "**세션 ID:** `{session_id}`"
     title:                 "**제목:** {title}"
+    model:                 "**모델:** {model}"
     created:               "**생성됨:** {timestamp}"
     last_activity:         "**최종 활동:** {timestamp}"
     tokens:                "**토큰:** {tokens}"
