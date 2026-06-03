@@ -757,7 +757,6 @@ export default function SystemPage() {
                 <span className="font-mono">hermes memory setup</span>
               </span>
             </div>
-
             <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
               <span className="text-xs text-muted-foreground">
                 Built-in files — MEMORY.md:{" "}

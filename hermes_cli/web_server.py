@@ -4243,7 +4243,6 @@ def _session_latest_descendant(session_id: str):
     finally:
         db.close()
 
-
 # CRITICAL — every literal-path route below MUST be declared BEFORE the
 # templated ``/api/sessions/{session_id}`` family that follows. FastAPI/
 # Starlette match routes in registration order, and the ``{session_id}``
