@@ -3348,6 +3348,7 @@ function createWindow() {
     vibrancy: IS_MAC ? 'sidebar' : undefined,
     icon,
     backgroundColor: '#f7f7f7',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -4097,11 +4098,7 @@ app.whenReady().then(() => {
   if (maybeRelocateToApplications()) return
   maybePinToDock()
 
-  if (IS_MAC) {
-    Menu.setApplicationMenu(buildApplicationMenu())
-  } else {
-    Menu.setApplicationMenu(null)
-  }
+  Menu.setApplicationMenu(buildApplicationMenu())
   installMediaPermissions()
   registerMediaProtocol()
   ensureWslWindowsFonts()
