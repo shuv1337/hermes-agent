@@ -39,7 +39,7 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from hermes_constants import get_hermes_home, display_hermes_home
+from hermes_constants import get_hermes_home, get_skills_dir, display_hermes_home
 from typing import Dict, Any, List, Optional, Tuple
 
 from utils import atomic_replace, is_truthy_value
@@ -104,9 +104,11 @@ def _security_scan_skill(skill_dir: Path) -> Optional[str]:
 import yaml
 
 
-# All skills live in ~/.hermes/skills/ (single source of truth)
+# Primary skills dir (single source of truth for skill creation).
+# Defaults to <HERMES_HOME>/skills; overridable via HERMES_SKILLS_DIR /
+# skills.dir in config.yaml (see get_skills_dir()).
 HERMES_HOME = get_hermes_home()
-SKILLS_DIR = HERMES_HOME / "skills"
+SKILLS_DIR = get_skills_dir()
 
 MAX_NAME_LENGTH = 64
 MAX_DESCRIPTION_LENGTH = 1024

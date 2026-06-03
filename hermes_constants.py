@@ -395,8 +395,70 @@ def get_config_path() -> Path:
     return get_hermes_home() / "config.yaml"
 
 
+_SKILLS_DIR_CACHE: dict = {}
+
+
+def _read_skills_dir_override() -> str:
+    """Return the configured primary skills-dir override, or ``""`` if unset.
+
+    Resolution order (first non-empty wins):
+        1. ``HERMES_SKILLS_DIR`` env var
+        2. ``skills.dir`` in ``config.yaml``
+
+    Reads ``config.yaml`` with a small mtime-keyed cache so the hot
+    skill-scan paths don't re-parse YAML on every call.  Kept dependency-light
+    (lazy ``yaml`` import) to preserve this module's import-safety guarantee.
+    """
+    env_override = os.getenv("HERMES_SKILLS_DIR", "").strip()
+    if env_override:
+        return env_override
+
+    config_path = get_config_path()
+    try:
+        stat = config_path.stat()
+    except OSError:
+        return ""
+
+    cache_key = (str(config_path), stat.st_mtime_ns)
+    cached = _SKILLS_DIR_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    value = ""
+    try:
+        import yaml  # lazy: keep module import-safe / dependency-light
+
+        parsed = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        if isinstance(parsed, dict):
+            skills_cfg = parsed.get("skills")
+            if isinstance(skills_cfg, dict):
+                raw = skills_cfg.get("dir")
+                if isinstance(raw, str):
+                    value = raw.strip()
+    except Exception:
+        value = ""
+
+    _SKILLS_DIR_CACHE.clear()
+    _SKILLS_DIR_CACHE[cache_key] = value
+    return value
+
+
 def get_skills_dir() -> Path:
-    """Return the path to the skills directory under HERMES_HOME."""
+    """Return the primary skills directory (where new skills are created).
+
+    Defaults to ``<HERMES_HOME>/skills``.  Overridable via the
+    ``HERMES_SKILLS_DIR`` env var or ``skills.dir`` in ``config.yaml`` --
+    this changes BOTH where skills are discovered and where
+    ``skill_manage`` creates new skills.  Relative overrides resolve
+    against ``HERMES_HOME``; ``~`` and ``${VAR}`` are expanded.
+    """
+    override = _read_skills_dir_override()
+    if override:
+        expanded = os.path.expanduser(os.path.expandvars(override))
+        p = Path(expanded)
+        if not p.is_absolute():
+            p = get_hermes_home() / p
+        return p
     return get_hermes_home() / "skills"
 
 

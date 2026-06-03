@@ -69,7 +69,7 @@ Usage:
 import json
 import logging
 
-from hermes_constants import get_hermes_home, display_hermes_home
+from hermes_constants import get_hermes_home, get_skills_dir, display_hermes_home
 import os
 import re
 from enum import Enum
@@ -88,7 +88,9 @@ logger = logging.getLogger(__name__)
 # This is the single source of truth -- agent edits, hub installs, and bundled
 # skills all coexist here without polluting the git repo.
 HERMES_HOME = get_hermes_home()
-SKILLS_DIR = HERMES_HOME / "skills"
+# Primary skills dir -- defaults to <HERMES_HOME>/skills, overridable via
+# HERMES_SKILLS_DIR / skills.dir in config.yaml (see get_skills_dir()).
+SKILLS_DIR = get_skills_dir()
 
 # Anthropic-recommended limits for progressive disclosure efficiency
 MAX_NAME_LENGTH = 64

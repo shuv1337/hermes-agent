@@ -1615,10 +1615,16 @@ DEFAULT_CONFIG = {
         "max_turns": 20,
     },
 
-    # Skills — external skill directories for sharing skills across tools/agents.
-    # Each path is expanded (~, ${VAR}) and resolved.  Read-only — skill creation
-    # always goes to ~/.hermes/skills/.
+    # Skills — skill directories for discovery and creation.
+    # Each path is expanded (~, ${VAR}) and resolved.
     "skills": {
+        # Primary skills directory: where skills are discovered AND where
+        # skill_manage creates new skills.  Empty string = default
+        # <HERMES_HOME>/skills.  Relative paths resolve against HERMES_HOME.
+        # Also overridable via the HERMES_SKILLS_DIR env var (env wins).
+        "dir": "",
+        # Additional read-only skill directories scanned for discovery only.
+        # Skill creation never writes here — it goes to skills.dir.
         "external_dirs": [],   # e.g. ["~/.agents/skills", "/shared/team-skills"]
         # Substitute ${HERMES_SKILL_DIR} and ${HERMES_SESSION_ID} in SKILL.md
         # content with the absolute skill directory and the active session id

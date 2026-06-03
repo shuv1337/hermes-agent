@@ -1210,6 +1210,21 @@ commits and should be re-applied / preserved across upstream merges.
 - **`fix: preserve local gateway and delegation patches`**
   Squash-marker commit for older local gateway/delegation tweaks. Keep.
 
+- **`feat(skills): configurable primary skills directory`**
+  Makes the default skills location overridable instead of hardcoded to
+  `<HERMES_HOME>/skills`. `get_skills_dir()` in `hermes_constants.py` now
+  honors `HERMES_SKILLS_DIR` (env, wins) then `skills.dir` in `config.yaml`
+  (mtime-cached, lazy `yaml` import to keep the module dependency-light).
+  The four module-level `SKILLS_DIR` constants (`tools/skills_tool.py`,
+  `tools/skill_manager_tool.py`, `tools/skills_sync.py`,
+  `tools/skills_hub.py`) now derive from `get_skills_dir()`, so this changes
+  BOTH discovery AND where `skill_manage` creates new skills / where the hub
+  installs / where bundled skills are seeded. `skills.external_dirs` remains
+  discovery-only. New `skills.dir` config key added to `DEFAULT_CONFIG`
+  (no config-version bump — additive key, auto-merged). Tests:
+  `tests/test_hermes_constants.py::TestGetSkillsDir`. Keep across upstream
+  merges — without it, the skills dir is hardcoded again.
+
 When merging upstream, run a diff against `upstream/main` and confirm these
 commits are still on top. If a merge wipes them, cherry-pick back from the
 backup branches.

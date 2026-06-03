@@ -25,7 +25,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from hermes_constants import get_hermes_home
+from hermes_constants import get_hermes_home, get_skills_dir
 from agent.skill_utils import is_excluded_skill_path
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -47,7 +47,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 HERMES_HOME = get_hermes_home()
-SKILLS_DIR = HERMES_HOME / "skills"
+# Hub installs land in the primary skills dir (overridable -- see
+# get_skills_dir()).
+SKILLS_DIR = get_skills_dir()
 HUB_DIR = SKILLS_DIR / ".hub"
 LOCK_FILE = HUB_DIR / "lock.json"
 QUARANTINE_DIR = HUB_DIR / "quarantine"

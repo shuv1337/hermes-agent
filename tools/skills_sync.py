@@ -28,7 +28,7 @@ import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from hermes_constants import get_bundled_skills_dir, get_hermes_home, get_optional_skills_dir
+from hermes_constants import get_bundled_skills_dir, get_hermes_home, get_optional_skills_dir, get_skills_dir
 from agent.skill_utils import is_excluded_skill_path
 from typing import Dict, List, Tuple
 from utils import atomic_replace
@@ -37,7 +37,9 @@ logger = logging.getLogger(__name__)
 
 
 HERMES_HOME = get_hermes_home()
-SKILLS_DIR = HERMES_HOME / "skills"
+# Seed/update bundled skills into the primary skills dir so discovery and
+# creation share one location (overridable -- see get_skills_dir()).
+SKILLS_DIR = get_skills_dir()
 MANIFEST_FILE = SKILLS_DIR / ".bundled_manifest"
 
 # Marker file written by `hermes profile create --no-skills` (named profiles)
