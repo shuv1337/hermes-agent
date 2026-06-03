@@ -1278,3 +1278,71 @@ commits and should be re-applied / preserved across upstream merges —
 When merging upstream, run a diff against `upstream/main` and confirm these
 commits are still on top. If a merge wipes them, cherry-pick back from the
 backup branches.
+
+## Local environment setup (host state, not code)
+
+These are machine-local arrangements on shuvdev that are NOT committed to the
+repo but are load-bearing for how this checkout runs. Re-create them if you
+set up a fresh box or blow away `~/.hermes`.
+
+### Desktop app build (`apps/desktop`)
+
+The Electron desktop app builds and runs on Linux. Two build modes:
+
+- **Source build** — `hermes desktop --source` (or `--source --build-only`):
+  `npm ci` + `vite build` → `apps/desktop/dist/`, launched via `electron .`
+  from the repo. Backend resolves to the source tree.
+- **Packaged build** — `hermes desktop` (default) or `--build-only`:
+  `npm ci` + `vite build` + `electron-builder --dir` →
+  `apps/desktop/release/linux-unpacked/Hermes` (standalone 200 MB ELF binary +
+  `app.asar`). Backend resolves to the installed/adopted runtime.
+
+Distributables: `cd apps/desktop && npm run dist:linux` (AppImage + deb + rpm).
+
+**Electron-binary extraction gotcha (source mode only):** a fresh root
+`npm ci` sometimes downloads Electron's binary to `~/.cache/electron/` but
+fails to extract it into `node_modules/electron/dist/` (leaves only
+`libvulkan.so.1`), so `require('electron')` errors with "Electron failed to
+install correctly." Fix: extract the cached zip and write `path.txt` with NO
+trailing newline:
+```bash
+unzip -oq ~/.cache/electron/*/electron-v<VER>-linux-x64.zip \
+  -d node_modules/electron/dist/
+printf 'electron' > node_modules/electron/path.txt   # echo adds a newline → spawn ENOENT
+```
+The **packaged** (`electron-builder`) path does its own download/extract and
+is unaffected. Sandbox works via unprivileged user namespaces
+(`kernel.unprivileged_userns_clone=1`) — no setuid `chrome-sandbox` needed.
+
+### `~/.hermes/hermes-agent` symlink → this checkout (enables desktop self-update)
+
+```
+~/.hermes/hermes-agent -> /home/shuv/repos/hermes-agent
+```
+
+The desktop self-updater (`apps/desktop/electron/main.cjs`, `resolveUpdateRoot`
+/ `checkUpdates`) only runs against `$HERMES_HOME/hermes-agent` when it's a
+git checkout. Our real source lives at `~/repos/hermes-agent`, so without this
+symlink Settings → Updates shows *"…isn't a git checkout — desktop self-update
+only runs against a source install."* The symlink makes
+`ACTIVE_HERMES_ROOT` resolve to our checkout so the updater is enabled.
+
+Side effects (all verified benign):
+- Backend resolution shifts from "existing `hermes` on PATH" (step 4) to
+  "adopt `ACTIVE_HERMES_ROOT`" (step 3b). Both resolve to the SAME repo
+  (`~/.local/bin/hermes` → `~/repos/hermes-agent/venv`), so no behavior change.
+- The adopt path writes `~/.hermes/hermes-agent/.hermes-bootstrap-complete`
+  (an `adopted` marker pinning the current commit). Via the symlink this
+  lands at the repo root. It is git-excluded via **`.git/info/exclude`**
+  (NOT the tracked `.gitignore` — keep it host-local). Re-add the exclude
+  line if you re-clone.
+- `banner.py` prefers `Path(__file__)` over the symlink path; `backup.py`
+  *excludes* `hermes-agent` from backup tarballs — neither mis-handles the
+  symlink.
+
+**Self-update caveat:** "Apply update" runs `hermes update --yes --branch main`
+(a `git pull` on our fork `shuv1337/hermes-agent`) + `hermes desktop
+--build-only` against this dev checkout. That moves HEAD and can collide with
+uncommitted local work. For a dev checkout, prefer updating manually:
+`git pull && hermes desktop --force-build`. The read-only "Check now" button
+is always safe.
