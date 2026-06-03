@@ -1885,11 +1885,25 @@ def _strip_orphaned_tool_blocks(result: List[Dict[str, Any]]) -> None:
                     tool_result_ids.add(block.get("tool_use_id"))
     for m in result:
         if m["role"] == "assistant" and isinstance(m["content"], list):
-            m["content"] = [
+            kept = [
                 b
                 for b in m["content"]
                 if b.get("type") != "tool_use" or b.get("id") in tool_result_ids
             ]
+            # If stripping an orphaned tool_use mutated a turn that also carries a
+            # signed thinking block, that block's Anthropic signature was computed
+            # against the ORIGINAL (un-stripped) turn content and is now invalid.
+            # Anthropic rejects the replayed turn with HTTP 400 "thinking blocks in
+            # the latest assistant message cannot be modified".  Flag the turn so
+            # _manage_thinking_signatures can demote the dead signature instead of
+            # replaying it verbatim.  See hermes-agent: extended-thinking + parallel
+            # tool batch interrupted mid-flight → non-retryable 400 crash-loop.
+            if len(kept) != len(m["content"]) and any(
+                isinstance(b, dict) and b.get("type") in {"thinking", "redacted_thinking"}
+                for b in m["content"]
+            ):
+                m["_thinking_signature_invalidated"] = True
+            m["content"] = kept
             if not m["content"]:
                 m["content"] = [{"type": "text", "text": "(tool call removed)"}]
 
@@ -1934,6 +1948,10 @@ def _merge_consecutive_roles(result: List[Dict[str, Any]]) -> List[Dict[str, Any
                     fixed[-1]["content"] = prev_content + curr_content
             else:
                 # Consecutive assistant messages — merge text content.
+                # Propagate the orphan-strip signature-invalidation flag onto the
+                # surviving (prev) dict so _manage_thinking_signatures still sees it.
+                if m.get("_thinking_signature_invalidated"):
+                    fixed[-1]["_thinking_signature_invalidated"] = True
                 # Drop thinking blocks from the *second* message: their
                 # signature was computed against a different turn boundary
                 # and becomes invalid once merged.
@@ -2033,17 +2051,28 @@ def _manage_thinking_signatures(
             # assistant message with HTTP 400 "`thinking` or
             # `redacted_thinking` blocks in the latest assistant message
             # cannot be modified." That includes downgrading unsigned
-            # blocks to text AND removing ``cache_control`` keys.
+            # blocks to text AND removing ``cache_control`` keys. We only
+            # drop a block when the validator is guaranteed to reject it,
+            # leaving the rest UNTOUCHED.
             #
-            # Defensive drops (no signature → will be rejected anyway):
-            # we only drop a block when the validator is guaranteed to
-            # reject it, leaving the rest UNTOUCHED.  This matches
-            # Anthropic's documented contract: blocks must be sent back
-            # exactly as received, or omitted entirely.
+            # Exception: if orphan-stripping (or another structural mutation)
+            # removed a tool_use block from THIS turn, every thinking signature
+            # on it was computed against the original turn content and is now
+            # dead. Anthropic rejects the turn either way — replaying the signed
+            # block 400s with "cannot be modified", and a bare signed block with
+            # no following tool_use is also invalid. In that (and only that) case
+            # demote ALL thinking blocks on this turn to text so the turn replays
+            # cleanly and the model can re-plan from the surviving tool results.
+            signature_dead = bool(m.get("_thinking_signature_invalidated"))
             new_content = []
             for b in m["content"]:
                 if not isinstance(b, dict) or b.get("type") not in _THINKING_TYPES:
                     new_content.append(b)
+                    continue
+                if signature_dead:
+                    thinking_text = b.get("thinking", "")
+                    if thinking_text:
+                        new_content.append({"type": "text", "text": thinking_text})
                     continue
                 if b.get("type") == "redacted_thinking":
                     # Redacted blocks need 'data' to validate; drop otherwise.
@@ -2059,6 +2088,9 @@ def _manage_thinking_signatures(
                 # cache_control marker. Stripping it counts as a modification.
                 new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
+
+        # Drop the internal bookkeeping flag — it must never reach the API payload.
+        m.pop("_thinking_signature_invalidated", None)
 
 
 def _evict_old_screenshots(result: List[Dict[str, Any]]) -> None:

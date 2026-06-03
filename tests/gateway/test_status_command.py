@@ -97,7 +97,7 @@ async def test_status_command_reports_running_agent_without_interrupt(monkeypatc
     result = await runner._handle_message(_make_event("/status"))
 
     assert "**Session ID:** `sess-1`" in result
-    assert "**Tokens:** 321" in result
+    assert "**Cumulative API tokens (re-sent each call):** 321" in result
     assert "**Agent Running:** Yes ⚡" in result
     assert "**Title:**" not in result
     running_agent.interrupt.assert_not_called()
@@ -205,7 +205,7 @@ async def test_status_command_reads_token_totals_from_session_db():
     result = await runner._handle_message(_make_event("/status"))
 
     # 1000 + 250 + 500 + 100 + 50 = 1,900
-    assert "**Tokens:** 1,900" in result
+    assert "**Cumulative API tokens (re-sent each call):** 1,900" in result
 
 
 @pytest.mark.asyncio
@@ -226,7 +226,7 @@ async def test_status_command_tokens_zero_when_session_db_row_missing():
 
     result = await runner._handle_message(_make_event("/status"))
 
-    assert "**Tokens:** 0" in result
+    assert "**Cumulative API tokens (re-sent each call):** 0" in result
 
 
 @pytest.mark.asyncio
@@ -736,7 +736,7 @@ async def test_status_command_survives_gateway_info_failure(monkeypatch):
     # session_id, the rendered count is 0. We assert the row renders, not
     # the specific count.
     assert "**Session ID:** `sess-1`" in result
-    assert "**Tokens:**" in result
+    assert "**Cumulative API tokens (re-sent each call):**" in result
     assert "**Version:**" not in result
     assert "**Commit (on disk):**" not in result
     assert "**Running commit:**" not in result
