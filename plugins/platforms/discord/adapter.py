@@ -3112,6 +3112,20 @@ class DiscordAdapter(BasePlatformAdapter):
         async def slash_background(interaction: discord.Interaction, prompt: str):
             await self._run_simple_slash(interaction, f"/background {prompt}", "Background task started~")
 
+        @tree.command(name="channel-report", description="Message count report for this channel")
+        @discord.app_commands.describe(
+            hours="Hours of history to scan (default: 24)",
+            include_bots="Include bot messages in the count (default: False)",
+            public="Post the report publicly in the channel instead of ephemeral (default: False)",
+        )
+        async def slash_channel_report(
+            interaction: discord.Interaction,
+            hours: float = 24.0,
+            include_bots: bool = False,
+            public: bool = False,
+        ):
+            await self._handle_channel_report_slash(interaction, hours, include_bots, public)
+
         # ── Auto-register any gateway-available commands not yet on the tree ──
         # This ensures new commands added to COMMAND_REGISTRY in
         # hermes_cli/commands.py automatically appear as Discord slash
@@ -3592,6 +3606,88 @@ class DiscordAdapter(BasePlatformAdapter):
             channel_prompt=_channel_prompt,
         )
         await self.handle_message(event)
+
+    async def _handle_channel_report_slash(
+        self,
+        interaction: discord.Interaction,
+        hours: float = 24.0,
+        include_bots: bool = False,
+        public: bool = False,
+    ) -> None:
+        """Fetch channel history for the last N hours and return a per-user message count report."""
+        if not await self._check_slash_authorization(interaction, "/channel-report"):
+            return
+        await interaction.response.defer(ephemeral=not public)
+
+        import datetime
+        from collections import Counter
+
+        channel = interaction.channel
+        if channel is None:
+            try:
+                channel = await self._client.fetch_channel(interaction.channel_id)
+            except Exception as exc:
+                await interaction.followup.send(
+                    f"Could not fetch channel: {exc}", ephemeral=True
+                )
+                return
+
+        cutoff = discord.utils.utcnow() - datetime.timedelta(hours=hours)
+
+        counts: Counter[str] = Counter()
+        char_counts: Counter[str] = Counter()
+        total = 0
+        try:
+            async for msg in channel.history(limit=None, after=cutoff, oldest_first=True):
+                if not include_bots and getattr(msg.author, "bot", False):
+                    continue
+                name = msg.author.display_name
+                if getattr(msg.author, "bot", False):
+                    name = f"{name} [bot]"
+                content = getattr(msg, "clean_content", msg.content) or ""
+                counts[name] += 1
+                char_counts[name] += len(content)
+                total += 1
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "Missing permission to read channel history.", ephemeral=True
+            )
+            return
+        except Exception as exc:
+            await interaction.followup.send(
+                f"Error fetching history: {exc}", ephemeral=True
+            )
+            return
+
+        if total == 0:
+            label = f"last {hours:g}h"
+            await interaction.followup.send(
+                f"No messages in {label}.", ephemeral=not public
+            )
+            return
+
+        # Build report
+        channel_name = getattr(channel, "name", str(interaction.channel_id))
+        guild_name = getattr(getattr(interaction, "guild", None), "name", "")
+        label = f"last {hours:g}h"
+        header = f"**#{channel_name}** — message report ({label})"
+        if guild_name:
+            header = f"**{guild_name} / #{channel_name}** — message report ({label})"
+
+        lines = [header, ""]
+        # Sort by message count descending
+        for rank, (user, count) in enumerate(counts.most_common(), 1):
+            avg_len = char_counts[user] // count
+            pct = round(count / total * 100)
+            lines.append(f"{rank}. **{user}** — {count} msg{'s' if count != 1 else ''} ({pct}%, avg {avg_len} chars)")
+        lines.append(f"\n**Total:** {total} messages from {len(counts)} user{'s' if len(counts) != 1 else ''}")
+
+        report = "\n".join(lines)
+        # Discord message limit is 2000 chars; truncate gracefully if needed
+        if len(report) > 1900:
+            report = report[:1897] + "..."
+
+        await interaction.followup.send(report, ephemeral=not public)
 
     def _resolve_channel_skills(self, channel_id: str, parent_id: str | None = None) -> list[str] | None:
         """Look up auto-skill bindings for a Discord channel/forum thread.
