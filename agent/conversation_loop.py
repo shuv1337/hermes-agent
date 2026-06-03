@@ -978,8 +978,11 @@ def run_conversation(
             # for Codex Responses compatibility.
             if agent._should_sanitize_tool_calls():
                 agent._sanitize_tool_calls_for_strict_api(api_msg)
-            # Keep 'reasoning_details' - OpenRouter uses this for multi-turn reasoning context
-            # The signature field helps maintain reasoning continuity
+            # Preserve reasoning_details in the internal API copy so native
+            # Anthropic can convert them into signed thinking blocks. The
+            # chat-completions transport strips them at the wire boundary for
+            # strict OpenAI-compatible relays (Fireworks/Kimi/etc.) whose
+            # schemas reject messages[N].reasoning_details.
             api_messages.append(api_msg)
 
         # Build the final system message: cached prompt + ephemeral system prompt.

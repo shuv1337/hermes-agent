@@ -90,6 +90,29 @@ class TestChatCompletionsBasic:
         # Original list untouched (deepcopy-on-demand)
         assert msgs[1]["_empty_recovery_synthetic"] is True
 
+    def test_convert_messages_strips_reasoning_details(self, transport):
+        """Claude signed thinking blocks must not leak to Chat Completions.
+
+        Native Anthropic replays ``reasoning_details`` as signed thinking
+        blocks, but strict OpenAI-compatible relays (Fireworks/Kimi) reject
+        top-level ``messages[N].reasoning_details`` with HTTP 400.
+        """
+        msgs = [
+            {"role": "user", "content": "continue"},
+            {
+                "role": "assistant",
+                "content": "ok",
+                "reasoning_details": [
+                    {"type": "thinking", "thinking": "private", "signature": "sig"},
+                ],
+            },
+        ]
+        result = transport.convert_messages(msgs)
+        assert "reasoning_details" not in result[1]
+        assert result[1]["content"] == "ok"
+        # Original list untouched (deepcopy-on-demand)
+        assert "reasoning_details" in msgs[1]
+
     def test_convert_messages_clean_list_is_identity(self, transport):
         """A list with no internal/codex keys is returned as-is (no copy)."""
         msgs = [

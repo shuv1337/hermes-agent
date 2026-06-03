@@ -126,6 +126,11 @@ class ChatCompletionsTransport(ProviderTransport):
           ``Extra inputs are not permitted, field: 'messages[N].tool_name'``.
           Permissive providers (OpenRouter, MiniMax) silently ignore the
           field, which masked the bug for months.
+        - ``reasoning_details`` on assistant messages — native Anthropic uses
+          signed thinking blocks internally, but OpenAI Chat Completions has no
+          top-level ``messages[N].reasoning_details`` field. Strict relays
+          (Fireworks/Kimi) reject saved Claude turns with
+          ``Extra inputs are not permitted, field: 'messages[N].reasoning_details'``.
         - Hermes-internal scaffolding markers — any top-level message key
           starting with ``_`` (e.g. ``_empty_recovery_synthetic``,
           ``_empty_terminal_sentinel``, ``_thinking_prefill``). These are
@@ -145,6 +150,7 @@ class ChatCompletionsTransport(ProviderTransport):
                 "codex_reasoning_items" in msg
                 or "codex_message_items" in msg
                 or "tool_name" in msg
+                or "reasoning_details" in msg
             ):
                 needs_sanitize = True
                 break
@@ -172,6 +178,7 @@ class ChatCompletionsTransport(ProviderTransport):
             msg.pop("codex_reasoning_items", None)
             msg.pop("codex_message_items", None)
             msg.pop("tool_name", None)
+            msg.pop("reasoning_details", None)
             # Drop all Hermes-internal scaffolding markers (``_``-prefixed).
             # OpenAI's message schema has no ``_``-prefixed fields, so this
             # is safe and future-proofs against new markers being added.
