@@ -1189,11 +1189,61 @@ not the specific names.
 Reviewers should reject new change-detector tests; authors should convert
 them into invariants before re-requesting review.
 
+## Fork divergence policy (scrutinize every diverging conflict)
+
+**Default stance: minimize fork divergence. Adopt upstream unless we have a
+standing, documented reason not to.** Every commit we carry on top of
+`upstream/main` is a recurring merge tax and a latent source of silent
+regressions (see the computer_use backend incident: upstream rewrote the
+backend, our parallel feature's tests survived the merge but the
+implementation didn't, and 19 tests failed pointing at a dead API).
+
+**On every upstream merge, interrogate each divergence before preserving it.**
+For each fork-only commit / patch / conflict, answer:
+
+1. **Is it still needed?** Did upstream ship an equivalent (possibly better)
+   solution? If so, **retire ours** and adopt theirs — don't re-apply out of
+   habit. Move retired patches to `~/.hermes/patches/_retired/` and record the
+   adoption in the "Retired divergences" list below.
+2. **Is it still valid?** Does the patch's target still exist, and does the
+   surrounding upstream code still make our change coherent? A patch that
+   "applies cleanly" can still be semantically stale (orphaned tests, dead
+   symbols, behavior upstream now handles differently).
+3. **Is it still ours to own?** Site-specific needs (remote-macOS shim, OAuth
+   blocklist evasion, skills dir) are legitimate long-term carries. Generic
+   improvements should be **upstreamed via PR** so they stop being divergence.
+4. **Did the merge keep BOTH halves of a feature?** When a fork feature spans
+   implementation + tests + schema, verify the merge didn't keep one half and
+   revert the other. Run the feature's own test suite immediately post-merge —
+   a passing-on-our-old-tests-but-failing-now split is the tell.
+
+**Bias toward deletion.** When in doubt, prefer upstream's version and delete
+our divergence. The goal is a fork that is *only* the irreducible site-specific
+set — small enough to audit by eye on every merge. If you adopt upstream over a
+fork patch, say so explicitly to the user and update the lists below in the
+same change.
+
+### Retired divergences (adopted upstream — do NOT re-apply)
+
+- **`feat: adopt cua driver element bounds` (`ecd251bd3`, 2026-05-12)** —
+  fork-only rewrite of `tools/computer_use/cua_backend.py` (+1268 lines:
+  `_active_target`, `_resolve_element`, `_sort_windows_frontmost_first`,
+  structured-element parsing, element drag, coordinate fallback,
+  `raise_window`). **Superseded** by upstream's independent backend rewrite
+  (`e31f3b3c5` focus-safe backend + `#24170` bug fixes + `dc235e93c` dead-code
+  removal). The 2026-06-02 desktop merge kept our tests but reverted the
+  backend to upstream's — we adopted upstream's backend and restored
+  upstream's `tests/tools/test_computer_use.py`, re-applying only the Linux
+  escape-hatch tweak to `TestRegistration` (which belongs to the
+  remote-macOS patch, NOT to `ecd251bd3`). Do not resurrect the 1566-line
+  backend. If a future need arises, re-port on top of upstream's backend.
+
 ## Local patches on this checkout
 
 This checkout (`~/repos/hermes-agent` on shuvdev) carries a few patches on
 top of upstream `main` that solve site-specific needs. They live as regular
-commits and should be re-applied / preserved across upstream merges.
+commits and should be re-applied / preserved across upstream merges —
+**but only after passing the Fork divergence policy interrogation above.**
 
 - **`feat(computer_use): allow remote macOS over HERMES_CUA_DRIVER_CMD on Linux`**
   Relaxes the two `sys.platform != "darwin"` gates in `tools/computer_use/`
