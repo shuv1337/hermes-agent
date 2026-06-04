@@ -23,9 +23,10 @@ import {
 import { useAudioLevel } from './use-audio-level'
 import type { ConversationStatus } from './use-voice-conversation'
 
-// Hard ceiling on a single delegated agent run before we hand back whatever
-// text streamed so the realtime model isn't left waiting forever.
-const MAX_DELEGATION_MS = 180_000
+// Cap a single delegated run, and periodically reassure the user out loud so a
+// slow or wedged agent turn never leaves dead air / an endless silent spinner.
+const MAX_DELEGATION_MS = 60_000
+const NUDGE_INTERVAL_MS = 12_000
 
 interface RealtimeConversationOptions {
   busy: boolean
@@ -49,6 +50,7 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
   const micStreamRef = useRef<MediaStream | null>(null)
   const audioElRef = useRef<HTMLAudioElement | null>(null)
   const sessionTimerRef = useRef<null | number>(null)
+  const nudgeTimerRef = useRef<null | number>(null)
   const delegationRef = useRef<ActiveDelegation | null>(null)
   const usageRef = useRef<{ input: number; output: number }>({ input: 0, output: 0 })
   // De-dupe tool calls: the model emits BOTH response.function_call_arguments.done
@@ -87,8 +89,16 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
     }
   }, [])
 
+  const clearNudge = useCallback(() => {
+    if (nudgeTimerRef.current) {
+      window.clearInterval(nudgeTimerRef.current)
+      nudgeTimerRef.current = null
+    }
+  }, [])
+
   const teardown = useCallback(() => {
     clearSessionTimer()
+    clearNudge()
     // Ending the session is not barge-in: interrupt the server-side agent turn
     // so a delegated run doesn't keep burning tokens / running tools after exit.
     const delegation = delegationRef.current
@@ -129,7 +139,7 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
       audioElRef.current.remove()
       audioElRef.current = null
     }
-  }, [clearSessionTimer, stopMeter])
+  }, [clearNudge, clearSessionTimer, stopMeter])
 
   // ── Delegation bridge: run a Hermes agent turn over the existing gateway ──
   // Resolves with the agent's final text plus `respond`: whether the realtime
@@ -294,8 +304,26 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
         }
 
         setStatus('delegating')
+        // Mask agent latency: reassure out loud every NUDGE_INTERVAL_MS via an
+        // out-of-band response (conversation:"none" — never pollutes history),
+        // so a slow/wedged turn isn't silent dead air. Stopped the moment the
+        // run settles, before the real summary response.
+        clearNudge()
+        nudgeTimerRef.current = window.setInterval(() => {
+          send({
+            type: 'response.create',
+            response: {
+              conversation: 'none',
+              output_modalities: ['audio'],
+              instructions:
+                'You are still waiting on a tool result. Say one short, natural reassurance that you are still working on it (vary the wording). Do not answer the question yet.'
+            }
+          })
+        }, NUDGE_INTERVAL_MS)
+
         delegateToAgent(task, resolveScope(args))
           .then(({ respond, text }) => {
+            clearNudge()
             // Always answer the call_id so it isn't left dangling. Only ask the
             // model to speak when this run owns the follow-up (not when the user
             // cancelled it — cancel_running_work speaks the acknowledgement).
@@ -310,6 +338,7 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
             }
           })
           .catch(error => {
+            clearNudge()
             finish(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
 
             if (statusRef.current === 'delegating') {
@@ -339,7 +368,7 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
 
       finish(JSON.stringify({ error: `unknown tool ${name}` }))
     },
-    [cancelRunningWork, delegateToAgent, send, summarizeActiveSession]
+    [cancelRunningWork, clearNudge, delegateToAgent, send, summarizeActiveSession]
   )
 
   const handleRealtimeEvent = useCallback(
