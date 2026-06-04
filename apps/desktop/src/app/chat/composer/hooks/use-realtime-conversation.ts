@@ -25,11 +25,14 @@ import type { ConversationStatus } from './use-voice-conversation'
 
 // Cap a single delegated run, and periodically reassure the user out loud so a
 // slow or wedged agent turn never leaves dead air / an endless silent spinner.
+// 15s first-fire so typical (≤~10s) turns finish before any nudge interrupts.
 const MAX_DELEGATION_MS = 60_000
-const NUDGE_INTERVAL_MS = 12_000
+const NUDGE_INTERVAL_MS = 15_000
 
 interface RealtimeConversationOptions {
   busy: boolean
+  /** Desktop's current workspace cwd; delegated turns run here. */
+  cwd?: null | string
   enabled: boolean
   /** Called on an unrecoverable error (e.g. no key) so the caller can fall back. */
   onFatalError?: (reason: string) => void
@@ -40,7 +43,7 @@ interface ActiveDelegation {
   sessionId: string
 }
 
-export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConversationOptions) {
+export function useRealtimeConversation({ cwd, enabled, onFatalError }: RealtimeConversationOptions) {
   const { level, start: startMeter, stop: stopMeter } = useAudioLevel()
   const [status, setStatus] = useState<ConversationStatus>('idle')
   const [muted, setMuted] = useState(false)
@@ -60,6 +63,11 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
   // to prompt.submit so voice runs on a fast model while typed chat is unchanged.
   const delegationModelRef = useRef('')
   const delegationProviderRef = useRef('')
+  const cwdRef = useRef(cwd || '')
+
+  useEffect(() => {
+    cwdRef.current = cwd || ''
+  }, [cwd])
 
   const enabledRef = useRef(enabled)
   const mutedRef = useRef(muted)
@@ -256,6 +264,10 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
 
         const submitParams: Record<string, unknown> = { session_id: targetSession, text: task }
 
+        if (cwdRef.current) {
+          submitParams.cwd = cwdRef.current
+        }
+
         if (delegationModelRef.current) {
           submitParams.model = delegationModelRef.current
 
@@ -330,7 +342,7 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
               conversation: 'none',
               output_modalities: ['audio'],
               instructions:
-                'You are still waiting on a tool result. Say one short, natural reassurance that you are still working on it (vary the wording). Do not answer the question yet.'
+                'Still waiting on a tool result. Say a very brief reassurance (e.g. "one moment", "still on it") in a few words. Do not answer the question yet.'
             }
           })
         }, NUDGE_INTERVAL_MS)

@@ -1155,6 +1155,7 @@ export function ChatBar({
 
   const realtimeConversation = useRealtimeConversation({
     busy,
+    cwd,
     enabled: voiceConversationActive && useRealtimeVoice,
     onFatalError: () => {
       // No key / mint failure: fall back to the classic loop for this session.

@@ -3989,9 +3989,20 @@ def _(rid, params: dict) -> dict:
     # model while typed chat keeps the configured model). Empty => no override.
     override_model = str(params.get("model") or "").strip()
     override_provider = str(params.get("provider") or "").strip()
+    # Optional working-directory for this turn — realtime voice passes the
+    # desktop's current workspace so a delegated turn runs in the folder the
+    # user is looking at, even if the session was created elsewhere.
+    override_cwd = str(params.get("cwd") or "").strip()
     session, err = _sess_nowait(params, rid)
     if err:
         return err
+    if override_cwd:
+        try:
+            _resolved_cwd = os.path.abspath(os.path.expanduser(override_cwd))
+            if os.path.isdir(_resolved_cwd) and _resolved_cwd != session.get("cwd"):
+                _set_session_cwd(session, _resolved_cwd)
+        except Exception as exc:
+            print(f"[tui_gateway] prompt.submit: cwd override ignored ({override_cwd}): {exc}", file=sys.stderr)
     # Re-bind to the current client transport for this request. This keeps
     # streaming events on the active websocket even if an earlier disconnect
     # or fallback moved the session transport to stdio.
