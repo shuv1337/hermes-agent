@@ -965,9 +965,9 @@ class TestProfileRestoration:
         zip_path = tmp_path / "backup.zip"
         self._make_backup_zip(zip_path, {
             "config.yaml": "model:\n  provider: openrouter\n",
-            "profiles/coder/config.yaml": "model:\n  provider: anthropic\n",
-            "profiles/coder/.env": "ANTHROPIC_API_KEY=sk-test\n",
-            "profiles/researcher/config.yaml": "model:\n  provider: deepseek\n",
+            "profiles/impprof_alpha/config.yaml": "model:\n  provider: anthropic\n",
+            "profiles/impprof_alpha/.env": "ANTHROPIC_API_KEY=sk-test\n",
+            "profiles/impprof_beta/config.yaml": "model:\n  provider: deepseek\n",
         })
 
         args = Namespace(zipfile=str(zip_path), force=True)
@@ -976,16 +976,16 @@ class TestProfileRestoration:
         run_import(args)
 
         # Profile directories should exist
-        assert (hermes_home / "profiles" / "coder" / "config.yaml").exists()
-        assert (hermes_home / "profiles" / "researcher" / "config.yaml").exists()
+        assert (hermes_home / "profiles" / "impprof_alpha" / "config.yaml").exists()
+        assert (hermes_home / "profiles" / "impprof_beta" / "config.yaml").exists()
 
         # Wrapper scripts should be created
-        assert (wrapper_dir / "coder").exists()
-        assert (wrapper_dir / "researcher").exists()
+        assert (wrapper_dir / "impprof_alpha").exists()
+        assert (wrapper_dir / "impprof_beta").exists()
 
         # Wrappers should contain the right content
-        coder_wrapper = (wrapper_dir / "coder").read_text()
-        assert "hermes -p coder" in coder_wrapper
+        alpha_wrapper = (wrapper_dir / "impprof_alpha").read_text()
+        assert "hermes -p impprof_alpha" in alpha_wrapper
 
     def test_import_skips_profile_dirs_without_config(self, tmp_path, monkeypatch):
         """Import doesn't create wrappers for profile dirs without config."""

@@ -149,9 +149,9 @@ def test_check_for_updates_fallback_to_legacy_install_repo(tmp_path, monkeypatch
     assert mock_run.call_count >= 1
 
 
-def test_check_for_updates_ignores_cache_from_different_repo(tmp_path, monkeypatch):
-    """A cache produced for another checkout should be ignored and recomputed."""
-    from hermes_cli.banner import check_for_updates
+def test_check_for_updates_ignores_cache_from_different_version(tmp_path, monkeypatch):
+    """A cache produced for a different installed version should be ignored and recomputed."""
+    from hermes_cli.banner import VERSION, check_for_updates
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -164,7 +164,8 @@ def test_check_for_updates_ignores_cache_from_different_repo(tmp_path, monkeypat
     cache_file.write_text(json.dumps({
         "ts": time.time(),
         "behind": 928,
-        "repo_dir": str(tmp_path / "some-other-repo"),
+        "rev": None,
+        "ver": "0.0.0-stale",
     }))
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -179,7 +180,7 @@ def test_check_for_updates_ignores_cache_from_different_repo(tmp_path, monkeypat
     assert mock_run.call_count == 2
     cached = json.loads(cache_file.read_text())
     assert cached["behind"] == 0
-    assert cached["repo_dir"] == str(project_root)
+    assert cached["ver"] == VERSION
 
 
 def test_prefetch_non_blocking():

@@ -67,9 +67,9 @@ class TestTelegramModelPicker:
         )
 
         assert result.success is True
-        assert "MARKDOWN_V2" in repr(sent["parse_mode"])
-        assert "provider\\_one" in sent["text"]
-        assert "`model_1`" in sent["text"]
+        assert "HTML" in repr(sent["parse_mode"])
+        assert "provider_one" in sent["text"]
+        assert "<code>model_1</code>" in sent["text"]
 
     @pytest.mark.asyncio
     async def test_back_button_escapes_dynamic_provider_label(self):
