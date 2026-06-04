@@ -1576,7 +1576,6 @@ async def create_realtime_session():
     cfg = _realtime_config()
     model = (str(cfg.get("model") or "").strip() or "gpt-realtime-2")
     voice = (str(cfg.get("voice") or "").strip() or "marin")
-    reasoning_effort = str(cfg.get("reasoning_effort") or "").strip()
     turn_detection = (str(cfg.get("turn_detection") or "").strip() or "server_vad")
 
     def _as_int(value: Any, default: int) -> int:
@@ -1588,16 +1587,17 @@ async def create_realtime_session():
     max_session_sec = _as_int(cfg.get("max_session_sec"), 300)
     idle_timeout_ms = _as_int(cfg.get("idle_timeout_ms"), 0)
 
+    # NOTE: the /v1/realtime/client_secrets endpoint rejects a session-level
+    # ``reasoning_effort`` ("unknown_parameter"), so we do NOT forward the
+    # ``realtime.reasoning_effort`` config value here (verified live against
+    # gpt-realtime-2, 2026-06-04). gpt-realtime-2 already defaults to low
+    # effort, which is exactly the desired thin-router behaviour; the config
+    # key is retained as documentation of intent.
     session_payload: Dict[str, Any] = {
         "type": "realtime",
         "model": model,
         "audio": {"output": {"voice": voice}},
     }
-    # gpt-realtime-2 accepts a session-level reasoning_effort; keep it low so
-    # the realtime model stays a thin router and Hermes does the thinking.
-    # Empty config value -> rely on the model default (omit the field).
-    if reasoning_effort:
-        session_payload["reasoning_effort"] = reasoning_effort
 
     try:
         import httpx

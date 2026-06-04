@@ -131,17 +131,20 @@ class TestRealtimeSessionEndpoint:
         session = cap[0]["json"]["session"]
         assert session["type"] == "realtime"
         assert session["model"] == "gpt-realtime-2"
-        assert session["reasoning_effort"] == "low"
         assert session["audio"]["output"]["voice"] == "cedar"
+        # The live client_secrets endpoint rejects session.reasoning_effort, so
+        # it must NOT be forwarded even when configured (gpt-realtime-2 defaults
+        # to low effort regardless).
+        assert "reasoning_effort" not in session
 
-    def test_empty_reasoning_effort_is_omitted(self, monkeypatch):
-        """An empty reasoning_effort relies on the model default (field omitted)."""
+    def test_reasoning_effort_never_sent_to_mint(self, monkeypatch):
+        """reasoning_effort is never forwarded to client_secrets (it 400s there)."""
         import httpx
 
         monkeypatch.setenv("VOICE_TOOLS_OPENAI_KEY", SENTINEL_KEY)
         monkeypatch.setattr(
             "hermes_cli.web_server.load_config",
-            lambda: {"realtime": {"model": "gpt-realtime-2", "voice": "marin", "reasoning_effort": ""}},
+            lambda: {"realtime": {"model": "gpt-realtime-2", "voice": "marin", "reasoning_effort": "high"}},
         )
         monkeypatch.setattr(httpx, "AsyncClient", _CapturingAsyncClient)
 

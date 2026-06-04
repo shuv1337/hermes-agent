@@ -1600,7 +1600,7 @@ DEFAULT_CONFIG = {
     "realtime": {
         "model": "gpt-realtime-2",    # Pinned flagship realtime model
         "voice": "marin",             # marin | cedar | alloy | echo | shimmer | ...
-        "reasoning_effort": "low",    # minimal | low | medium | high | xhigh ("" = model default)
+        "reasoning_effort": "low",    # advisory: Realtime API rejects this on the wire; gpt-realtime-2 defaults to low
         "turn_detection": "server_vad",  # server_vad | semantic_vad | none
         "max_session_sec": 300,       # Hard cap on a single realtime session
         "idle_timeout_ms": 30000,     # Auto end-of-turn prompt after silence
