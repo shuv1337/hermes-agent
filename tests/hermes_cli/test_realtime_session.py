@@ -101,6 +101,8 @@ class TestRealtimeSessionEndpoint:
                     "turn_detection": "server_vad",
                     "max_session_sec": 240,
                     "idle_timeout_ms": 15000,
+                    "delegation_model": "google/gemini-3.1-flash-lite",
+                    "delegation_provider": "",
                 }
             },
         )
@@ -118,6 +120,9 @@ class TestRealtimeSessionEndpoint:
         assert body["turn_detection"] == "server_vad"
         assert body["max_session_sec"] == 240
         assert body["idle_timeout_ms"] == 15000
+        # Per-turn delegation model override is surfaced to the renderer.
+        assert body["delegation_model"] == "google/gemini-3.1-flash-lite"
+        assert body["delegation_provider"] == ""
 
         # The raw key must NEVER cross back to the renderer.
         assert SENTINEL_KEY not in resp.text

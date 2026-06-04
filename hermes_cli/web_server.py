@@ -1586,6 +1586,8 @@ async def create_realtime_session():
 
     max_session_sec = _as_int(cfg.get("max_session_sec"), 300)
     idle_timeout_ms = _as_int(cfg.get("idle_timeout_ms"), 0)
+    delegation_model = str(cfg.get("delegation_model") or "").strip()
+    delegation_provider = str(cfg.get("delegation_provider") or "").strip()
 
     # NOTE: the /v1/realtime/client_secrets endpoint rejects a session-level
     # ``reasoning_effort`` ("unknown_parameter"), so we do NOT forward the
@@ -1658,6 +1660,9 @@ async def create_realtime_session():
         "turn_detection": turn_detection,
         "max_session_sec": max_session_sec,
         "idle_timeout_ms": idle_timeout_ms,
+        # Per-turn model override for run_hermes_agent (empty = use chat model).
+        "delegation_model": delegation_model,
+        "delegation_provider": delegation_provider,
     }
 
 

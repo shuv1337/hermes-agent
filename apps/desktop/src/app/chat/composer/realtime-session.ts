@@ -17,6 +17,10 @@ export type RealtimeScope = 'current_session' | 'new'
 
 export interface RealtimeRuntimeConfig {
   clientSecret: string
+  /** Per-turn model override for run_hermes_agent (empty = desktop chat model). */
+  delegationModel: string
+  /** Optional explicit provider for the delegation model. */
+  delegationProvider: string
   expiresAt: null | number
   idleTimeoutMs: number
   maxSessionSec: number

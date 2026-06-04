@@ -15,6 +15,8 @@ import {
 
 const config: RealtimeRuntimeConfig = {
   clientSecret: 'ek_test',
+  delegationModel: '',
+  delegationProvider: '',
   expiresAt: null,
   idleTimeoutMs: 15000,
   maxSessionSec: 300,

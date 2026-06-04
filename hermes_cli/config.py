@@ -1604,6 +1604,12 @@ DEFAULT_CONFIG = {
         "turn_detection": "server_vad",  # server_vad | semantic_vad | none
         "max_session_sec": 300,       # Hard cap on a single realtime session
         "idle_timeout_ms": 30000,     # Auto end-of-turn prompt after silence
+        # Run delegated voice turns (run_hermes_agent) on a faster model than the
+        # desktop chat agent, without changing typed chat. Empty = use the chat
+        # model. For "google/..." with no provider, GEMINI_API_KEY is tried first,
+        # then OpenRouter. Passed to prompt.submit as a per-turn model override.
+        "delegation_model": "",       # e.g. "google/gemini-3.1-flash-lite"
+        "delegation_provider": "",    # optional explicit provider (e.g. "gemini", "openrouter")
     },
 
     "human_delay": {

@@ -2329,7 +2329,14 @@ def _reset_session_agent(sid: str, session: dict) -> dict:
     return info
 
 
-def _make_agent(sid: str, key: str, session_id: str | None = None):
+def _make_agent(
+    sid: str,
+    key: str,
+    session_id: str | None = None,
+    *,
+    override_model: str | None = None,
+    override_provider: str | None = None,
+):
     from run_agent import AIAgent
     from hermes_cli.runtime_provider import resolve_runtime_provider
 
@@ -2363,7 +2370,10 @@ def _make_agent(sid: str, key: str, session_id: str | None = None):
             system_prompt = "\n\n".join(
                 part for part in (system_prompt, skills_prompt) if part
             ).strip()
-    model, requested_provider = _resolve_startup_runtime()
+    if override_model:
+        model, requested_provider = override_model, (override_provider or None)
+    else:
+        model, requested_provider = _resolve_startup_runtime()
     runtime = resolve_runtime_provider(
         requested=requested_provider,
         target_model=model or None,
@@ -2397,6 +2407,55 @@ def _make_agent(sid: str, key: str, session_id: str | None = None):
         skip_memory=is_truthy_value(os.environ.get("HERMES_IGNORE_RULES")),
         **_agent_cbs(sid),
     )
+
+
+def _build_override_agent(sid, key, session_id, model, provider):
+    """Build a one-off agent on an override model+provider for a single turn.
+
+    Used by realtime voice delegation to run a turn on a fast model
+    (``realtime.delegation_model``) while typed chat keeps the configured model.
+    For ``google/*`` slugs with no explicit provider, tries GEMINI direct
+    (``GEMINI_API_KEY``) first, then OpenRouter. Returns ``None`` on any
+    failure (missing key, resolve/build error) so the caller transparently
+    falls back to the session agent — a bad override must never break chat.
+    """
+    model = (model or "").strip()
+    provider = (provider or "").strip()
+    if not model:
+        return None
+
+    if provider:
+        candidates = [(provider, model)]
+    elif model.startswith("google/"):
+        candidates = [("gemini", model.split("/", 1)[1]), ("openrouter", model)]
+    else:
+        candidates = [(None, model)]
+
+    from hermes_cli.runtime_provider import resolve_runtime_provider
+
+    for prov, mdl in candidates:
+        try:
+            rt = resolve_runtime_provider(requested=prov, target_model=mdl)
+        except Exception as exc:
+            print(f"[tui_gateway] override resolve failed ({prov}/{mdl}): {exc}", file=sys.stderr)
+            continue
+        if not str(rt.get("api_key") or "").strip():
+            continue
+        try:
+            return _make_agent(
+                sid, key, session_id,
+                override_model=mdl,
+                override_provider=(prov or rt.get("provider")),
+            )
+        except Exception as exc:
+            print(f"[tui_gateway] override build failed ({prov}/{mdl}): {exc}", file=sys.stderr)
+            continue
+
+    print(
+        f"[tui_gateway] no usable override provider for model={model!r} provider={provider!r}",
+        file=sys.stderr,
+    )
+    return None
 
 
 def _init_session(sid: str, key: str, agent, history: list, cols: int = 80):
@@ -3926,6 +3985,10 @@ def _(rid, params: dict) -> dict:
 def _(rid, params: dict) -> dict:
     sid, text = params.get("session_id", ""), params.get("text", "")
     truncate_user_ordinal = params.get("truncate_before_user_ordinal")
+    # Optional per-turn model override (realtime voice delegation runs on a fast
+    # model while typed chat keeps the configured model). Empty => no override.
+    override_model = str(params.get("model") or "").strip()
+    override_provider = str(params.get("provider") or "").strip()
     session, err = _sess_nowait(params, rid)
     if err:
         return err
@@ -3978,7 +4041,11 @@ def _(rid, params: dict) -> dict:
                 session["running"] = False
                 _clear_inflight_turn(session)
             return
-        _run_prompt_submit(rid, sid, session, text)
+        _run_prompt_submit(
+            rid, sid, session, text,
+            override_model=override_model or None,
+            override_provider=override_provider or None,
+        )
 
     threading.Thread(target=run_after_agent_ready, daemon=True).start()
     return _ok(rid, {"status": "streaming"})
@@ -4131,7 +4198,14 @@ def _start_notification_poller(sid: str, session: dict) -> threading.Event:
     return stop
 
 
-def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
+def _run_prompt_submit(
+    rid,
+    sid: str,
+    session: dict,
+    text: Any,
+    override_model: str | None = None,
+    override_provider: str | None = None,
+) -> None:
     with session["history_lock"]:
         history = list(session["history"])
         history_version = int(session.get("history_version", 0))
@@ -4140,6 +4214,23 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
         if not isinstance(session.get("inflight_turn"), dict):
             _start_inflight_turn(session, text)
     agent = session["agent"]
+    if override_model:
+        # Cache the override agent on the session so we don't rebuild it (and
+        # re-init memory) on every voice turn. Any build failure falls back to
+        # the session agent so a bad override never breaks the turn.
+        cache = session.setdefault("_override_agents", {})
+        ckey = f"{override_provider or ''}::{override_model}"
+        ov = cache.get(ckey)
+        if ov is None:
+            ov = _build_override_agent(
+                sid, session["session_key"], session["session_key"],
+                override_model, override_provider,
+            )
+            if ov is not None:
+                cache[ckey] = ov
+        if ov is not None:
+            agent = ov
+            print(f"[tui_gateway] prompt.submit: using override model={override_model!r}", file=sys.stderr)
     _emit("message.start", sid)
 
     def run():

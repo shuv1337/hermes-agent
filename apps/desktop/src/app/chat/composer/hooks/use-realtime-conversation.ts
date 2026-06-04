@@ -56,6 +56,10 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
   // De-dupe tool calls: the model emits BOTH response.function_call_arguments.done
   // and response.output_item.done for one call_id — handle each call_id once.
   const handledCallIdsRef = useRef<Set<string>>(new Set())
+  // Per-turn delegation model override (from realtime.delegation_model) passed
+  // to prompt.submit so voice runs on a fast model while typed chat is unchanged.
+  const delegationModelRef = useRef('')
+  const delegationProviderRef = useRef('')
 
   const enabledRef = useRef(enabled)
   const mutedRef = useRef(muted)
@@ -250,8 +254,18 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
 
         delegationRef.current = thisDelegation
 
+        const submitParams: Record<string, unknown> = { session_id: targetSession, text: task }
+
+        if (delegationModelRef.current) {
+          submitParams.model = delegationModelRef.current
+
+          if (delegationProviderRef.current) {
+            submitParams.provider = delegationProviderRef.current
+          }
+        }
+
         gateway
-          .request('prompt.submit', { session_id: targetSession, text: task })
+          .request('prompt.submit', submitParams)
           .then(() => {
             ackReceived = true
           })
@@ -433,8 +447,12 @@ export function useRealtimeConversation({ enabled, onFatalError }: RealtimeConve
         turnDetection: minted.turn_detection || 'server_vad',
         maxSessionSec: minted.max_session_sec || 0,
         idleTimeoutMs: minted.idle_timeout_ms || 0,
-        expiresAt: minted.expires_at ?? null
+        expiresAt: minted.expires_at ?? null,
+        delegationModel: minted.delegation_model || '',
+        delegationProvider: minted.delegation_provider || ''
       }
+      delegationModelRef.current = token.delegationModel
+      delegationProviderRef.current = token.delegationProvider
     } catch (error) {
       setStatus('idle')
       const message = error instanceof Error ? error.message : String(error)

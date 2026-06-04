@@ -26,6 +26,10 @@ export interface AudioSpeakResponse {
 export interface RealtimeSessionResponse {
   /** Short-lived OpenAI Realtime ephemeral key (e.g. "ek_..."). */
   client_secret: string
+  /** Per-turn model override for run_hermes_agent delegation (empty = chat model). */
+  delegation_model?: string
+  /** Optional explicit provider for the delegation model. */
+  delegation_provider?: string
   /** Unix epoch seconds when the ephemeral key expires (may be absent). */
   expires_at?: number | null
   /** Auto end-of-turn prompt after silence, in ms (0 = disabled). */
