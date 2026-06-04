@@ -44,6 +44,7 @@ import {
   setCurrentCwd,
   setCurrentModel,
   setCurrentProvider,
+  setGateway,
   setMessages,
   setSessions,
   setSessionsLoading,
@@ -520,6 +521,9 @@ export function DesktopController() {
     },
     onGatewayReady: g => {
       gatewayRef.current = g
+      // Publish the live instance so leaf features (realtime voice) can issue
+      // RPCs / subscribe to events without prop-threading requestGateway.
+      setGateway(g)
     },
     refreshHermesConfig,
     refreshSessions

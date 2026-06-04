@@ -1,7 +1,7 @@
 import './styles.css'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { StrictMode } from 'react'
+import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 
@@ -12,6 +12,15 @@ import { installClipboardShim } from './lib/clipboard'
 import { ThemeProvider } from './themes/context'
 
 installClipboardShim()
+
+// Dev-only Phase 0 realtime-voice spike, reachable at `#/realtime-spike`.
+// Tree-shaken out of production builds (gated on MODE, like the perf probe).
+const realtimeSpikeActive =
+  import.meta.env.MODE !== 'production' &&
+  typeof window !== 'undefined' &&
+  window.location.hash.startsWith('#/realtime-spike')
+
+const RealtimeSpike = realtimeSpikeActive ? lazy(() => import('./app/dev/realtime-spike')) : null
 
 // Dev-only: install __PERF_DRIVE__ + __PERF_PROBE__ on window so the
 // scripts/ harnesses can drive a synthetic stream + record render cost.
@@ -37,9 +46,15 @@ createRoot(document.getElementById('root')!).render(
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <HapticsProvider>
-            <HashRouter>
-              <App />
-            </HashRouter>
+            {RealtimeSpike ? (
+              <Suspense fallback={<div style={{ padding: 24, fontFamily: 'monospace' }}>loading spike…</div>}>
+                <RealtimeSpike />
+              </Suspense>
+            ) : (
+              <HashRouter>
+                <App />
+              </HashRouter>
+            )}
           </HapticsProvider>
         </ThemeProvider>
       </QueryClientProvider>

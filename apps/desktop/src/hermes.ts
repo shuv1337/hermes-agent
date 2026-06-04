@@ -32,6 +32,7 @@ import type {
   ProfileSetupCommand,
   ProfileSoul,
   ProfilesResponse,
+  RealtimeSessionResponse,
   SessionMessagesResponse,
   SessionSearchResponse,
   SkillInfo,
@@ -590,5 +591,21 @@ export function speakText(text: string): Promise<AudioSpeakResponse> {
 export function getElevenLabsVoices(): Promise<ElevenLabsVoicesResponse> {
   return window.hermesDesktop.api<ElevenLabsVoicesResponse>({
     path: '/api/audio/elevenlabs/voices'
+  })
+}
+
+/**
+ * Mint a short-lived OpenAI Realtime ephemeral token via the backend.
+ *
+ * The backend reads VOICE_TOOLS_OPENAI_KEY server-side and returns only the
+ * ephemeral `client_secret` (never the raw key). Works in both local-spawn and
+ * remote-backend modes because the request flows through the same
+ * `window.hermesDesktop.api` IPC path as every other REST call. Rejects (503)
+ * when the key is absent — callers should fall back to the classic voice loop.
+ */
+export function createRealtimeSession(): Promise<RealtimeSessionResponse> {
+  return window.hermesDesktop.api<RealtimeSessionResponse>({
+    path: '/api/realtime/session',
+    method: 'POST'
   })
 }

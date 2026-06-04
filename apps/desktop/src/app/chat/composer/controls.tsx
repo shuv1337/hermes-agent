@@ -110,7 +110,11 @@ function ConversationPill({
   onToggleMute,
   status
 }: ConversationProps & { disabled: boolean }) {
-  const speaking = status === 'speaking'
+  // Spinner for any "busy" state (speaking, connecting, delegating, thinking);
+  // animated bars only while actively listening to the user.
+  const speaking =
+    status === 'speaking' || status === 'connecting' || status === 'delegating' || status === 'thinking'
+
   const listening = status === 'listening' && !muted
 
   const label =
@@ -118,11 +122,15 @@ function ConversationPill({
       ? 'Speaking'
       : status === 'transcribing'
         ? 'Transcribing'
-        : status === 'thinking'
-          ? 'Thinking'
-          : muted
-            ? 'Muted'
-            : 'Listening'
+        : status === 'connecting'
+          ? 'Connecting'
+          : status === 'delegating'
+            ? 'Working'
+            : status === 'thinking'
+              ? 'Thinking'
+              : muted
+                ? 'Muted'
+                : 'Listening'
 
   return (
     <div className="ml-auto flex shrink-0 items-center gap-(--composer-control-gap)">

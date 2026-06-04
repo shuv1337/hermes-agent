@@ -34,6 +34,8 @@ import {
   shouldAutoDrainOnSettle,
   updateQueuedPrompt
 } from '@/store/composer-queue'
+import { notify } from '@/store/notifications'
+import { $realtimeVoiceEnabled } from '@/store/realtime-voice'
 import { $gatewayState, $messages } from '@/store/session'
 import { $threadScrolledUp } from '@/store/thread-scroll'
 
@@ -52,6 +54,7 @@ import {
 } from './focus'
 import { HelpHint } from './help-hint'
 import { useAtCompletions } from './hooks/use-at-completions'
+import { useRealtimeConversation } from './hooks/use-realtime-conversation'
 import { useSlashCompletions } from './hooks/use-slash-completions'
 import { useVoiceConversation } from './hooks/use-voice-conversation'
 import { useVoiceRecorder } from './hooks/use-voice-recorder'
@@ -167,6 +170,7 @@ export function ChatBar({
   const [urlValue, setUrlValue] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [voiceConversationActive, setVoiceConversationActive] = useState(false)
+  const [realtimeUnavailable, setRealtimeUnavailable] = useState(false)
   const [tight, setTight] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [queueEdit, setQueueEdit] = useState<QueueEditState | null>(null)
@@ -1131,15 +1135,39 @@ export function ChatBar({
     await onSubmit(text)
   }
 
-  const conversation = useVoiceConversation({
+  // Coexist behind a setting: realtime (GPT-Realtime speech-to-speech) is the
+  // default; the classic STT->LLM->TTS loop is the fallback when realtime is
+  // toggled off or the backend can't mint a token (no VOICE_TOOLS_OPENAI_KEY).
+  // Both hooks are instantiated (Rules of Hooks); only the active one is
+  // `enabled`, so only one acquires the microphone at a time.
+  const preferRealtimeVoice = useStore($realtimeVoiceEnabled)
+  const useRealtimeVoice = preferRealtimeVoice && !realtimeUnavailable
+
+  const legacyConversation = useVoiceConversation({
     busy,
     consumePendingResponse,
-    enabled: voiceConversationActive,
+    enabled: voiceConversationActive && !useRealtimeVoice,
     onFatalError: () => setVoiceConversationActive(false),
     onSubmit: submitVoiceTurn,
     onTranscribeAudio,
     pendingResponse
   })
+
+  const realtimeConversation = useRealtimeConversation({
+    busy,
+    enabled: voiceConversationActive && useRealtimeVoice,
+    onFatalError: () => {
+      // No key / mint failure: fall back to the classic loop for this session.
+      setRealtimeUnavailable(true)
+      notify({
+        kind: 'info',
+        title: 'Using classic voice',
+        message: 'Realtime voice is unavailable right now — falling back to the standard voice loop.'
+      })
+    }
+  })
+
+  const conversation = useRealtimeVoice ? realtimeConversation : legacyConversation
 
   const contextMenu = (
     <ContextMenu
@@ -1169,7 +1197,12 @@ export function ChatBar({
           setVoiceConversationActive(false)
           void conversation.end()
         },
-        onStart: () => setVoiceConversationActive(true),
+        onStart: () => {
+          // Re-try realtime each time the user opens voice (it may have fallen
+          // back to classic in a prior session due to a transient mint failure).
+          setRealtimeUnavailable(false)
+          setVoiceConversationActive(true)
+        },
         onStopTurn: conversation.stopTurn,
         onToggleMute: conversation.toggleMute,
         status: conversation.status
@@ -1253,9 +1286,11 @@ export function ChatBar({
           onDrop={handleDrop}
           onSubmit={e => {
             e.preventDefault()
+
             if (composingRef.current) {
               return
             }
+
             submitDraft()
           }}
           ref={composerRef}

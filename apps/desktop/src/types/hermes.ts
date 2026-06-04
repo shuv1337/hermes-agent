@@ -23,6 +23,23 @@ export interface AudioSpeakResponse {
   provider?: string
 }
 
+export interface RealtimeSessionResponse {
+  /** Short-lived OpenAI Realtime ephemeral key (e.g. "ek_..."). */
+  client_secret: string
+  /** Unix epoch seconds when the ephemeral key expires (may be absent). */
+  expires_at?: number | null
+  /** Auto end-of-turn prompt after silence, in ms (0 = disabled). */
+  idle_timeout_ms?: number
+  /** Hard cap on a single realtime session, in seconds. */
+  max_session_sec?: number
+  /** Realtime model the token is bound to (e.g. "gpt-realtime-2"). */
+  model: string
+  /** Voice-activity detection mode: server_vad | semantic_vad | none. */
+  turn_detection?: string
+  /** Output voice configured server-side. */
+  voice: string
+}
+
 export interface ElevenLabsVoice {
   label: string
   name: string

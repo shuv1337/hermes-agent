@@ -439,6 +439,21 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "Reasoning effort for delegated subagents",
         "options": ["", "low", "medium", "high"],
     },
+    "realtime.voice": {
+        "type": "select",
+        "description": "Realtime voice (GPT-Realtime speech-to-speech)",
+        "options": ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"],
+    },
+    "realtime.reasoning_effort": {
+        "type": "select",
+        "description": "Realtime model reasoning effort (keep low — heavy work delegates to Hermes)",
+        "options": ["", "minimal", "low", "medium", "high", "xhigh"],
+    },
+    "realtime.turn_detection": {
+        "type": "select",
+        "description": "Realtime voice-activity detection mode",
+        "options": ["server_vad", "semantic_vad", "none"],
+    },
 }
 
 # Categories with fewer fields get merged into "general" to avoid tab sprawl.
@@ -465,7 +480,7 @@ _CATEGORY_MERGE: Dict[str, str] = {
 _CATEGORY_ORDER = [
     "general", "agent", "terminal", "display", "delegation",
     "memory", "compression", "security", "browser", "voice",
-    "tts", "stt", "logging", "discord", "auxiliary",
+    "realtime", "tts", "stt", "logging", "discord", "auxiliary",
 ]
 
 
@@ -1514,6 +1529,135 @@ async def speak_text(payload: TTSSpeakRequest):
         "data_url": f"data:{mime_type};base64,{encoded}",
         "mime_type": mime_type,
         "provider": result.get("provider"),
+    }
+
+
+# OpenAI Realtime ephemeral-token endpoint for the desktop realtime voice mode.
+# Mirrors the server-side-key pattern used by the ElevenLabs voices endpoint
+# above: the OpenAI key (VOICE_TOOLS_OPENAI_KEY) is read on the backend and
+# NEVER returned to the renderer — only a short-lived ephemeral client_secret
+# plus non-secret session metadata cross the wire. The renderer uses that
+# ephemeral token to open a WebRTC connection directly to OpenAI.
+_REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets"
+
+
+def _realtime_config() -> Dict[str, Any]:
+    """Return the ``realtime.*`` config block with safe fallbacks."""
+    try:
+        cfg = load_config().get("realtime")
+    except Exception:
+        cfg = None
+    return cfg if isinstance(cfg, dict) else {}
+
+
+@app.post("/api/realtime/session")
+async def create_realtime_session():
+    """Mint a short-lived OpenAI Realtime ephemeral ``client_secret``.
+
+    The full OpenAI key never leaves the backend; the response carries only the
+    ephemeral token and non-secret session metadata. Works identically in
+    local-spawn and remote-backend modes because this handler always runs on
+    the Python backend, which holds ``VOICE_TOOLS_OPENAI_KEY`` in its own
+    environment (the key is never tunnelled from the client).
+    """
+    api_key = (
+        load_env().get("VOICE_TOOLS_OPENAI_KEY")
+        or os.environ.get("VOICE_TOOLS_OPENAI_KEY")
+        or ""
+    ).strip()
+    if not api_key:
+        # Not an error the user must fix to use Hermes — the desktop falls back
+        # to the classic voice loop. 503 signals "temporarily unavailable".
+        raise HTTPException(
+            status_code=503,
+            detail="Realtime voice unavailable: set VOICE_TOOLS_OPENAI_KEY to enable it.",
+        )
+
+    cfg = _realtime_config()
+    model = (str(cfg.get("model") or "").strip() or "gpt-realtime-2")
+    voice = (str(cfg.get("voice") or "").strip() or "marin")
+    reasoning_effort = str(cfg.get("reasoning_effort") or "").strip()
+    turn_detection = (str(cfg.get("turn_detection") or "").strip() or "server_vad")
+
+    def _as_int(value: Any, default: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    max_session_sec = _as_int(cfg.get("max_session_sec"), 300)
+    idle_timeout_ms = _as_int(cfg.get("idle_timeout_ms"), 0)
+
+    session_payload: Dict[str, Any] = {
+        "type": "realtime",
+        "model": model,
+        "audio": {"output": {"voice": voice}},
+    }
+    # gpt-realtime-2 accepts a session-level reasoning_effort; keep it low so
+    # the realtime model stays a thin router and Hermes does the thinking.
+    # Empty config value -> rely on the model default (omit the field).
+    if reasoning_effort:
+        session_payload["reasoning_effort"] = reasoning_effort
+
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                _REALTIME_CLIENT_SECRETS_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"session": session_payload},
+            )
+    except Exception as exc:
+        _log.warning("Realtime client_secret mint error: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not mint realtime session token")
+
+    if resp.status_code >= 400:
+        # Never echo the upstream body verbatim back to the client.
+        _log.warning(
+            "Realtime client_secret mint failed: HTTP %s: %s",
+            resp.status_code,
+            resp.text[:500],
+        )
+        raise HTTPException(status_code=502, detail="Could not mint realtime session token")
+
+    try:
+        data = resp.json()
+    except Exception:
+        raise HTTPException(status_code=502, detail="Realtime token response was malformed")
+
+    if not isinstance(data, dict):
+        _log.warning("Realtime mint response was not a JSON object (type=%s)", type(data).__name__)
+        raise HTTPException(status_code=502, detail="Realtime token response was malformed")
+
+    # GA shape: {"value": "ek_...", "expires_at": <unix s>}.  Older beta shape
+    # nested the secret under "client_secret" — accept both defensively.
+    client_secret = data.get("value")
+    expires_at = data.get("expires_at")
+    nested = data.get("client_secret")
+    if not client_secret and isinstance(nested, dict):
+        client_secret = nested.get("value")
+        expires_at = nested.get("expires_at", expires_at)
+
+    if not client_secret:
+        _log.warning(
+            "Realtime mint response missing client_secret (keys=%s)",
+            sorted(data.keys()) if isinstance(data, dict) else type(data).__name__,
+        )
+        raise HTTPException(status_code=502, detail="Realtime token response was malformed")
+
+    return {
+        "client_secret": client_secret,
+        "model": model,
+        "voice": voice,
+        "expires_at": expires_at,
+        # Non-secret session knobs the renderer enforces (caps + VAD mode).
+        "turn_detection": turn_detection,
+        "max_session_sec": max_session_sec,
+        "idle_timeout_ms": idle_timeout_ms,
     }
 
 

@@ -837,6 +837,23 @@ stt:
   #   model: "voxtral-mini-latest"  # voxtral-mini-latest | voxtral-mini-2602
 
 # =============================================================================
+# Realtime Voice Mode (Hermes Desktop)
+# =============================================================================
+# Low-latency speech-to-speech via OpenAI GPT-Realtime. The realtime model is a
+# thin, fast router that delegates real work to a Hermes agent in the active
+# chat session. Requires VOICE_TOOLS_OPENAI_KEY in .env (the backend mints a
+# short-lived ephemeral token via POST /api/realtime/session — the key never
+# reaches the renderer). When the key is absent, the desktop falls back to the
+# classic STT -> LLM -> TTS voice loop.
+# realtime:
+#   model: "gpt-realtime-2"        # Pinned flagship realtime model
+#   voice: "marin"                 # marin | cedar | alloy | echo | shimmer | ...
+#   reasoning_effort: "low"        # minimal | low | medium | high | xhigh ("" = model default)
+#   turn_detection: "server_vad"   # server_vad | semantic_vad | none
+#   max_session_sec: 300           # Hard cap on a single realtime session
+#   idle_timeout_ms: 30000         # Auto end-of-turn prompt after silence
+
+# =============================================================================
 # Response Pacing (Messaging Platforms)
 # =============================================================================
 # Add human-like delays between message chunks.

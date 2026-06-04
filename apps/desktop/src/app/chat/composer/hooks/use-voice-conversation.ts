@@ -5,7 +5,16 @@ import { notify, notifyError } from '@/store/notifications'
 
 import { useMicRecorder } from './use-mic-recorder'
 
-export type ConversationStatus = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'
+// 'connecting' and 'delegating' are realtime-mode states (see
+// use-realtime-conversation.ts); the classic loop only uses the first five.
+export type ConversationStatus =
+  | 'connecting'
+  | 'delegating'
+  | 'idle'
+  | 'listening'
+  | 'speaking'
+  | 'thinking'
+  | 'transcribing'
 
 interface PendingVoiceResponse {
   id: string

@@ -5,6 +5,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { triggerHaptic } from '@/lib/haptics'
 import { Check } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { $realtimeVoiceEnabled, setRealtimeVoiceEnabled } from '@/store/realtime-voice'
 import { $toolViewMode, setToolViewMode } from '@/store/tool-view'
 import { useTheme } from '@/themes/context'
 import { BUILTIN_THEMES } from '@/themes/presets'
@@ -69,6 +70,7 @@ function SectionHead({ title, description, control }: { title: string; descripti
 export function AppearanceSettings() {
   const { themeName, mode, availableThemes, setTheme, setMode } = useTheme()
   const toolViewMode = useStore($toolViewMode)
+  const realtimeVoice = useStore($realtimeVoiceEnabled)
 
   return (
     <SettingsContent>
@@ -114,6 +116,28 @@ export function AppearanceSettings() {
             }
             description="Product hides raw tool payloads; Technical shows full input/output."
             title="Tool Call Display"
+          />
+        </section>
+
+        <section>
+          <SectionHead
+            control={
+              <SegmentedControl
+                onChange={id => {
+                  triggerHaptic('selection')
+                  setRealtimeVoiceEnabled(id === 'realtime')
+                }}
+                options={
+                  [
+                    { id: 'realtime', label: 'Realtime' },
+                    { id: 'classic', label: 'Classic' }
+                  ] as const
+                }
+                value={realtimeVoice ? 'realtime' : 'classic'}
+              />
+            }
+            description="Realtime is low-latency speech-to-speech (needs an OpenAI key; falls back to Classic automatically). Classic is the local transcribe → think → speak loop."
+            title="Voice Mode"
           />
         </section>
 

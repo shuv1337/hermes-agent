@@ -1590,7 +1590,22 @@ DEFAULT_CONFIG = {
         "silence_threshold": 200,     # RMS below this = silence (0-32767)
         "silence_duration": 3.0,      # Seconds of silence before auto-stop
     },
-    
+
+    # Realtime voice mode (Hermes Desktop) — low-latency speech-to-speech via
+    # OpenAI GPT-Realtime that delegates real work to a Hermes agent. Consumed
+    # by POST /api/realtime/session (mints an ephemeral token server-side) and
+    # by the desktop `useRealtimeConversation` hook. The OpenAI key comes from
+    # VOICE_TOOLS_OPENAI_KEY (never the OpenRouter key); when it is absent the
+    # desktop falls back to the classic STT→LLM→TTS voice loop.
+    "realtime": {
+        "model": "gpt-realtime-2",    # Pinned flagship realtime model
+        "voice": "marin",             # marin | cedar | alloy | echo | shimmer | ...
+        "reasoning_effort": "low",    # minimal | low | medium | high | xhigh ("" = model default)
+        "turn_detection": "server_vad",  # server_vad | semantic_vad | none
+        "max_session_sec": 300,       # Hard cap on a single realtime session
+        "idle_timeout_ms": 30000,     # Auto end-of-turn prompt after silence
+    },
+
     "human_delay": {
         "mode": "off",
         "min_ms": 800,
