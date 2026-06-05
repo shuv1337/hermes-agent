@@ -7,6 +7,7 @@ import {
   buildToolDefinitions,
   buildTurnDetection,
   extractFunctionCall,
+  isBenignRealtimeError,
   isFirstVoiceEvent,
   parseToolArguments,
   type RealtimeRuntimeConfig,
@@ -179,5 +180,25 @@ describe('asString', () => {
     expect(asString(null)).toBe('')
     expect(asString(undefined)).toBe('')
     expect(asString(42)).toBe('42')
+  })
+})
+
+describe('isBenignRealtimeError', () => {
+  it('treats cancel/active-response control-flow races as benign', () => {
+    expect(isBenignRealtimeError('Cancellation failed: no active response.')).toBe(true)
+    expect(isBenignRealtimeError('Error: no active response found')).toBe(true)
+    expect(isBenignRealtimeError('Conversation already has an active response')).toBe(true)
+    expect(isBenignRealtimeError('already has an active response')).toBe(true)
+  })
+
+  it('is case-insensitive', () => {
+    expect(isBenignRealtimeError('NO ACTIVE RESPONSE')).toBe(true)
+  })
+
+  it('surfaces real failures', () => {
+    expect(isBenignRealtimeError('Invalid API key provided')).toBe(false)
+    expect(isBenignRealtimeError('rate limit exceeded')).toBe(false)
+    expect(isBenignRealtimeError('Realtime error')).toBe(false)
+    expect(isBenignRealtimeError('')).toBe(false)
   })
 })

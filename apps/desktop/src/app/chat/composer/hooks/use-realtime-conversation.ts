@@ -11,6 +11,7 @@ import {
   buildFunctionCallOutput,
   buildSessionUpdate,
   extractFunctionCall,
+  isBenignRealtimeError,
   isFirstVoiceEvent,
   OAI_EVENTS_CHANNEL,
   parseToolArguments,
@@ -54,6 +55,11 @@ export function useRealtimeConversation({ cwd, enabled, onFatalError }: Realtime
   const audioElRef = useRef<HTMLAudioElement | null>(null)
   const sessionTimerRef = useRef<null | number>(null)
   const nudgeTimerRef = useRef<null | number>(null)
+  // Whether the model currently has a response in flight (response.created →
+  // response.done). Gates response.cancel (so a stop/barge-in while idle doesn't
+  // trigger a "no active response" error) and nudges (so we don't stack an
+  // out-of-band response on an active one).
+  const responseActiveRef = useRef(false)
   const delegationRef = useRef<ActiveDelegation | null>(null)
   const usageRef = useRef<{ input: number; output: number }>({ input: 0, output: 0 })
   // De-dupe tool calls: the model emits BOTH response.function_call_arguments.done
@@ -125,6 +131,7 @@ export function useRealtimeConversation({ cwd, enabled, onFatalError }: Realtime
 
     delegationRef.current = null
     handledCallIdsRef.current.clear()
+    responseActiveRef.current = false
     stopMeter()
 
     try {
@@ -308,7 +315,12 @@ export function useRealtimeConversation({ cwd, enabled, onFatalError }: Realtime
       delegation.cancel()
     }
 
-    send({ type: 'response.cancel' })
+    // Only cancel if the model is actually speaking — cancelling with no active
+    // response errors ("no active response"). interrupt_response already handles
+    // VAD barge-in; this is the explicit stop path.
+    if (responseActiveRef.current) {
+      send({ type: 'response.cancel' })
+    }
   }, [send])
 
   const handleFunctionCall = useCallback(
@@ -336,6 +348,13 @@ export function useRealtimeConversation({ cwd, enabled, onFatalError }: Realtime
         // run settles, before the real summary response.
         clearNudge()
         nudgeTimerRef.current = window.setInterval(() => {
+          // Backpressure: never stack a nudge on an in-flight response (the
+          // model is already speaking / a prior nudge is still going), which
+          // would error with "already has an active response" and pile up.
+          if (responseActiveRef.current) {
+            return
+          }
+
           send({
             type: 'response.create',
             response: {
@@ -408,10 +427,14 @@ export function useRealtimeConversation({ cwd, enabled, onFatalError }: Realtime
       } else if (isFirstVoiceEvent(type)) {
         setStatus('speaking')
       } else if (type === 'response.created') {
+        responseActiveRef.current = true
+
         if (statusRef.current !== 'delegating') {
           setStatus('thinking')
         }
       } else if (type === 'response.done') {
+        responseActiveRef.current = false
+
         const usage = ((event.response as { usage?: { input_tokens?: number; output_tokens?: number } } | undefined)
           ?.usage) ?? {}
 
@@ -422,7 +445,21 @@ export function useRealtimeConversation({ cwd, enabled, onFatalError }: Realtime
           setStatus('listening')
         }
       } else if (type === 'error') {
-        notifyError(new Error(asString((event.error as { message?: unknown } | undefined)?.message) || 'Realtime error'), 'Voice error')
+        // An error terminates any in-flight response (and our own benign
+        // cancel/create races imply nothing is active anyway), so clear the
+        // flag — otherwise it stays stuck true and the nudge stops firing
+        // (dead air) while a later stop fires a spurious cancel.
+        responseActiveRef.current = false
+
+        const message = asString((event.error as { message?: unknown } | undefined)?.message) || 'Realtime error'
+
+        // Benign control-flow races (cancel with nothing playing, response.create
+        // racing an in-flight response) are expected — log, don't alarm the user.
+        if (isBenignRealtimeError(message)) {
+          console.debug('[realtime] benign error ignored:', message)
+        } else {
+          notifyError(new Error(message), 'Voice error')
+        }
       }
 
       const fn = extractFunctionCall(event)
@@ -446,6 +483,7 @@ export function useRealtimeConversation({ cwd, enabled, onFatalError }: Realtime
     setStatus('connecting')
     usageRef.current = { input: 0, output: 0 }
     handledCallIdsRef.current.clear()
+    responseActiveRef.current = false
 
     let token: RealtimeRuntimeConfig
 
@@ -550,8 +588,12 @@ export function useRealtimeConversation({ cwd, enabled, onFatalError }: Realtime
   }, [teardown])
 
   const stopTurn = useCallback(() => {
-    // Interrupt the model's current speech (speech-only barge-in).
-    send({ type: 'response.cancel' })
+    // Interrupt the model's current speech (speech-only barge-in). Guard on an
+    // active response so a stop while idle doesn't trigger a "no active
+    // response" error.
+    if (responseActiveRef.current) {
+      send({ type: 'response.cancel' })
+    }
   }, [send])
 
   const toggleMute = useCallback(() => {

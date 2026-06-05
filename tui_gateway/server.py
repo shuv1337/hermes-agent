@@ -3999,7 +3999,14 @@ def _(rid, params: dict) -> dict:
     if override_cwd:
         try:
             _resolved_cwd = os.path.abspath(os.path.expanduser(override_cwd))
-            if os.path.isdir(_resolved_cwd) and _resolved_cwd != session.get("cwd"):
+            if not os.path.isdir(_resolved_cwd):
+                # Stale/deleted workspace: don't break the turn, but make it
+                # diagnosable rather than silently running in the fallback cwd.
+                print(
+                    f"[tui_gateway] prompt.submit: cwd override ignored — not a directory ({override_cwd})",
+                    file=sys.stderr,
+                )
+            elif _resolved_cwd != session.get("cwd"):
                 _set_session_cwd(session, _resolved_cwd)
         except Exception as exc:
             print(f"[tui_gateway] prompt.submit: cwd override ignored ({override_cwd}): {exc}", file=sys.stderr)

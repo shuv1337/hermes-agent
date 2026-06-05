@@ -162,6 +162,25 @@ export function buildSessionUpdate(config: RealtimeRuntimeConfig): Record<string
   }
 }
 
+// Realtime control-flow errors that are EXPECTED during normal barge-in /
+// cancel / out-of-band-response races — e.g. cancelling when nothing is
+// speaking, or a response.create that raced an in-flight response. These are
+// not real failures and must not surface as user-facing error toasts.
+const BENIGN_REALTIME_ERROR_PATTERNS: readonly RegExp[] = [
+  /no active response/i,
+  /cancellation failed/i,
+  /already has an active response/i,
+  /conversation already has an active response/i
+]
+
+/**
+ * True for benign realtime control-flow errors (see patterns above) that should
+ * be logged-and-ignored rather than shown to the user.
+ */
+export function isBenignRealtimeError(message: string): boolean {
+  return BENIGN_REALTIME_ERROR_PATTERNS.some(pattern => pattern.test(message))
+}
+
 /** Coerce an unknown event field to a string without throwing. */
 export function asString(value: unknown): string {
   if (typeof value === 'string') {
