@@ -94,6 +94,17 @@ if (REMOTE_DISPLAY_REASON) {
     `[hermes] remote display detected (${REMOTE_DISPLAY_REASON}); disabling GPU hardware acceleration to prevent flicker`
   )
 }
+
+// Opt-in Chrome DevTools Protocol endpoint so external drivers (e.g. shuvgeist
+// or a CDP-attach test harness) can attach to the running app. OFF by default;
+// must be set before app `ready`. Not needed by Playwright's _electron.launch(),
+// which wires its own CDP. Set HERMES_DESKTOP_REMOTE_DEBUG=1 (port defaults to
+// 9222, override with HERMES_DESKTOP_REMOTE_DEBUG_PORT).
+if (process.env.HERMES_DESKTOP_REMOTE_DEBUG === '1') {
+  const remoteDebugPort = String(process.env.HERMES_DESKTOP_REMOTE_DEBUG_PORT || '9222')
+  app.commandLine.appendSwitch('remote-debugging-port', remoteDebugPort)
+  console.log(`[hermes] remote debugging enabled on port ${remoteDebugPort} (HERMES_DESKTOP_REMOTE_DEBUG=1)`)
+}
 const SOURCE_REPO_ROOT = path.resolve(APP_ROOT, '../..')
 
 // Build-time install stamp -- the git ref this .exe was built against.
