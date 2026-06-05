@@ -22,6 +22,7 @@ const config: RealtimeRuntimeConfig = {
   idleTimeoutMs: 15000,
   maxSessionSec: 300,
   model: 'gpt-realtime-2',
+  semanticVadEagerness: 'auto',
   turnDetection: 'server_vad',
   voice: 'marin'
 }
@@ -58,11 +59,20 @@ describe('buildTurnDetection', () => {
     })
   })
 
-  it('omits idle_timeout_ms for semantic_vad', () => {
-    const detection = buildTurnDetection('semantic_vad', 15000) as Record<string, unknown>
+  it('omits idle_timeout_ms for semantic_vad and applies eagerness instead', () => {
+    const detection = buildTurnDetection('semantic_vad', 15000, 'high') as Record<string, unknown>
 
     expect(detection.type).toBe('semantic_vad')
     expect(detection).not.toHaveProperty('idle_timeout_ms')
+    expect(detection.eagerness).toBe('high')
+  })
+
+  it('omits eagerness for server_vad even when provided', () => {
+    expect(buildTurnDetection('server_vad', 15000, 'high')).not.toHaveProperty('eagerness')
+  })
+
+  it('omits eagerness when semantic_vad has no eagerness configured', () => {
+    expect(buildTurnDetection('semantic_vad', 15000)).not.toHaveProperty('eagerness')
   })
 
   it('omits idle_timeout_ms when zero', () => {

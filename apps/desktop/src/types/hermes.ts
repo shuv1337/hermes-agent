@@ -38,6 +38,8 @@ export interface RealtimeSessionResponse {
   max_session_sec?: number
   /** Realtime model the token is bound to (e.g. "gpt-realtime-2"). */
   model: string
+  /** Semantic VAD eagerness: low | medium | high | auto (only with semantic_vad). */
+  semantic_vad_eagerness?: string
   /** Voice-activity detection mode: server_vad | semantic_vad | none. */
   turn_detection?: string
   /** Output voice configured server-side. */

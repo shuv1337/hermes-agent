@@ -495,6 +495,7 @@ export function useRealtimeConversation({ cwd, enabled, onFatalError }: Realtime
         model: minted.model,
         voice: minted.voice,
         turnDetection: minted.turn_detection || 'server_vad',
+        semanticVadEagerness: minted.semantic_vad_eagerness || 'auto',
         maxSessionSec: minted.max_session_sec || 0,
         idleTimeoutMs: minted.idle_timeout_ms || 0,
         expiresAt: minted.expires_at ?? null,

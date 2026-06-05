@@ -25,6 +25,8 @@ export interface RealtimeRuntimeConfig {
   idleTimeoutMs: number
   maxSessionSec: number
   model: string
+  /** Semantic VAD eagerness (low|medium|high|auto), used only for semantic_vad. */
+  semanticVadEagerness: string
   turnDetection: string
   voice: string
 }
@@ -122,21 +124,32 @@ export function buildToolDefinitions(): Array<Record<string, unknown>> {
 }
 
 /** Build the turn_detection block for session.update from the configured mode. */
-export function buildTurnDetection(mode: string, idleTimeoutMs: number): null | Record<string, unknown> {
+export function buildTurnDetection(
+  mode: string,
+  idleTimeoutMs: number,
+  semanticVadEagerness?: string
+): null | Record<string, unknown> {
   if (mode === 'none') {
     return null
   }
 
+  const isSemantic = mode === 'semantic_vad'
+
   const detection: Record<string, unknown> = {
-    type: mode === 'semantic_vad' ? 'semantic_vad' : 'server_vad',
+    type: isSemantic ? 'semantic_vad' : 'server_vad',
     create_response: true,
     // Barge-in: user speech auto-cancels the model's current audio (speech-only).
     interrupt_response: true
   }
 
   // idle_timeout_ms auto-prompts after silence; only valid for server_vad.
-  if (idleTimeoutMs > 0 && detection.type === 'server_vad') {
+  if (!isSemantic && idleTimeoutMs > 0) {
     detection.idle_timeout_ms = idleTimeoutMs
+  }
+
+  // eagerness (how readily the model takes a turn) only applies to semantic_vad.
+  if (isSemantic && semanticVadEagerness) {
+    detection.eagerness = semanticVadEagerness
   }
 
   return detection
@@ -152,7 +165,7 @@ export function buildSessionUpdate(config: RealtimeRuntimeConfig): Record<string
       output_modalities: ['audio'],
       audio: {
         input: {
-          turn_detection: buildTurnDetection(config.turnDetection, config.idleTimeoutMs)
+          turn_detection: buildTurnDetection(config.turnDetection, config.idleTimeoutMs, config.semanticVadEagerness)
         },
         output: { voice: config.voice }
       },

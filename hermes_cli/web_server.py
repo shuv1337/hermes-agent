@@ -454,6 +454,11 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "Realtime voice-activity detection mode",
         "options": ["server_vad", "semantic_vad", "none"],
     },
+    "realtime.semantic_vad_eagerness": {
+        "type": "select",
+        "description": "Semantic VAD eagerness (only used when turn detection is semantic_vad)",
+        "options": ["low", "medium", "high", "auto"],
+    },
 }
 
 # Categories with fewer fields get merged into "general" to avoid tab sprawl.
@@ -1577,6 +1582,7 @@ async def create_realtime_session():
     model = (str(cfg.get("model") or "").strip() or "gpt-realtime-2")
     voice = (str(cfg.get("voice") or "").strip() or "marin")
     turn_detection = (str(cfg.get("turn_detection") or "").strip() or "server_vad")
+    semantic_vad_eagerness = (str(cfg.get("semantic_vad_eagerness") or "").strip() or "auto")
 
     def _as_int(value: Any, default: int) -> int:
         try:
@@ -1658,6 +1664,7 @@ async def create_realtime_session():
         "expires_at": expires_at,
         # Non-secret session knobs the renderer enforces (caps + VAD mode).
         "turn_detection": turn_detection,
+        "semantic_vad_eagerness": semantic_vad_eagerness,
         "max_session_sec": max_session_sec,
         "idle_timeout_ms": idle_timeout_ms,
         # Per-turn model override for run_hermes_agent (empty = use chat model).

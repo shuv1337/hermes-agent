@@ -1602,6 +1602,7 @@ DEFAULT_CONFIG = {
         "voice": "marin",             # marin | cedar | alloy | echo | shimmer | ...
         "reasoning_effort": "low",    # advisory: Realtime API rejects this on the wire; gpt-realtime-2 defaults to low
         "turn_detection": "server_vad",  # server_vad | semantic_vad | none
+        "semantic_vad_eagerness": "auto",  # low | medium | high | auto (only with semantic_vad)
         "max_session_sec": 300,       # Hard cap on a single realtime session
         "idle_timeout_ms": 30000,     # Auto end-of-turn prompt after silence
         # Run delegated voice turns (run_hermes_agent) on a faster model than the

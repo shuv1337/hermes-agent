@@ -1,4 +1,5 @@
 import {
+  AudioLines,
   Brain,
   type IconComponent,
   Lock,
@@ -141,7 +142,14 @@ export const FIELD_LABELS: Record<string, string> = {
   'delegation.max_iterations': 'Subagent Turn Limit',
   'delegation.max_concurrent_children': 'Parallel Subagents',
   'delegation.child_timeout_seconds': 'Subagent Timeout',
-  'delegation.reasoning_effort': 'Subagent Reasoning Effort'
+  'delegation.reasoning_effort': 'Subagent Reasoning Effort',
+  'realtime.voice': 'Realtime Voice',
+  'realtime.turn_detection': 'Turn Detection',
+  'realtime.semantic_vad_eagerness': 'Semantic VAD Eagerness',
+  'realtime.max_session_sec': 'Max Session Length',
+  'realtime.idle_timeout_ms': 'Idle Timeout',
+  'realtime.delegation_model': 'Delegation Model',
+  'realtime.delegation_provider': 'Delegation Provider'
 }
 
 export const FIELD_DESCRIPTIONS: Record<string, string> = {
@@ -168,7 +176,18 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = {
   'voice.auto_tts': 'Automatically speak assistant responses.',
   'stt.enabled': 'Enable local or provider-backed speech transcription.',
   'stt.elevenlabs.language_code': 'Optional ISO-639-3 language code. Blank lets ElevenLabs auto-detect.',
-  'agent.max_turns': 'Upper bound for tool-calling turns before Hermes stops a run.'
+  'agent.max_turns': 'Upper bound for tool-calling turns before Hermes stops a run.',
+  'realtime.voice': 'Spoken voice for realtime (GPT-Realtime speech-to-speech) conversations.',
+  'realtime.turn_detection':
+    'How the model decides you have finished speaking. Server VAD is timing-based; Semantic VAD waits for a complete thought.',
+  'realtime.semantic_vad_eagerness':
+    'How readily the model takes its turn (Semantic VAD only). Higher is snappier; lower waits longer.',
+  'realtime.max_session_sec': 'Hard cap on a single realtime voice session, in seconds.',
+  'realtime.idle_timeout_ms':
+    'Auto end-of-turn prompt after this much silence, in milliseconds (Server VAD only). 0 disables.',
+  'realtime.delegation_model':
+    'Run delegated voice turns on a faster model than typed chat. Blank uses the chat model (e.g. google/gemini-3.1-flash-lite).',
+  'realtime.delegation_provider': 'Optional explicit provider for the delegation model (e.g. gemini, openrouter).'
 }
 
 // Curated desktop config surface: only fields a user might tune from the app.
@@ -258,6 +277,20 @@ export const SECTIONS: DesktopConfigSection[] = [
       'stt.elevenlabs.diarize',
       'voice.record_key',
       'voice.max_recording_seconds'
+    ]
+  },
+  {
+    id: 'realtime',
+    label: 'Realtime Voice',
+    icon: AudioLines,
+    keys: [
+      'realtime.voice',
+      'realtime.turn_detection',
+      'realtime.semantic_vad_eagerness',
+      'realtime.max_session_sec',
+      'realtime.idle_timeout_ms',
+      'realtime.delegation_model',
+      'realtime.delegation_provider'
     ]
   },
   {
