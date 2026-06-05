@@ -287,6 +287,8 @@ The dashboard embeds the real `hermes --tui` — **not** a rewrite.  See `hermes
 
 A **separate** chat surface from both the classic CLI and the dashboard's embedded TUI. It is an Electron + React + nanostore renderer (`@assistant-ui/react`) that talks to a `tui_gateway` backend over JSON-RPC (`requestGateway(method, params)`). It does NOT embed `hermes --tui` — it has its own composer, transcript, and slash-command pipeline. Route desktop bugs to the `hermes-desktop-app-work` skill, not `hermes-dashboard-work`.
 
+**Desktop launcher invariant:** Linux desktop launchers / Walker may invoke the packaged Electron binary repeatedly. The Electron main process must hold a single-instance lock and focus the existing window on `second-instance`; otherwise each activation can spawn its own `hermes dashboard --no-open --tui` backend on the next 912x port and races can surface as backend bind failures.
+
 **Slash commands in the desktop app are curated client-side, then dispatched to the backend.** The pipeline:
 
 - **Backend already provides everything.** `tui_gateway/server.py` `commands.catalog` (empty-query list) and `complete.slash` (typed-query completions) both include built-in commands, user `quick_commands`, AND skill-derived commands (`scan_skill_commands()` / `get_skill_commands()`). The desktop app does not need a new RPC to see skills.

@@ -238,6 +238,11 @@ const BOOT_FAKE_STEP_MS = (() => {
   if (!Number.isFinite(raw) || raw <= 0) return 650
   return Math.max(120, raw)
 })()
+const DEFAULT_DESKTOP_ZOOM_LEVEL = (() => {
+  const raw = Number.parseFloat(String(process.env.HERMES_DESKTOP_DEFAULT_ZOOM_LEVEL || ''))
+  if (!Number.isFinite(raw)) return 0.5
+  return Math.min(9, Math.max(-9, raw))
+})()
 const APP_NAME = 'Hermes'
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
@@ -2832,9 +2837,9 @@ function buildApplicationMenu() {
       { role: 'toggleDevTools' },
       { type: 'separator' },
       {
-        label: 'Actual Size',
+        label: 'Reset Zoom',
         accelerator: 'CommandOrControl+0',
-        click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setZoomLevel(0) }
+        click: () => { if (mainWindow && !mainWindow.isDestroyed()) resetZoomLevel(mainWindow) }
       },
       {
         label: 'Zoom In',
@@ -2927,7 +2932,7 @@ function installZoomShortcuts(window) {
     const key = input.key
     if (key === '0') {
       event.preventDefault()
-      window.webContents.setZoomLevel(0)
+      resetZoomLevel(window)
     } else if (key === '=' || key === '+') {
       event.preventDefault()
       const next = Math.min(window.webContents.getZoomLevel() + ZOOM_STEP, 9)
@@ -2938,6 +2943,10 @@ function installZoomShortcuts(window) {
       window.webContents.setZoomLevel(next)
     }
   })
+}
+
+function resetZoomLevel(window) {
+  window.webContents.setZoomLevel(DEFAULT_DESKTOP_ZOOM_LEVEL)
 }
 
 function installContextMenu(window) {
@@ -3488,6 +3497,17 @@ async function startHermes() {
   return connectionPromise
 }
 
+function focusMainWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+    return
+  }
+
+  if (app.isReady()) createWindow()
+}
+
 function createWindow() {
   const icon = getAppIconPath()
   mainWindow = new BrowserWindow({
@@ -3543,6 +3563,7 @@ function createWindow() {
   installPreviewShortcut(mainWindow)
   installDevToolsShortcut(mainWindow)
   installZoomShortcuts(mainWindow)
+  resetZoomLevel(mainWindow)
   installContextMenu(mainWindow)
   mainWindow.webContents.setWindowOpenHandler(details => {
     openExternalUrl(details.url)
@@ -4256,24 +4277,32 @@ function maybePinToDock() {
   }
 }
 
-app.whenReady().then(() => {
-  // macOS: relocate into /Applications before anything else so setup + state
-  // land in the final location; on success this relaunches, so bail here.
-  if (maybeRelocateToApplications()) return
-  maybePinToDock()
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
 
-  Menu.setApplicationMenu(buildApplicationMenu())
-  installMediaPermissions()
-  registerMediaProtocol()
-  ensureWslWindowsFonts()
-  configureSpellChecker()
-  registerPowerResumeListeners()
-  createWindow()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => focusMainWindow())
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  app.whenReady().then(() => {
+    // macOS: relocate into /Applications before anything else so setup + state
+    // land in the final location; on success this relaunches, so bail here.
+    if (maybeRelocateToApplications()) return
+    maybePinToDock()
+
+    Menu.setApplicationMenu(buildApplicationMenu())
+    installMediaPermissions()
+    registerMediaProtocol()
+    ensureWslWindowsFonts()
+    configureSpellChecker()
+    registerPowerResumeListeners()
+    createWindow()
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
-})
+}
 
 // Seed Chromium's spellchecker with the system locale (falling back to en-US).
 // On macOS Electron uses the native spellchecker which ignores this list, but
