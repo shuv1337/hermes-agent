@@ -504,6 +504,7 @@ export function DesktopController() {
       activeSessionIdRef,
       branchCurrentSession: branchInNewChat,
       busyRef,
+      changeSessionCwd,
       createBackendSessionForSend,
       handleSkinCommand,
       requestGateway,

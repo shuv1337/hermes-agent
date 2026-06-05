@@ -41,12 +41,15 @@ export function useCwdActions({
     [activeSessionIdRef, requestGateway]
   )
 
+  // Returns how the change landed: 'applied' (live), 'staged' (older backend —
+  // persisted for the next session but not the active one), or null (rejected /
+  // empty). Callers like the /cwd command use this to phrase their feedback.
   const changeSessionCwd = useCallback(
-    async (cwd: string) => {
+    async (cwd: string): Promise<'applied' | 'staged' | null> => {
       const trimmed = cwd.trim()
 
       if (!trimmed) {
-        return
+        return null
       }
 
       if (!activeSessionId) {
@@ -69,7 +72,7 @@ export function useCwdActions({
           setCurrentBranch('')
         }
 
-        return
+        return 'applied'
       }
 
       try {
@@ -81,13 +84,15 @@ export function useCwdActions({
         setCurrentCwd(info.cwd || trimmed)
         setCurrentBranch(info.branch || '')
         onSessionRuntimeInfo?.({ branch: info.branch || '', cwd: info.cwd || trimmed })
+
+        return 'applied'
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
 
         if (!message.includes('unknown method')) {
           notifyError(err, 'Working directory change failed')
 
-          return
+          return null
         }
 
         setCurrentCwd(trimmed)
@@ -97,6 +102,8 @@ export function useCwdActions({
           title: 'Working directory staged',
           message: 'Restart the desktop backend to apply cwd changes to this active session.'
         })
+
+        return 'staged'
       }
     },
     [activeSessionId, onSessionRuntimeInfo, requestGateway]
