@@ -17,7 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -30,6 +30,7 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem
 } from '@/components/ui/sidebar'
@@ -252,6 +253,23 @@ export function ChatSidebar({
     }
   }, [])
 
+  // Open the native folder picker and start a fresh chat in the chosen
+  // directory. Reuses the workspace new-session path, which seeds $currentCwd
+  // (and the branch) so the first message creates the backend session there.
+  const chooseNewSessionFolder = useCallback(async () => {
+    const selected = await window.hermesDesktop?.selectPaths({
+      directories: true,
+      multiple: false,
+      title: 'New chat in folder'
+    })
+
+    const folder = selected?.[0]?.trim()
+
+    if (folder) {
+      onNewSessionInWorkspace(folder)
+    }
+  }, [onNewSessionInWorkspace])
+
   const activeSidebarSessionId = currentView === 'chat' ? selectedSessionId : null
 
   const dndSensors = useSensors(
@@ -470,13 +488,27 @@ export function ChatSidebar({
                           <span className="min-w-0 flex-1 truncate max-[46.25rem]:hidden">{item.label}</span>
                           {item.id === 'new-session' && (
                             <KbdGroup
-                              className={cn('ml-auto max-[46.25rem]:hidden', newSessionKbdFlash && 'opacity-100!')}
+                              className={cn(
+                                'ml-auto transition-opacity max-[46.25rem]:hidden group-hover/menu-item:opacity-0',
+                                newSessionKbdFlash && 'opacity-100!'
+                              )}
                               keys={[...NEW_SESSION_KBD]}
                             />
                           )}
                         </>
                       )}
                     </SidebarMenuButton>
+                    {item.id === 'new-session' && sidebarOpen && (
+                      <SidebarMenuAction
+                        aria-label="New chat in a different folder…"
+                        className="text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground max-[46.25rem]:hidden"
+                        onClick={() => void chooseNewSessionFolder()}
+                        showOnHover
+                        title="New chat in a different folder…"
+                      >
+                        <Codicon name="folder-opened" size="0.8125rem" />
+                      </SidebarMenuAction>
+                    )}
                   </SidebarMenuItem>
                 )
               })}
