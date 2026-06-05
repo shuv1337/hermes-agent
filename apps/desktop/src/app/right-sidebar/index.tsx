@@ -22,7 +22,7 @@ import { TerminalSlot } from './terminal/persistent'
 interface RightSidebarPaneProps {
   onActivateFile: (path: string) => void
   onActivateFolder: (path: string) => void
-  onChangeCwd: (path: string) => Promise<void> | void
+  onChangeCwd: (path: string) => Promise<unknown> | void
 }
 
 interface RightSidebarTab {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  canonicalDesktopSlashCommand,
   desktopSkinSlashCompletions,
   desktopSlashDescription,
   desktopSlashUnavailableMessage,
@@ -17,6 +18,16 @@ describe('desktop slash command curation', () => {
     expect(isDesktopSlashSuggestion('/usage')).toBe(true)
     expect(isDesktopSlashSuggestion('/yolo')).toBe(true)
     expect(isDesktopSlashCommand('/yolo')).toBe(true)
+  })
+
+  it('surfaces /cwd and routes its /cd alias to it', () => {
+    expect(isDesktopSlashSuggestion('/cwd')).toBe(true)
+    expect(isDesktopSlashCommand('/cwd')).toBe(true)
+    // The alias still executes but stays out of the popover to avoid duplicates.
+    expect(isDesktopSlashSuggestion('/cd')).toBe(false)
+    expect(isDesktopSlashCommand('/cd')).toBe(true)
+    expect(canonicalDesktopSlashCommand('/cd')).toBe('/cwd')
+    expect(desktopSlashDescription('/cd')).toBe('Set the working directory for this chat')
   })
 
   it('surfaces skill and quick commands (extensions) in suggestions and lets them run', () => {

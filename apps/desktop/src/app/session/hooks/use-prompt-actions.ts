@@ -31,6 +31,7 @@ import { clearNotifications, notify, notifyError } from '@/store/notifications'
 import { requestDesktopOnboarding } from '@/store/onboarding'
 import {
   $busy,
+  $currentCwd,
   $messages,
   $yoloActive,
   setAwaitingResponse,
@@ -74,6 +75,7 @@ interface PromptActionsOptions {
   activeSessionIdRef: MutableRefObject<string | null>
   busyRef: MutableRefObject<boolean>
   branchCurrentSession: () => Promise<boolean>
+  changeSessionCwd: (cwd: string) => Promise<'applied' | 'staged' | null>
   createBackendSessionForSend: (preview?: string | null) => Promise<string | null>
   handleSkinCommand: (arg: string) => string
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
@@ -138,6 +140,7 @@ export function usePromptActions({
   activeSessionIdRef,
   busyRef,
   branchCurrentSession,
+  changeSessionCwd,
   createBackendSessionForSend,
   handleSkinCommand,
   requestGateway,
@@ -433,6 +436,35 @@ export function usePromptActions({
           return
         }
 
+        // /cwd [path] (alias /cd) sets the working directory for this chat,
+        // mirroring the right-sidebar folder picker. With no path it opens the
+        // native folder picker. Handled before the session-create fallback
+        // below so changing directories never spawns an empty session.
+        if (normalizedName === 'cwd' || normalizedName === 'cd') {
+          let target = arg.trim()
+
+          if (!target) {
+            const picked = await window.hermesDesktop?.selectPaths({
+              defaultPath: $currentCwd.get() || undefined,
+              directories: true,
+              multiple: false,
+              title: 'Change working directory'
+            })
+
+            target = picked?.[0]?.trim() ?? ''
+          }
+
+          if (!target) {
+            return
+          }
+
+          if ((await changeSessionCwd(target)) === 'applied') {
+            notify({ kind: 'success', message: `Working directory → ${$currentCwd.get() || target}` })
+          }
+
+          return
+        }
+
         if (normalizedName === 'skin' && !sessionHint && !activeSessionIdRef.current) {
           notify({ kind: 'success', message: handleSkinCommand(arg) })
 
@@ -552,6 +584,7 @@ export function usePromptActions({
       appendSessionTextMessage,
       branchCurrentSession,
       busyRef,
+      changeSessionCwd,
       createBackendSessionForSend,
       handleSkinCommand,
       requestGateway,
