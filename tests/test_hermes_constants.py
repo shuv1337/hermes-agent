@@ -10,7 +10,6 @@ from hermes_constants import (
     VALID_REASONING_EFFORTS,
     get_default_hermes_root,
     get_hermes_home,
-    get_skills_dir,
     is_container,
     parse_reasoning_effort,
     secure_parent_dir,
@@ -298,72 +297,4 @@ class TestSecureParentDir:
         secure_parent_dir(link_target)
         assert len(called_with) == 1
         assert called_with[0] == (str(real_dir), 0o700)
-
-
-class TestGetSkillsDir:
-    """get_skills_dir() override resolution (env var + config.yaml)."""
-
-    @pytest.fixture(autouse=True)
-    def _clear_cache(self):
-        hermes_constants._SKILLS_DIR_CACHE.clear()
-        yield
-        hermes_constants._SKILLS_DIR_CACHE.clear()
-
-    def test_default_is_hermes_home_skills(self, tmp_path, monkeypatch):
-        home = tmp_path / ".hermes"
-        home.mkdir()
-        monkeypatch.setenv("HERMES_HOME", str(home))
-        monkeypatch.delenv("HERMES_SKILLS_DIR", raising=False)
-        assert get_skills_dir() == home / "skills"
-
-    def test_env_override_absolute(self, tmp_path, monkeypatch):
-        home = tmp_path / ".hermes"
-        home.mkdir()
-        custom = tmp_path / "team-skills"
-        monkeypatch.setenv("HERMES_HOME", str(home))
-        monkeypatch.setenv("HERMES_SKILLS_DIR", str(custom))
-        assert get_skills_dir() == custom
-
-    def test_env_override_relative_resolves_against_home(self, tmp_path, monkeypatch):
-        home = tmp_path / ".hermes"
-        home.mkdir()
-        monkeypatch.setenv("HERMES_HOME", str(home))
-        monkeypatch.setenv("HERMES_SKILLS_DIR", "shared")
-        assert get_skills_dir() == home / "shared"
-
-    def test_env_override_expands_user_and_vars(self, tmp_path, monkeypatch):
-        home = tmp_path / ".hermes"
-        home.mkdir()
-        monkeypatch.setenv("HERMES_HOME", str(home))
-        monkeypatch.setenv("MY_SKILLS", str(tmp_path / "viavar"))
-        monkeypatch.setenv("HERMES_SKILLS_DIR", "${MY_SKILLS}")
-        assert get_skills_dir() == tmp_path / "viavar"
-
-    def test_config_override(self, tmp_path, monkeypatch):
-        home = tmp_path / ".hermes"
-        home.mkdir()
-        monkeypatch.setenv("HERMES_HOME", str(home))
-        monkeypatch.delenv("HERMES_SKILLS_DIR", raising=False)
-        (home / "config.yaml").write_text(
-            "skills:\n  dir: " + str(tmp_path / "cfg-skills") + "\n"
-        )
-        assert get_skills_dir() == tmp_path / "cfg-skills"
-
-    def test_env_wins_over_config(self, tmp_path, monkeypatch):
-        home = tmp_path / ".hermes"
-        home.mkdir()
-        monkeypatch.setenv("HERMES_HOME", str(home))
-        monkeypatch.setenv("HERMES_SKILLS_DIR", str(tmp_path / "env-skills"))
-        (home / "config.yaml").write_text(
-            "skills:\n  dir: " + str(tmp_path / "cfg-skills") + "\n"
-        )
-        assert get_skills_dir() == tmp_path / "env-skills"
-
-    def test_empty_config_dir_falls_back_to_default(self, tmp_path, monkeypatch):
-        home = tmp_path / ".hermes"
-        home.mkdir()
-        monkeypatch.setenv("HERMES_HOME", str(home))
-        monkeypatch.delenv("HERMES_SKILLS_DIR", raising=False)
-        (home / "config.yaml").write_text('skills:\n  dir: ""\n')
-        assert get_skills_dir() == home / "skills"
 

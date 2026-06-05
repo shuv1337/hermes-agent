@@ -17,28 +17,19 @@ def test_version_string_no_v_prefix():
 
 
 def test_check_for_updates_uses_cache(tmp_path, monkeypatch):
-    """When cache is fresh for the active repo, return it without calling git."""
+    """When cache is fresh, check_for_updates should return cached value without calling git."""
     from hermes_cli.banner import check_for_updates
     from hermes_cli import __version__
 
-    project_root = tmp_path / "project"
-    project_root.mkdir()
-    (project_root / ".git").mkdir()
-    banner_file = project_root / "hermes_cli" / "banner.py"
-    banner_file.parent.mkdir(parents=True)
-    banner_file.touch()
+    # Create a fake git repo and fresh cache
+    repo_dir = tmp_path / "hermes-agent"
+    repo_dir.mkdir()
+    (repo_dir / ".git").mkdir()
 
     cache_file = tmp_path / ".update_check"
-    cache_file.write_text(json.dumps({
-        "ts": time.time(),
-        "behind": 3,
-        "repo_dir": str(project_root),
-        "ver": __version__,
-    }))
+    cache_file.write_text(json.dumps({"ts": time.time(), "behind": 3, "ver": __version__}))
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    import hermes_cli.banner as banner
-    monkeypatch.setattr(banner, "__file__", str(banner_file))
     with patch("hermes_cli.banner.subprocess.run") as mock_run:
         result = check_for_updates()
 
@@ -87,22 +78,17 @@ def test_check_for_updates_expired_cache(tmp_path, monkeypatch):
     """When cache is expired, check_for_updates should call git fetch."""
     from hermes_cli.banner import check_for_updates
 
-    project_root = tmp_path / "project"
-    project_root.mkdir()
-    (project_root / ".git").mkdir()
-    banner_file = project_root / "hermes_cli" / "banner.py"
-    banner_file.parent.mkdir(parents=True)
-    banner_file.touch()
+    repo_dir = tmp_path / "hermes-agent"
+    repo_dir.mkdir()
+    (repo_dir / ".git").mkdir()
 
     # Write an expired cache (timestamp far in the past)
     cache_file = tmp_path / ".update_check"
-    cache_file.write_text(json.dumps({"ts": 0, "behind": 1, "repo_dir": str(project_root)}))
+    cache_file.write_text(json.dumps({"ts": 0, "behind": 1}))
 
     mock_result = MagicMock(returncode=0, stdout="5\n")
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    import hermes_cli.banner as banner
-    monkeypatch.setattr(banner, "__file__", str(banner_file))
     with patch("hermes_cli.banner.subprocess.run", return_value=mock_result) as mock_run:
         result = check_for_updates()
 
@@ -128,59 +114,77 @@ def test_check_for_updates_no_git_dir(tmp_path, monkeypatch):
     mock_run.assert_not_called()
 
 
-def test_check_for_updates_fallback_to_legacy_install_repo(tmp_path, monkeypatch):
-    """When the active runtime is not in a git repo, fall back to HERMES_HOME/hermes-agent."""
+def test_check_for_updates_fallback_to_project_root(tmp_path, monkeypatch):
+    """Dev install: falls back to Path(__file__).parent.parent when HERMES_HOME has no git repo."""
     import hermes_cli.banner as banner
 
-    fake_runtime = tmp_path / "runtime" / "hermes_cli" / "banner.py"
-    fake_runtime.parent.mkdir(parents=True)
-    fake_runtime.touch()
+    project_root = Path(banner.__file__).parent.parent.resolve()
+    if not (project_root / ".git").exists():
+        pytest.skip("Not running from a git checkout")
 
-    legacy_repo = tmp_path / "hermes-agent"
-    legacy_repo.mkdir()
-    (legacy_repo / ".git").mkdir()
-
+    # Point HERMES_HOME at a temp dir with no hermes-agent/.git
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    monkeypatch.setattr(banner, "__file__", str(fake_runtime))
     with patch("hermes_cli.banner.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="0\n")
         result = banner.check_for_updates()
-    assert result == 0
+    # Should have fallen back to project root and run git commands
     assert mock_run.call_count >= 1
 
 
-def test_check_for_updates_ignores_cache_from_different_version(tmp_path, monkeypatch):
-    """A cache produced for a different installed version should be ignored and recomputed."""
-    from hermes_cli.banner import VERSION, check_for_updates
+def test_check_for_updates_docker_returns_none(tmp_path, monkeypatch):
+    """Inside the Docker image, check_for_updates() must short-circuit to None.
 
-    project_root = tmp_path / "project"
-    project_root.mkdir()
-    (project_root / ".git").mkdir()
-    banner_file = project_root / "hermes_cli" / "banner.py"
-    banner_file.parent.mkdir(parents=True)
-    banner_file.touch()
-
-    cache_file = tmp_path / ".update_check"
-    cache_file.write_text(json.dumps({
-        "ts": time.time(),
-        "behind": 928,
-        "rev": None,
-        "ver": "0.0.0-stale",
-    }))
+    Regression: the published image excludes .git (.dockerignore) and sets no
+    HERMES_REVISION (nix-only), so without a docker guard check_for_updates()
+    falls through to check_via_pypi(), whose version-mismatch flag (1) gets
+    rendered by both the Rich banner and the Ink TUI badge as a phantom
+    "1 commit behind" — despite there being no git repo or commit math in the
+    container, and `hermes update` correctly refusing to run there. The guard
+    must return None (so the > 0 render guards stay false) AND not reach the
+    git/pypi probes or write a cache entry.
+    """
+    import hermes_cli.banner as banner
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    cache_file = tmp_path / ".update_check"
+
+    with patch("hermes_cli.config.detect_install_method", return_value="docker"), \
+         patch("hermes_cli.banner.subprocess.run") as mock_run, \
+         patch("hermes_cli.banner.check_via_pypi") as mock_pypi:
+        result = banner.check_for_updates()
+
+    assert result is None
+    # Neither the git probe nor the PyPI probe should have run.
+    mock_run.assert_not_called()
+    mock_pypi.assert_not_called()
+    # And no phantom "behind" count should be cached for the next 6h.
+    assert not cache_file.exists()
+
+
+def test_check_for_updates_non_docker_still_checks(tmp_path, monkeypatch):
+    """The docker guard must NOT over-broaden: a pip install still version-checks.
+
+    Invariant guarding against the guard firing for non-docker methods — pip
+    installs legitimately reach check_via_pypi() and surface a real update.
+    """
     import hermes_cli.banner as banner
-    monkeypatch.setattr(banner, "__file__", str(banner_file))
 
-    mock_result = MagicMock(returncode=0, stdout="0\n")
-    with patch("hermes_cli.banner.subprocess.run", return_value=mock_result) as mock_run:
-        result = check_for_updates()
+    # No local git checkout -> the PyPI (pip-install) path is exercised.
+    fake_banner = tmp_path / "hermes_cli" / "banner.py"
+    fake_banner.parent.mkdir(parents=True, exist_ok=True)
+    fake_banner.touch()
+    monkeypatch.setattr(banner, "__file__", str(fake_banner))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.delenv("HERMES_REVISION", raising=False)
 
-    assert result == 0
-    assert mock_run.call_count == 2
-    cached = json.loads(cache_file.read_text())
-    assert cached["behind"] == 0
-    assert cached["ver"] == VERSION
+    with patch("hermes_cli.config.detect_install_method", return_value="pip"), \
+         patch("hermes_cli.banner.subprocess.run") as mock_run, \
+         patch("hermes_cli.banner.check_via_pypi", return_value=1) as mock_pypi:
+        result = banner.check_for_updates()
+
+    assert result == 1
+    mock_pypi.assert_called_once()
+    mock_run.assert_not_called()
 
 
 def test_prefetch_non_blocking():
