@@ -19,6 +19,7 @@ Top-level command for managing profiles. Running `hermes profile` without a subc
 | `list` | List all profiles. |
 | `use` | Set the active (default) profile. |
 | `create` | Create a new profile. |
+| `describe` | Read or set a profile's description (used by the kanban orchestrator for routing). |
 | `delete` | Delete a profile. |
 | `show` | Show details about a profile. |
 | `alias` | Regenerate the shell alias for a profile. |
@@ -80,7 +81,7 @@ Creates a new profile.
 |-------------------|-------------|
 | `<name>` | Name for the new profile. Must be a valid directory name (alphanumeric, hyphens, underscores). |
 | `--clone` | Copy `config.yaml`, `.env`, and `SOUL.md` from the current profile. |
-| `--clone-all` | Copy everything (config, memories, skills, sessions, state) from the current profile. |
+| `--clone-all` | Copy everything (config, memories, skills, cron, plugins) from the current profile. Excludes per-profile history: sessions, `state.db`, backups, state-snapshots, checkpoints. |
 | `--clone-from <profile>` | Clone from a specific profile instead of the current one. Used with `--clone` or `--clone-all`. |
 | `--no-alias` | Skip wrapper script creation. |
 | `--description "<text>"` | One- or two-sentence description of what this profile is good at. Used by the kanban orchestrator to route tasks based on role instead of profile name alone. Skip and add later via `hermes profile describe`. Persisted in `<profile_dir>/profile.yaml`. |

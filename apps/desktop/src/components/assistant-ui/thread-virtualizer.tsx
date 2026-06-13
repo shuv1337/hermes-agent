@@ -14,12 +14,21 @@ import {
 
 import { setMutableRef } from '@/lib/mutable-ref'
 import { cn } from '@/lib/utils'
-import { setThreadScrolledUp } from '@/store/thread-scroll'
+import {
+  onScrollToBottomRequest,
+  resetThreadScroll,
+  setThreadJumpButtonVisible,
+  setThreadScrolledUp
+} from '@/store/thread-scroll'
+
+import { MessageRenderBoundary } from './message-render-boundary'
 
 const ESTIMATED_ITEM_HEIGHT = 220
 const OVERSCAN = 4
 const AT_BOTTOM_THRESHOLD = 4
-const POST_RUN_BOTTOM_LOCK_MS = 1_200
+// Reveal the floating jump button only once scrolled meaningfully away — above
+// AT_BOTTOM_THRESHOLD so a sub-pixel settle never flashes it.
+const JUMP_BUTTON_THRESHOLD = 10
 
 type ThreadMessageComponents = ComponentProps<typeof ThreadPrimitive.MessageByIndex>['components']
 
@@ -181,18 +190,20 @@ const VirtualizedThreadInner: FC<VirtualizedThreadProps> = ({
                     key={virtualItem.key}
                     ref={virtualizer.measureElement}
                   >
-                    {group.kind === 'turn' ? (
-                      <div
-                        className="composer-human-ai-pair-container relative flex min-w-0 flex-col gap-(--conversation-turn-gap)"
-                        data-slot="aui_turn-pair"
-                      >
-                        {group.indices.map(index => (
-                          <ThreadPrimitive.MessageByIndex components={components} index={index} key={index} />
-                        ))}
-                      </div>
-                    ) : (
-                      <ThreadPrimitive.MessageByIndex components={components} index={group.index} />
-                    )}
+                    <MessageRenderBoundary resetKey={messageSignature}>
+                      {group.kind === 'turn' ? (
+                        <div
+                          className="composer-human-ai-pair-container relative flex min-w-0 flex-col gap-(--conversation-turn-gap)"
+                          data-slot="aui_turn-pair"
+                        >
+                          {group.indices.map(index => (
+                            <ThreadPrimitive.MessageByIndex components={components} index={index} key={index} />
+                          ))}
+                        </div>
+                      ) : (
+                        <ThreadPrimitive.MessageByIndex components={components} index={group.index} />
+                      )}
+                    </MessageRenderBoundary>
                   </div>
                 )
               })}
@@ -265,8 +276,27 @@ function useThreadScrollAnchor({
       return
     }
 
+    // Already parked at the bottom: writing `scrollTop` is a no-op and the
+    // browser fires NO scroll event, so arming the programmatic gate here would
+    // leave it permanently set. Repeated pins (streaming heartbeats, the
+    // post-run lock loop) then accumulate the gate, and the next genuine user
+    // scroll-up is misread as one of our programmatic scrolls — re-arming
+    // sticky-bottom and yanking the viewport back down. Refresh trackers, bail.
+    const distFromBottom = el.scrollHeight - (el.scrollTop + el.clientHeight)
+
+    if (distFromBottom <= AT_BOTTOM_THRESHOLD) {
+      lastTopRef.current = el.scrollTop
+      lastHeightRef.current = el.scrollHeight
+      lastClientHeightRef.current = el.clientHeight
+
+      return
+    }
+
     // Hold the disarm gate across the scroll event the next line will fire.
-    programmaticScrollPendingRef.current += 1
+    // Set to 1 rather than incrementing: coalesced writes within a frame fire a
+    // single scroll event, so a counter > 1 can never drain and would swallow a
+    // later real user scroll.
+    programmaticScrollPendingRef.current = 1
     scrollElementToBottom(el)
     lastTopRef.current = el.scrollTop
     lastHeightRef.current = el.scrollHeight
@@ -287,7 +317,7 @@ function useThreadScrollAnchor({
     })
   }, [groupCount, pinToBottom, stickyBottomRef, virtualizer])
 
-  useEffect(() => () => setThreadScrolledUp(false), [])
+  useEffect(() => () => resetThreadScroll(), [])
 
   // Track at-bottom state, dim composer when scrolled up, disarm on user
   // scroll/wheel/touch.
@@ -301,6 +331,13 @@ function useThreadScrollAnchor({
     const disarm = () => {
       setMutableRef(stickyBottomRef, false)
       programmaticScrollPendingRef.current = 0
+    }
+
+    // Dim the composer the instant we leave the bottom; reveal the jump button
+    // only once scrolled meaningfully away.
+    const publishScrollDistance = (dist: number) => {
+      setThreadScrolledUp(dist > AT_BOTTOM_THRESHOLD)
+      setThreadJumpButtonVisible(dist > JUMP_BUTTON_THRESHOLD)
     }
 
     const onScroll = () => {
@@ -320,22 +357,19 @@ function useThreadScrollAnchor({
         lastClientHeightRef.current = el.clientHeight
         // Always re-arm — sticky-bottom should hold through clamp races.
         setMutableRef(stickyBottomRef, true)
-        const atBottom = el.scrollHeight - (top + el.clientHeight) <= AT_BOTTOM_THRESHOLD
-        setThreadScrolledUp(!atBottom)
+        publishScrollDistance(el.scrollHeight - (top + el.clientHeight))
 
         return
       }
 
-      // Disarm only when `scrollTop` decreases while both content height and
-      // viewport height are stable. A bare `top < lastTopRef.current` check is
-      // unsafe: virtualizer measurement, streaming markdown, composer resizing,
-      // window resizing, and toolbar/status updates can all move scrollTop as a
-      // layout side effect. Wheel-up and touchmove still disarm immediately via
-      // their own listeners below, so real user intent remains covered.
+      // Disarm on ANY upward movement (even 1px), but only while content +
+      // viewport height are stable — virtualizer measurement, streaming
+      // markdown, and composer/window resize all shift scrollTop as a layout
+      // side effect. Wheel-up and touchmove disarm immediately too (below).
       const heightGrew = el.scrollHeight > lastHeightRef.current
       const clientHeightChanged = Math.abs(el.clientHeight - lastClientHeightRef.current) > 1
 
-      if (!heightGrew && !clientHeightChanged && top + 1 < lastTopRef.current) {
+      if (!heightGrew && !clientHeightChanged && top < lastTopRef.current) {
         setMutableRef(stickyBottomRef, false)
       }
 
@@ -343,13 +377,14 @@ function useThreadScrollAnchor({
       lastHeightRef.current = el.scrollHeight
       lastClientHeightRef.current = el.clientHeight
 
-      const atBottom = el.scrollHeight - (top + el.clientHeight) <= AT_BOTTOM_THRESHOLD
+      const distFromBottom = el.scrollHeight - (top + el.clientHeight)
 
-      if (atBottom) {
+      // Re-arm follow only once genuinely back at the bottom.
+      if (distFromBottom <= AT_BOTTOM_THRESHOLD) {
         setMutableRef(stickyBottomRef, true)
       }
 
-      setThreadScrolledUp(!atBottom)
+      publishScrollDistance(distFromBottom)
     }
 
     const onWheel = (event: WheelEvent) => {
@@ -369,51 +404,14 @@ function useThreadScrollAnchor({
     }
   }, [scrollerRef, stickyBottomRef])
 
-  // Follow content growth (streaming, item measurements, loading indicator)
-  // while armed. During fast streaming the ResizeObserver can fire many
-  // times per frame as Streamdown re-tokenizes; coalesce to one pin per
-  // animation frame so we don't run the scroll-event/re-pin chain
-  // (~20+ ms self in `Virtualizer.getMaxScrollOffset`) several times per
-  // token.
-  useEffect(() => {
-    if (!enabled || !isRunning) {
-      return undefined
-    }
+  // No streaming auto-follow: chasing content growth while parked at the bottom
+  // rubber-bands (the tail and the virtualizer's own measurement adjustments
+  // fight for scrollTop). The one-time new-turn jump below already lands a fresh
+  // message in view; from there the viewport stays put unless the user jumps.
 
-    const el = scrollerRef.current
-
-    if (!el) {
-      return undefined
-    }
-
-    let pinRafScheduled = false
-
-    const schedulePin = () => {
-      if (pinRafScheduled || !stickyBottomRef.current) {
-        return
-      }
-
-      pinRafScheduled = true
-      requestAnimationFrame(() => {
-        pinRafScheduled = false
-
-        if (stickyBottomRef.current) {
-          pinToBottom()
-        }
-      })
-    }
-
-    const observer = new ResizeObserver(schedulePin)
-
-    // Observe ONLY the content (firstElementChild), not the scroller `el`
-    // itself. Resizes of the viewport/scroller (window resize, devtools
-    // panel toggle) shouldn't trigger a pin — only content growth should.
-    if (el.firstElementChild) {
-      observer.observe(el.firstElementChild)
-    }
-
-    return () => observer.disconnect()
-  }, [enabled, isRunning, pinToBottom, scrollerRef, stickyBottomRef])
+  // The floating jump button asks us to return to the bottom; same re-arm + pin
+  // path as a new turn.
+  useEffect(() => onScrollToBottomRequest(jumpToBottom), [jumpToBottom])
 
   // Jump to bottom on session change OR when an empty thread first gets
   // content. Both share the same intent and the same effect.
@@ -429,22 +427,21 @@ function useThreadScrollAnchor({
     }
   }, [enabled, groupCount, jumpToBottom, sessionKey])
 
-  // Pre-paint pin: when groupCount increases while armed (optimistic user
-  // message insert, streaming assistant turn arriving, etc.), pin BEFORE
-  // the browser commits the layout to screen. Using useLayoutEffect rather
-  // than useEffect so this runs synchronously after React commits the DOM
-  // mutation but before the browser paints. Without this, there's a ~50ms
-  // visual window where the new message sits below the fold while we wait
-  // for the ResizeObserver / scroll event chain to fire and re-pin.
+  // Pre-paint pin: when groupCount increases while armed (a new turn arriving
+  // from the user submit or assistant turn start), pin BEFORE the browser
+  // commits the layout to screen. Using useLayoutEffect rather than useEffect
+  // so this runs synchronously after React commits the DOM mutation but before
+  // the browser paints. Without this, there's a ~50ms visual window where the
+  // new message sits below the fold.
   //
   // We pin TWICE in this critical path — once synchronously, then once on
   // the next rAF. The second pin catches the case where React mounts the
   // new message in the second commit (after our layout effect ran), which
   // grows scrollHeight again; without the rAF pin the user briefly sees a
-  // ~15 px gap below the new message until the RO catches up. Streaming
-  // tokens use the rate-limited RO path only; only the group-count change
-  // (which fires once per user submit / new turn arrival) pays for the
-  // extra pin.
+  // ~15 px gap below the new message. This fires once per user submit / new
+  // turn arrival — it is NOT streaming-token follow (that path is removed
+  // above), so a turn that streams a long response after this initial jump
+  // will not chase the bottom.
   const prevGroupCountForLayoutRef = useRef(groupCount)
   useLayoutEffect(() => {
     if (!enabled) {
@@ -468,45 +465,17 @@ function useThreadScrollAnchor({
     prevGroupCountForLayoutRef.current = groupCount
   }, [enabled, groupCount, pinToBottom, stickyBottomRef])
 
-  // Completion swaps streaming placeholders/plain code for final rendered DOM
-  // (notably Shiki-highlighted code). Keep following the bottom briefly after
-  // `isRunning` flips false so that final measurement pass cannot strand the
-  // viewport near the top of a large code block.
+  // Intentionally NO post-run bottom lock. Earlier builds kept pinning to
+  // the bottom for POST_RUN_BOTTOM_LOCK_MS after `isRunning` flipped false to
+  // chase final Shiki re-highlight measurement. With streaming follow gone,
+  // re-pinning at completion would yank the viewport back to the bottom even
+  // though the user is reading earlier content — the opposite of what's
+  // wanted. The one-time submit / new-turn jump already covers landing a
+  // fresh message in view.
   const prevIsRunningForLayoutRef = useRef(isRunning)
   useLayoutEffect(() => {
-    const finishedRun = prevIsRunningForLayoutRef.current && !isRunning
     prevIsRunningForLayoutRef.current = isRunning
-
-    if (!enabled || !finishedRun || !stickyBottomRef.current) {
-      return undefined
-    }
-
-    const lockUntil = performance.now() + POST_RUN_BOTTOM_LOCK_MS
-    let lockRaf: number | null = null
-
-    const lockFrame = () => {
-      lockRaf = null
-
-      if (!stickyBottomRef.current) {
-        return
-      }
-
-      pinToBottom()
-
-      if (performance.now() < lockUntil) {
-        lockRaf = requestAnimationFrame(lockFrame)
-      }
-    }
-
-    pinToBottom()
-    lockRaf = requestAnimationFrame(lockFrame)
-
-    return () => {
-      if (lockRaf !== null) {
-        cancelAnimationFrame(lockRaf)
-      }
-    }
-  }, [enabled, isRunning, pinToBottom, stickyBottomRef])
+  }, [isRunning])
 
   useAuiEvent('thread.runStart', jumpToBottom)
 }
