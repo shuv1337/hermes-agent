@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Hermes Desktop nick Launcher Implementation Notes</title>
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 900px; margin: 32px auto; padding: 0 20px; color: #1f2933; }
+    code { background: #eef2f6; padding: 2px 5px; border-radius: 4px; }
+    li { margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <h1>Hermes Desktop nick Launcher Implementation Notes</h1>
+  <ul>
+    <li>Created the local wrapper at <code>~/.local/bin/hermes-desktop-nick</code>, the private local env at <code>~/.config/hermes-desktop-nick/env</code>, and the Walker desktop entry at <code>~/.local/share/applications/hermes-agent-nick.desktop</code>.</li>
+    <li>Created and enabled the remote user service <code>hermes-desktop-remote.service</code> on <code>nick</code>, bound to <code>0.0.0.0:9120</code> with <code>--tui --insecure</code>.</li>
+    <li>Fast-forwarded <code>nick</code>'s Hermes checkout from 0.15.0 to 0.15.1 because the older remote code ignored <code>HERMES_DASHBOARD_SESSION_TOKEN</code> and generated an ephemeral session token.</li>
+    <li>Validation: protected <code>/api/config</code> returned HTTP 200 with the pinned token, Elephant returned <code>hermes-agent-nick.desktop</code>, and relaunching both profiles did not create extra Electron parent processes.</li>
+    <li>Desktop logs remain shared at <code>~/.hermes/logs/desktop.log</code> because the alternate launcher intentionally sets <code>HERMES_HOME=/home/shuv/.hermes</code> to reuse the existing install.</li>
+  </ul>
+</body>
+</html>

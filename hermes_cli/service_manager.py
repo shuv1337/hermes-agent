@@ -77,6 +77,7 @@ class ServiceManager(Protocol):
         profile: str,
         *,
         extra_env: dict[str, str] | None = None,
+        start_now: bool = True,
     ) -> None: ...
     def unregister_profile_gateway(self, profile: str) -> None: ...
     def list_profile_gateways(self) -> list[str]: ...
@@ -86,7 +87,8 @@ def detect_service_manager() -> ServiceManagerKind:
     """Detect which service manager is available in this environment.
 
     Returns:
-        "s6" — inside a container when /init is s6-svscan (Phase 2+)
+        "s6" — s6-svscan is PID 1 (s6-overlay image; Docker, Podman, or a
+               Fly Firecracker microVM)
         "windows" — native Windows host
         "launchd" — macOS host
         "systemd" — Linux host with a working user/system bus
@@ -100,14 +102,20 @@ def detect_service_manager() -> ServiceManagerKind:
     # Imports deferred so importing this module doesn't drag in the
     # whole gateway dependency graph for callers that only need the
     # Protocol type or validate_profile_name().
-    from hermes_constants import is_container
     from hermes_cli.gateway import (
         is_macos,
         is_windows,
         supports_systemd_services,
     )
 
-    if is_container() and _s6_running():
+    # Gate on _s6_running() alone (PID 1 comm == s6-svscan AND /run/s6/basedir),
+    # NOT is_container(): the latter only detects Docker/Podman/lxc, so it is
+    # False on Fly's Firecracker microVMs even though s6-overlay is PID 1 there.
+    # That false negative made the whole s6 dispatch path inert on Fly, so
+    # `hermes gateway start/stop/restart` fell through to host code that spawns
+    # a foreground gateway competing with the supervised one. _s6_running() is
+    # already an s6-overlay-specific signal, so the container gate was redundant.
+    if _s6_running():
         return "s6"
     if is_windows():
         return "windows"
@@ -175,6 +183,7 @@ class _RegistrationUnsupportedMixin:
         profile: str,
         *,
         extra_env: dict[str, str] | None = None,
+        start_now: bool = True,
     ) -> None:
         raise NotImplementedError(
             f"{type(self).__name__} does not support runtime profile "
@@ -585,15 +594,20 @@ class S6ServiceManager:
         would instead look up ``$HERMES_HOME/profiles/default/`` — a
         completely different (and almost always nonexistent) profile.
 
-        Port selection: the gateway picks its bind port from the
-        profile's ``config.yaml`` (``[gateway] port = ...``) — that
-        is the single source of truth. Previously this method took a
-        ``port`` parameter that was passed in but never substituted
-        into the rendered script (it was carried in for "API parity"
-        with a deterministic SHA-256 allocator in
-        ``hermes_cli.profiles._allocate_gateway_port``). PR #30136
-        review item I5 retired both the allocator and the parameter
-        because they were dead code through the entire stack.
+        Port selection: the gateway binds the port resolved by
+        ``gateway/config.py`` from the profile's own environment —
+        ``API_SERVER_PORT`` (or ``platforms.api_server.extra.port`` in
+        that profile's ``config.yaml``), defaulting to 8642. There is
+        no ``[gateway] port`` key and no Python-side allocator: because
+        each supervised profile gateway loads its own ``HERMES_HOME``,
+        two profiles that both leave the port unset will both try to
+        bind 8642 — give each profile a distinct ``API_SERVER_PORT`` in
+        its ``.env``. Previously this method took a ``port`` parameter
+        that was passed in but never substituted into the rendered
+        script (carried for "API parity" with a deterministic SHA-256
+        allocator in ``hermes_cli.profiles._allocate_gateway_port``).
+        PR #30136 review item I5 retired both the allocator and the
+        parameter because they were dead code through the entire stack.
         """
         import shlex
         lines = [
@@ -818,15 +832,15 @@ class S6ServiceManager:
         profile: str,
         *,
         extra_env: dict[str, str] | None = None,
+        start_now: bool = True,
     ) -> None:
         """Create the s6 service directory for a profile gateway.
 
         Triggers ``s6-svscanctl -a`` so s6-svscan picks the new directory
-        up immediately. The service is created in the *up* state — to
-        register without auto-starting, follow up with ``stop(profile)``
-        (or pass the start flag via the future ``start_now=False`` arg,
-        which the Phase 4 reconciliation path uses via a ``down``
-        marker file written directly).
+        up immediately.  When *start_now* is ``True`` (the default) the
+        service starts immediately; when ``False`` a ``down`` marker file
+        is written so s6-supervise leaves the service stopped until the
+        user explicitly runs ``hermes -p <profile> gateway start``.
 
         Raises:
             ValueError: if the profile name is invalid or the service
@@ -873,6 +887,13 @@ class S6ServiceManager:
             # dirs. See ``_seed_supervise_skeleton`` for the full
             # rationale.
             _seed_supervise_skeleton(tmp_dir)
+
+            # When start_now is False, write a `down` marker so
+            # s6-supervise does not auto-start the service on rescan.
+            # Mirrors the same pattern in container_boot.py
+            # _register_gateway_slot when start=False.
+            if not start_now:
+                (tmp_dir / "down").touch()
 
             tmp_dir.rename(svc_dir)
         except Exception:

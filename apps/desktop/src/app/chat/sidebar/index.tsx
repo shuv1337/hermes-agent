@@ -56,6 +56,7 @@ import {
   $sidebarPinsOpen,
   $sidebarRecentsOpen,
   $sidebarSessionOrderIds,
+  $sidebarSessionOrderManual,
   $sidebarWorkspaceOrderIds,
   $sidebarWorkspaceParentOrderIds,
   pinSession,
@@ -66,6 +67,7 @@ import {
   setSidebarPinsOpen,
   setSidebarRecentsOpen,
   setSidebarSessionOrderIds,
+  setSidebarSessionOrderManual,
   setSidebarWorkspaceOrderIds,
   setSidebarWorkspaceParentOrderIds,
   SIDEBAR_SESSIONS_PAGE_SIZE,
@@ -100,6 +102,7 @@ import type { SidebarNavItem } from '../../types'
 
 import { SidebarCronJobsSection } from './cron-jobs-section'
 import { SidebarLoadMoreRow } from './load-more-row'
+import { resolveManualSessionOrderIds } from './order'
 import { ProfileRail } from './profile-switcher'
 import { SidebarSessionRow } from './session-row'
 import { VirtualSessionList } from './virtual-session-list'
@@ -355,6 +358,7 @@ export function ChatSidebar({
   // otherwise be stuck in the grouped view with no way out.
   const showAllProfiles = multiProfile && profileScope === ALL_PROFILES
   const agentOrderIds = useStore($sidebarSessionOrderIds)
+  const agentOrderManual = useStore($sidebarSessionOrderManual)
   const workspaceOrderIds = useStore($sidebarWorkspaceOrderIds)
   const workspaceParentOrderIds = useStore($sidebarWorkspaceParentOrderIds)
   const [searchQuery, setSearchQuery] = useState('')
@@ -535,19 +539,29 @@ export function ChatSidebar({
   )
 
   useEffect(() => {
-    const next = reconcileOrderIds(
+    const next = resolveManualSessionOrderIds(
       unpinnedAgentSessions.map(s => s.id),
-      agentOrderIds
+      agentOrderIds,
+      agentOrderManual
     )
 
-    if (!sameIds(next, agentOrderIds)) {
+    if (!next.length && agentOrderManual) {
+      setSidebarSessionOrderManual(false)
+    }
+
+    if (!next.length && agentOrderIds.length) {
+      setSidebarSessionOrderIds([])
+      return
+    }
+
+    if (next.length && !sameIds(next, agentOrderIds)) {
       setSidebarSessionOrderIds(next)
     }
-  }, [agentOrderIds, unpinnedAgentSessions])
+  }, [agentOrderIds, agentOrderManual, unpinnedAgentSessions])
 
   const agentSessions = useMemo(
-    () => orderByIds(unpinnedAgentSessions, s => s.id, agentOrderIds),
-    [unpinnedAgentSessions, agentOrderIds]
+    () => (agentOrderManual ? orderByIds(unpinnedAgentSessions, s => s.id, agentOrderIds) : unpinnedAgentSessions),
+    [unpinnedAgentSessions, agentOrderIds, agentOrderManual]
   )
 
   // Recents are local-only: messaging-platform sessions are fetched as their
@@ -770,7 +784,10 @@ export function ChatSidebar({
 
   // Each reorderable list reports its OWN new id order; persisting is a direct,
   // typed write — no id-prefix sniffing to figure out which level moved.
-  const reorderSessions = (ids: string[]) => setSidebarSessionOrderIds(ids)
+  const reorderSessions = (ids: string[]) => {
+    setSidebarSessionOrderManual(true)
+    setSidebarSessionOrderIds(ids)
+  }
 
   const reorderParents = (ids: string[]) => setSidebarWorkspaceParentOrderIds(ids)
 
