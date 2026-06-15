@@ -1493,6 +1493,49 @@ When merging upstream, run a diff against `upstream/main` and confirm these
 commits are still on top. If a merge wipes them, cherry-pick back from the
 backup branches.
 
+### Post-merge runtime refresh (REQUIRED after every upstream merge)
+
+A merge only updates the source tree on disk. The **running gateway** and the
+**packaged desktop app** keep serving the pre-merge code until they are
+explicitly refreshed. Skipping these steps leaves a stale gateway process and
+a Walker/desktop launcher that boots the old UI (the packaged `app.asar` is a
+build artifact, not live source — it does NOT track HEAD). Run both after
+every merge:
+
+1. **Re-apply local patches** (see the patches skill / `~/.hermes/patches/apply.sh`)
+   and confirm the fork-only commits above are still on top.
+
+2. **Restart the gateway** so the long-lived process picks up new code
+   (module-level caches and the system prompt are built once at start):
+   ```bash
+   hermes gateway restart
+   # If status shows `activating (auto-restart)` for >10s, the auto-restart
+   # didn't fire — run `hermes gateway start` explicitly. ALWAYS verify the
+   # new PID is `active (running)` before walking away:
+   hermes gateway status
+   ```
+
+3. **Rebuild the packaged desktop app** so both Walker launchers
+   (`hermes-agent.desktop` and `hermes-agent-nick.desktop`) run current code.
+   The frontend `app.asar` is stale until rebuilt — verify the artifact
+   timestamp is newer than HEAD's commit time, not just that the build
+   "succeeded":
+   ```bash
+   hermes desktop --force-build
+   # Verify the new artifact + that no source is newer than the build:
+   stat -c '%y  %n' apps/desktop/release/linux-unpacked/resources/app.asar
+   find apps/desktop/src apps/desktop/electron -type f \
+     -newer apps/desktop/release/linux-unpacked/resources/app.asar | wc -l   # want 0
+   ```
+   Note: the packaged backend resolves to the adopted runtime
+   (`~/.hermes/hermes-agent` → this checkout), so the backend is current as
+   soon as the merge lands; only the **bundled frontend** needs the rebuild.
+
+4. **Secondary hosts (nick):** the desktop runs locally per host, so repeat
+   the gateway restart + (if that host launches the desktop) the rebuild on
+   each host after pulling. See the patches skill's "Updating a secondary
+   host" section.
+
 ## Local environment setup (host state, not code)
 
 These are machine-local arrangements on shuvdev that are NOT committed to the
