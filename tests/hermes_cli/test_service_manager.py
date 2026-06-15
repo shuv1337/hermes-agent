@@ -726,6 +726,48 @@ def test_s6_lifecycle_dispatches_to_s6_svc(
     assert flags == ["-u", "-d", "-t"]
 
 
+def test_s6_lifecycle_persists_named_profile_desired_state(
+    s6_scandir,
+    fake_subprocess_run,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    hermes_home = tmp_path / "hermes-home"
+    profile_dir = hermes_home / "profiles" / "coder"
+    profile_dir.mkdir(parents=True)
+    (s6_scandir / "gateway-coder").mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+
+    mgr = S6ServiceManager(scandir=s6_scandir)
+    mgr.start("gateway-coder")
+    assert json.loads((profile_dir / "gateway_state.json").read_text())["desired_state"] == "running"
+    mgr.stop("gateway-coder")
+    assert json.loads((profile_dir / "gateway_state.json").read_text())["desired_state"] == "stopped"
+    mgr.restart("gateway-coder")
+    assert json.loads((profile_dir / "gateway_state.json").read_text())["desired_state"] == "running"
+
+
+def test_s6_lifecycle_persists_default_profile_desired_state(
+    s6_scandir,
+    fake_subprocess_run,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    hermes_home = tmp_path / "hermes-home"
+    hermes_home.mkdir()
+    (s6_scandir / "gateway-default").mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home / "profiles" / "coder"))
+
+    mgr = S6ServiceManager(scandir=s6_scandir)
+    mgr.start("gateway-default")
+    state = json.loads((hermes_home / "gateway_state.json").read_text())
+    assert state["desired_state"] == "running"
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle errors — friendly messages, not raw CalledProcessError
 # ---------------------------------------------------------------------------
@@ -950,3 +992,38 @@ def test_s6_stop_tolerates_marker_write_failure(monkeypatch, s6_scandir):
     mgr.stop("gateway-coder")  # must not raise
 
     assert any(cmd[0] == "s6-svc" and "-d" in cmd for cmd in svc_calls)
+
+
+def test_s6_log_run_chowns_gateways_parent(s6_scandir, fake_subprocess_run) -> None:
+    """The log/run script must chown the logs/gateways/ parent, not just the leaf.
+
+    Regression guard for #45258: `mkdir -p` creates the gateways/ parent
+    root-owned on a root-context boot, and a leaf-only chown leaves it that
+    way. Every profile registered later then runs its log service as the
+    dropped hermes user and s6-log crash-loops on `mkdir: Permission denied`.
+    """
+    mgr = S6ServiceManager(scandir=s6_scandir)
+    mgr.register_profile_gateway("coder")
+
+    log_text = (s6_scandir / "gateway-coder" / "log" / "run").read_text()
+
+    parent_chown = 'chown hermes:hermes "$HERMES_HOME/logs/gateways"'
+    assert parent_chown in log_text, (
+        "log/run must chown the logs/gateways parent so profiles added "
+        f"after a root-context boot can create their leaf dirs. Saw: {log_text!r}"
+    )
+    # Non-recursive on purpose: sibling profile leaf dirs are each managed
+    # by their own log/run; a recursive parent chown would race them.
+    assert 'chown -R hermes:hermes "$HERMES_HOME/logs/gateways"' not in log_text
+
+    # Ordering: mkdir creates the parent, then the parent chown repairs its
+    # ownership, then the leaf chown — all before s6-log execs.
+    mkdir_idx = log_text.index('mkdir -p "$log_dir"')
+    parent_idx = log_text.index(parent_chown)
+    leaf_idx = log_text.index('chown -R hermes:hermes "$log_dir"')
+    exec_idx = log_text.index("s6-log 1 ")
+    assert mkdir_idx < parent_idx < leaf_idx < exec_idx
+
+    # The parent path must be a runtime env expansion, never a baked-in
+    # absolute path (same contract as the log_dir itself).
+    assert '/opt/data/logs/gateways"' not in log_text
