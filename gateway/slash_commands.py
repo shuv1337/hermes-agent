@@ -394,7 +394,12 @@ class GatewaySlashCommandsMixin:
 
     async def _handle_status_command(self, event: MessageEvent) -> str:
         """Handle /status command."""
-        from gateway.run import _AGENT_PENDING_SENTINEL, _load_gateway_config, _resolve_gateway_model
+        from gateway.run import (
+            _AGENT_PENDING_SENTINEL,
+            _collect_gateway_info,
+            _load_gateway_config,
+            _resolve_gateway_model,
+        )
 
         source = event.source
         session_entry = self.session_store.get_or_create_session(source)
@@ -486,6 +491,17 @@ class GatewaySlashCommandsMixin:
         base_url = base_url or _clean_str(session_row.get("billing_base_url"))
         context_used = context_used or _int_value(getattr(session_entry, "last_prompt_tokens", 0))
 
+        # Fork: honor a per-session /model override (set without --global) when
+        # no live/cached agent or persisted route resolved a model first.
+        if not model_name:
+            try:
+                override = (getattr(self, "_session_model_overrides", {}) or {}).get(session_key) or {}
+                if override.get("model"):
+                    model_name = _clean_str(override.get("model"))
+                    provider_name = provider_name or _clean_str(override.get("provider"))
+            except Exception:
+                pass
+
         user_config: dict[str, Any] = {}
         if not model_name or not provider_name or not context_total:
             try:
@@ -523,11 +539,75 @@ class GatewaySlashCommandsMixin:
         elif context_used:
             context_line = t("gateway.status.context_used", used=f"{context_used:,}")
 
-        lines = [
-            t("gateway.status.header"),
-            "",
-            t("gateway.status.session_id", session_id=session_entry.session_id),
-        ]
+        lines = [t("gateway.status.header"), ""]
+
+        # Gateway-level metadata (version / commit / uptime / pid) — fork-only.
+        # Failures in collection are swallowed so /status never breaks on
+        # a missing git checkout, read-only FS, etc.
+        try:
+            gw_info = _collect_gateway_info(
+                getattr(self, "_gateway_started_at", None)
+            )
+        except Exception:
+            gw_info = {}
+
+        if gw_info:
+            version = gw_info.get("version")
+            release_date = gw_info.get("release_date")
+            if version:
+                version_line = f"**Version:** v{version}"
+                if release_date:
+                    version_line += f" ({release_date})"
+                lines.append(version_line)
+
+            local_commit = gw_info.get("local_commit")
+            upstream_commit = gw_info.get("upstream_commit")
+            running_commit = gw_info.get("running_commit")
+            comparison_label = gw_info.get("comparison_label") or "upstream"
+            ahead = gw_info.get("commits_ahead") or 0
+
+            # If the running process was booted from a different commit than
+            # what's currently on disk, surface that divergence explicitly so
+            # users don't conclude the gateway is running newer code than it is.
+            stale_process = bool(
+                running_commit and local_commit and running_commit != local_commit
+            )
+
+            if local_commit and upstream_commit:
+                if ahead > 0 and local_commit != upstream_commit:
+                    commits_word = "commit" if ahead == 1 else "commits"
+                    lines.append(
+                        f"**Commit (on disk):** `{local_commit}` · {comparison_label} `{upstream_commit}` "
+                        f"(+{ahead} {commits_word} ahead)"
+                    )
+                else:
+                    lines.append(f"**Commit (on disk):** `{local_commit}`")
+            elif local_commit:
+                lines.append(f"**Commit (on disk):** `{local_commit}`")
+
+            if running_commit:
+                if stale_process:
+                    lines.append(
+                        f"**Running commit:** `{running_commit}` ⚠️ (gateway restart needed — on-disk HEAD has moved)"
+                    )
+                elif not local_commit:
+                    # No git on disk, but we captured a boot commit somehow.
+                    lines.append(f"**Running commit:** `{running_commit}`")
+                # If running_commit == local_commit, we already showed it as
+                # "Commit (on disk)" — no need to duplicate.
+
+            uptime_human = gw_info.get("uptime_human")
+            pid = gw_info.get("pid")
+            if uptime_human and pid:
+                lines.append(f"**Gateway Uptime:** {uptime_human} (pid {pid})")
+            elif uptime_human:
+                lines.append(f"**Gateway Uptime:** {uptime_human}")
+            elif pid:
+                lines.append(f"**Gateway PID:** {pid}")
+
+            lines.append("")
+
+        lines.append(t("gateway.status.session_id", session_id=session_entry.session_id))
         if title:
             lines.append(t("gateway.status.title", title=title))
         lines.extend([

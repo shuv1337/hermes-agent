@@ -227,6 +227,9 @@ class TestBuildOAuthAuth:
             pytest.skip("MCP SDK auth not available")
 
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        # Bypass the non-interactive guard (upstream dcc321695): this test
+        # exercises server_url path preservation, not the interactivity gate.
+        monkeypatch.setattr("tools.mcp_oauth._is_interactive", lambda: True)
         provider = build_oauth_auth("example-vendor", "https://connect.example.dev/mcp")
         assert isinstance(provider, OAuthClientProvider)
         assert provider.context.server_url == "https://connect.example.dev/mcp"
