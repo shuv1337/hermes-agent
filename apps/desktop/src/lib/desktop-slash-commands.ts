@@ -31,6 +31,7 @@ export interface DesktopThemeCommandOption {
 export type DesktopActionId =
   | 'branch'
   | 'cwd'
+  | 'browser'
   | 'handoff'
   | 'help'
   | 'new'
@@ -105,6 +106,12 @@ const DESKTOP_COMMAND_SPECS: readonly DesktopCommandSpec[] = [
   { name: '/skin', description: 'Switch desktop theme or cycle to the next one', surface: action('skin'), args: true },
   { name: '/title', description: 'Rename the current session', surface: action('title') },
   { name: '/help', description: 'Show desktop slash commands', aliases: ['/commands'], surface: action('help') },
+  {
+    name: '/browser',
+    description: 'Manage browser CDP connection [connect|disconnect|status] (local gateway only)',
+    surface: action('browser'),
+    args: true
+  },
 
   // Overlay pickers
   { name: '/model', description: 'Switch the model for this session', surface: picker('model'), hidden: true },
@@ -144,7 +151,7 @@ const DESKTOP_COMMAND_SPECS: readonly DesktopCommandSpec[] = [
 // per reason beats 40 identical object literals.
 const NO_DESKTOP_SURFACE: Record<DesktopUnavailableReason, readonly string[]> = {
   terminal: [
-    '/browser', '/busy', '/clear', '/compact', '/config', '/copy', '/cron', '/details',
+    '/busy', '/clear', '/compact', '/config', '/copy', '/cron', '/details',
     '/exit', '/footer', '/gateway', '/gquota', '/history', '/image', '/indicator', '/logs',
     '/mouse', '/paste', '/platforms', '/plugins', '/quit', '/redraw', '/reload', '/restart',
     '/sb', '/set-home', '/sethome', '/snap', '/snapshot', '/statusbar', '/toolsets', '/update', '/verbose'
