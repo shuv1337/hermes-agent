@@ -85,15 +85,13 @@ class AnthropicTransport(ProviderTransport):
         """
         import json
         from agent.anthropic_adapter import (
-            _decode_oauth_tool_name,
             _sanitize_replay_block,
             _to_plain_data,
         )
         from agent.transports.types import ToolCall
 
         strip_tool_prefix = kwargs.get("strip_tool_prefix", False)
-        canonical_tool_names = kwargs.get("canonical_tool_names")
-        _MCP_PREFIX = "mcp_"
+        _MCP_PREFIX = "mcp__"
 
         text_parts = []
         reasoning_parts = []
@@ -137,30 +135,25 @@ class AnthropicTransport(ProviderTransport):
             elif block.type == "tool_use":
                 name = block.name
                 if strip_tool_prefix and name.startswith(_MCP_PREFIX):
-                    # Anthropic's April 2026 OAuth blocklist rejects
-                    # ``mcp_<lowercase>`` tool names, so the encoder
-                    # uppercases the first char of the suffix (see
-                    # ``_encode_oauth_tool_name``). The decoder must reverse
-                    # that AND strip the synthetic ``mcp_`` prefix for
-                    # canonical Hermes tools, while leaving native MCP
-                    # server tools (registered in the registry under their
-                    # full ``mcp_<server>_<tool>`` name) untouched.
-                    # GH-25255.
+                    # On the OAuth wire every tool carries a double-underscore
+                    # ``mcp__`` prefix (added in build_anthropic_kwargs to avoid
+                    # Anthropic's single-underscore third-party classifier).
+                    # Reverse it back to the name the registry/dispatcher knows.
+                    # Two original forms map onto the same ``mcp__`` wire name:
+                    #   ``mcp__read_file``       <- bare native tool ``read_file``
+                    #   ``mcp__linear_get_issue`` <- MCP server tool
+                    #                                ``mcp_linear_get_issue``
+                    # Resolve by registry lookup, preferring whichever original
+                    # is actually registered; never rewrite a name the LLM used
+                    # that already resolves natively. GH-25255.
                     from tools.registry import registry as _tool_registry
-                    canonical_names = canonical_tool_names
-                    if canonical_names is None:
-                        canonical_names = set(_tool_registry.get_all_tool_names())
-                    decoded = _decode_oauth_tool_name(
-                        name, canonical_names=canonical_names
-                    )
-                    if decoded in canonical_names:
-                        name = decoded
-                    else:
-                        # Legacy fallback: naive prefix strip + registry probe.
-                        stripped = name[len(_MCP_PREFIX):]
-                        if (_tool_registry.get_entry(stripped)
-                                and not _tool_registry.get_entry(name)):
-                            name = stripped
+                    if not _tool_registry.get_entry(name):
+                        bare = name[len(_MCP_PREFIX):]            # read_file
+                        single = "mcp_" + bare                    # mcp_read_file / mcp_linear_get_issue
+                        if _tool_registry.get_entry(single):
+                            name = single
+                        elif _tool_registry.get_entry(bare):
+                            name = bare
                 tool_calls.append(
                     ToolCall(
                         id=block.id,
