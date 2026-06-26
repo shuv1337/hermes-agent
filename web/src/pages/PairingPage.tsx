@@ -27,11 +27,23 @@ function getUserLabel(user: PairingUser): string {
   return user.user_name || user.user_id;
 }
 
+// Real pairing codes are 8 chars from an unambiguous alphabet (no 0/O/1/I).
+// Must stay in sync with gateway/pairing.py ALPHABET / CODE_LENGTH.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const CODE_LENGTH = 8;
+
+function isValidCodeFormat(code: string): boolean {
+  const c = (code || "").toUpperCase().trim();
+  if (c.length !== CODE_LENGTH) return false;
+  return [...c].every((ch) => CODE_ALPHABET.includes(ch));
+}
+
 export default function PairingPage() {
   const [pending, setPending] = useState<PairingUser[]>([]);
   const [approved, setApproved] = useState<PairingUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState<string | null>(null);
+  const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [clearing, setClearing] = useState(false);
   const { toast, showToast } = useToast();
   const { setEnd } = usePageHeader();
@@ -52,15 +64,27 @@ export default function PairingPage() {
   }, [loadPairing]);
 
   const handleApprove = async (user: PairingUser) => {
-    if (!user.code) {
-      showToast("Missing pairing code", "error");
+    const key = getUserKey(user);
+    const code = (codeInputs[key] || "").toUpperCase().trim();
+    // The `user.code` from the list is only a hash-prefix Ref, never the real
+    // code -- so approval requires the operator to enter the code the user
+    // received in their DM.
+    if (!isValidCodeFormat(code)) {
+      showToast(
+        "Enter the 8-character code the user received (not the Ref shown here)",
+        "error",
+      );
       return;
     }
-    const key = getUserKey(user);
     setApproving(key);
     try {
-      await api.approvePairing(user.platform, user.code);
+      await api.approvePairing(user.platform, code);
       showToast(`Approved: "${getUserLabel(user)}"`, "success");
+      setCodeInputs((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
       loadPairing();
     } catch (e) {
       showToast(`Error: ${e}`, "error");
@@ -180,7 +204,12 @@ export default function PairingPage() {
                   <div className="flex items-center gap-2 mb-1">
                     <Badge tone="outline">{user.platform}</Badge>
                     {user.code && (
-                      <span className="font-mono text-sm">{user.code}</span>
+                      <span
+                        className="font-mono text-xs text-muted-foreground"
+                        title="Hash prefix to tell requests apart -- not the pairing code"
+                      >
+                        Ref {user.code}
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -195,11 +224,30 @@ export default function PairingPage() {
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
+                  <input
+                    className="w-32 rounded-md border border-input bg-background px-2 py-1 text-sm font-mono uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="CODE"
+                    maxLength={CODE_LENGTH}
+                    value={codeInputs[key] || ""}
+                    onChange={(e) =>
+                      setCodeInputs((prev) => ({
+                        ...prev,
+                        [key]: e.target.value.toUpperCase(),
+                      }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleApprove(user);
+                    }}
+                    aria-label="Pairing code the user received"
+                  />
                   <Button
                     size="sm"
                     className="uppercase"
                     onClick={() => handleApprove(user)}
-                    disabled={approving === key || !user.code}
+                    disabled={
+                      approving === key ||
+                      !isValidCodeFormat(codeInputs[key] || "")
+                    }
                     prefix={
                       approving === key ? (
                         <Spinner />

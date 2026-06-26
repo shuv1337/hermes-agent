@@ -39,13 +39,18 @@ def _cmd_list(store):
 
     if pending:
         print(f"\n  Pending Pairing Requests ({len(pending)}):")
-        print(f"  {'Platform':<12} {'Code':<10} {'User ID':<20} {'Name':<20} {'Age'}")
-        print(f"  {'--------':<12} {'----':<10} {'-------':<20} {'----':<20} {'---'}")
+        print(f"  {'Platform':<12} {'Ref':<10} {'User ID':<20} {'Name':<20} {'Age'}")
+        print(f"  {'--------':<12} {'---':<10} {'-------':<20} {'----':<20} {'---'}")
         for p in pending:
             print(
                 f"  {p['platform']:<12} {p['code']:<10} {p['user_id']:<20} "
                 f"{(p.get('user_name') or ''):<20} {p['age_minutes']}m ago"
             )
+        print(
+            "\n  Note: 'Ref' is a hash prefix to tell requests apart -- it is "
+            "NOT the pairing code.\n  Approve with the code the user received "
+            "in their DM: hermes pairing approve <platform> <code>"
+        )
     else:
         print("\n  No pending pairing requests.")
 
@@ -65,6 +70,20 @@ def _cmd_approve(store, platform: str, code: str):
     """Approve a pairing code."""
     platform = platform.lower().strip()
     code = code.upper().strip()
+
+    # Catch the common mistake of pasting the 'Ref' column (a hash prefix)
+    # from `hermes pairing list` instead of the real code. Fail fast with a
+    # clear hint so it doesn't burn a failed attempt toward lockout.
+    if not store.is_valid_code_format(code):
+        print(
+            f"\n  '{code}' is not a valid pairing code."
+        )
+        print(
+            "  Pairing codes are 8 characters (A-Z, 2-9). The 'Ref' shown by\n"
+            "  'hermes pairing list' is only a hash prefix -- not the code.\n"
+            "  Approve with the code the user received in their DM.\n"
+        )
+        return
 
     result = store.approve_code(platform, code)
     if result:

@@ -148,6 +148,37 @@ class TestHashedStorage:
             result = store.approve_code("telegram", "ZZZZZZZZ")
         assert result is None
 
+    def test_is_valid_code_format(self):
+        """Format gate: 8 chars from the unambiguous alphabet only."""
+        good = PairingStore.is_valid_code_format
+        assert good("F25B6HMC") is True
+        assert good("f25b6hmc") is True       # case-insensitive
+        assert good("  F25B6HMC  ") is True   # trimmed
+        # The 'Ref' hash-prefix shown by list_pending is NOT a code.
+        assert good("3f1379bf") is False      # hex contains 0-1/f etc.
+        assert good("WRONGCODE") is False     # 9 chars
+        assert good("WRONG") is False         # too short
+        assert good("0OAB23CD") is False      # excluded chars 0/O
+        assert good("") is False
+
+    def test_malformed_code_does_not_count_toward_lockout(self, tmp_path):
+        """Malformed input (e.g. a pasted Ref) must not drive lockout.
+
+        A garbage string can never be a real code, so rejecting it without
+        recording a failed attempt doesn't weaken brute-force protection --
+        it only stops legit typos from locking out the platform (#10195
+        follow-up).
+        """
+        with patch("gateway.pairing.PAIRING_DIR", tmp_path):
+            store = PairingStore()
+            store.generate_code("telegram", "user1")
+            # Many malformed attempts -- well past MAX_FAILED_ATTEMPTS.
+            for _ in range(MAX_FAILED_ATTEMPTS * 2):
+                assert store.approve_code("telegram", "3f1379bf") is None
+            assert store._is_locked_out("telegram") is False
+            limits = store._load_json(store._rate_limit_path())
+            assert limits.get("_failures:telegram", 0) == 0
+
     def test_different_salts_per_entry(self, tmp_path):
         """Each pending entry should have a unique salt."""
         with patch("gateway.pairing.PAIRING_DIR", tmp_path):
@@ -481,9 +512,11 @@ class TestLockout:
             # Generate a valid code so platform has data
             store.generate_code("telegram", "user1")
 
-            # Exhaust failed attempts
+            # Exhaust failed attempts. Use a well-formed-but-wrong code:
+            # malformed input (bad length / alphabet) is rejected before it
+            # counts as a failed attempt, so it never drives lockout.
             for _ in range(MAX_FAILED_ATTEMPTS):
-                store.approve_code("telegram", "WRONGCODE")
+                store.approve_code("telegram", "ZZZZZZZZ")
 
             # Platform should now be locked out — can't generate new codes
             assert store._is_locked_out("telegram") is True
@@ -492,7 +525,7 @@ class TestLockout:
         with patch("gateway.pairing.PAIRING_DIR", tmp_path):
             store = PairingStore()
             for _ in range(MAX_FAILED_ATTEMPTS):
-                store.approve_code("telegram", "WRONG")
+                store.approve_code("telegram", "ZZZZZZZZ")
 
             code = store.generate_code("telegram", "newuser")
         assert code is None
@@ -511,9 +544,10 @@ class TestLockout:
             valid_code = store.generate_code("telegram", "attacker", "Attacker")
             assert valid_code is not None
 
-            # Trigger the lockout with wrong codes.
+            # Trigger the lockout with well-formed-but-wrong codes (malformed
+            # input is rejected pre-attempt and never drives lockout).
             for _ in range(MAX_FAILED_ATTEMPTS):
-                assert store.approve_code("telegram", "WRONGCODE") is None
+                assert store.approve_code("telegram", "ZZZZZZZZ") is None
             assert store._is_locked_out("telegram") is True
 
             # The valid code must be rejected while the lockout is active,
@@ -537,7 +571,7 @@ class TestLockout:
         with patch("gateway.pairing.PAIRING_DIR", tmp_path):
             store = PairingStore()
             for _ in range(MAX_FAILED_ATTEMPTS):
-                store.approve_code("telegram", "WRONG")
+                store.approve_code("telegram", "ZZZZZZZZ")
 
             # Simulate lockout expiry
             limits = store._load_json(store._rate_limit_path())

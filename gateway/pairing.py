@@ -201,6 +201,21 @@ class PairingStore:
         """Hash a pairing code with the given salt using SHA-256."""
         return hashlib.sha256(salt + code.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def is_valid_code_format(code: str) -> bool:
+        """Return True if ``code`` could be a real pairing code.
+
+        Real codes are exactly ``CODE_LENGTH`` characters drawn from
+        ``ALPHABET``. This lets callers reject obvious mistakes -- e.g. an
+        admin pasting the ``Ref`` hash-prefix shown by ``list_pending`` -- with
+        a clear message *before* it counts as a failed approval attempt and
+        creeps toward lockout (#10195 follow-up).
+        """
+        code = (code or "").upper().strip()
+        if len(code) != CODE_LENGTH:
+            return False
+        return all(ch in ALPHABET for ch in code)
+
     def generate_code(
         self, platform: str, user_id: str, user_name: str = ""
     ) -> Optional[str]:
@@ -275,6 +290,14 @@ class PairingStore:
         with self._lock:
             self._cleanup_expired(platform)
             code = code.upper().strip()
+
+            # Reject malformed input (wrong length / out-of-alphabet chars,
+            # e.g. a pasted Ref hash-prefix) without recording a failed
+            # attempt -- obvious typos shouldn't push the platform toward
+            # lockout. Callers can pre-validate with is_valid_code_format()
+            # to surface a clearer message.
+            if not self.is_valid_code_format(code):
+                return None
 
             # Lockout check — must run before the pending lookup so a
             # valid code (e.g. one already sitting in pending) cannot be
