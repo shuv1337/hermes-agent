@@ -1248,6 +1248,23 @@ class TestBuildAnthropicKwargs:
         # 1M-context reasoning model → highest output ceiling.
         assert _get_anthropic_max_output("anthropic/claude-fable-5") == 128_000
 
+    def test_claude_sonnet_5_uses_modern_contract(self):
+        """Claude Sonnet 5: adaptive thinking on by default, xhigh-capable,
+        sampling params forbidden, 128k max output (1M context, 128k output
+        per https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5).
+        """
+        from agent.anthropic_adapter import (
+            _supports_adaptive_thinking,
+            _supports_xhigh_effort,
+            _forbids_sampling_params,
+            _get_anthropic_max_output,
+        )
+        for m in ("claude-sonnet-5", "anthropic/claude-sonnet-5"):
+            assert _supports_adaptive_thinking(m) is True, m
+            assert _supports_xhigh_effort(m) is True, m
+            assert _forbids_sampling_params(m) is True, m
+        assert _get_anthropic_max_output("claude-sonnet-5") == 128_000
+
     def test_legacy_claude_stays_on_manual_thinking(self):
         """Older Claude families keep the legacy manual-thinking contract."""
         from agent.anthropic_adapter import (

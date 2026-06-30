@@ -218,6 +218,35 @@ def test_nous_portal_pricing_preserves_vendor_prefixed_model_ids(monkeypatch):
     assert float(entry.output_cost_per_million) == 125.0
 
 
+def test_claude_sonnet_5_pricing_entry_exists():
+    """claude-sonnet-5 must have a pricing entry ($3/$15 per Mtok, unchanged
+    from Sonnet 4.6) so sessions don't show as unknown cost.
+    """
+    entry = get_pricing_entry(
+        "claude-sonnet-5",
+        provider="anthropic",
+    )
+
+    assert entry is not None
+    assert float(entry.input_cost_per_million) == 3.00
+    assert float(entry.output_cost_per_million) == 15.00
+    assert float(entry.cache_read_cost_per_million) == 0.30
+    assert float(entry.cache_write_cost_per_million) == 3.75
+
+
+def test_claude_sonnet_5_estimate_usage_cost():
+    result = estimate_usage_cost(
+        "claude-sonnet-5",
+        CanonicalUsage(input_tokens=1_000_000, output_tokens=500_000),
+        provider="anthropic",
+    )
+
+    assert result.status == "estimated"
+    assert result.amount_usd is not None
+    # 1M input × $3/M + 500K output × $15/M = $3 + $7.5 = $10.5
+    assert float(result.amount_usd) == 10.5
+
+
 def test_deepseek_v4_pro_pricing_entry_exists():
     """Regression test: deepseek-v4-pro must have a pricing entry.
 

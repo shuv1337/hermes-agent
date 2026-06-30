@@ -221,6 +221,21 @@ class TestDefaultContextLengths:
                     f"{model_id}: expected {expected_ctx}, got {actual}"
                 )
 
+    def test_claude_sonnet_5_context_1m(self):
+        """claude-sonnet-5 must resolve to its 1M (default and max) context
+        window per https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5.
+        """
+        from agent.model_metadata import get_model_context_length
+        from unittest.mock import patch as mock_patch
+
+        assert DEFAULT_CONTEXT_LENGTHS["claude-sonnet-5"] == 1_000_000
+
+        with mock_patch("agent.model_metadata.fetch_model_metadata", return_value={}), \
+             mock_patch("agent.model_metadata.fetch_endpoint_model_metadata", return_value={}), \
+             mock_patch("agent.model_metadata.get_cached_context_length", return_value=None):
+            assert get_model_context_length("claude-sonnet-5") == 1_000_000
+            assert get_model_context_length("anthropic/claude-sonnet-5") == 1_000_000
+
     def test_glm_52_context_1m(self):
         """GLM-5.2 must resolve to 1M, not the generic GLM fallback of 202K.
 

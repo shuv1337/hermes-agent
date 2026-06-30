@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-06-16T18:04:33Z",
+  "updated_at": "2026-06-30T18:23:22Z",
   "metadata": {
     "source": "hermes-agent repo",
     "docs": "https://hermes-agent.nousresearch.com/docs/reference/model-catalog"
@@ -12,6 +12,10 @@
         "note": "Descriptions drive picker badges. Live /api/v1/models filters curated ids by tool-calling support and free pricing."
       },
       "models": [
+        {
+          "id": "anthropic/claude-sonnet-5",
+          "description": ""
+        },
         {
           "id": "anthropic/claude-opus-4.8",
           "description": ""
@@ -152,6 +156,9 @@
         "note": "Free-tier gating is determined live via Portal pricing (partition_nous_models_by_tier), not this manifest."
       },
       "models": [
+        {
+          "id": "anthropic/claude-sonnet-5"
+        },
         {
           "id": "anthropic/claude-opus-4.8"
         },

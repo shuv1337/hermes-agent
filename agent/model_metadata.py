@@ -203,6 +203,7 @@ DEFAULT_CONTEXT_LENGTHS = {
     "claude-sonnet-4-6": 1000000,
     "claude-opus-4.6": 1000000,
     "claude-sonnet-4.6": 1000000,
+    "claude-sonnet-5": 1000000,
     # Catch-all for older Claude models (must sort after specific entries)
     "claude": 200000,
     # OpenAI — GPT-5 family (most have 400k; specific overrides first)

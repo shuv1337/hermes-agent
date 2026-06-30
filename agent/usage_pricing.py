@@ -84,6 +84,25 @@ _UTC_NOW = lambda: datetime.now(timezone.utc)
 # Official docs snapshot entries. Models whose published pricing and cache
 # semantics are stable enough to encode exactly.
 _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
+    # ── Anthropic Claude Sonnet 5 ────────────────────────────────────────
+    # $3/$15 standard pricing, unchanged from Sonnet 4.6 (new tokenizer
+    # produces ~30% more tokens for the same text, so cost-per-request
+    # differs even though cost-per-token doesn't). Introductory pricing of
+    # $2/$10 applies through 2026-08-31; this snapshot reflects the
+    # standard rate that follows.
+    # Source: https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5
+    (
+        "anthropic",
+        "claude-sonnet-5",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("3.00"),
+        output_cost_per_million=Decimal("15.00"),
+        cache_read_cost_per_million=Decimal("0.30"),
+        cache_write_cost_per_million=Decimal("3.75"),
+        source="official_docs_snapshot",
+        source_url="https://platform.claude.com/docs/en/about-claude/pricing",
+        pricing_version="anthropic-pricing-2026-06",
+    ),
     # ── Anthropic Claude 4.8 ─────────────────────────────────────────────
     # Same $5/$25 base pricing as 4.6/4.7.  Fast-mode variant is a separate
     # model ID with 2x premium (vs the 6x premium on older Opus generations).
