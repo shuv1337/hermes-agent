@@ -133,13 +133,13 @@ For every key, resolution order is: **host block > root > env var > default**.
 
 ### Identity Mapping (Gateway Multi-User)
 
-In gateway deployments (Telegram, Discord, Slack, etc.) each user arrives with a platform-native runtime ID (Telegram UID, Discord snowflake, Slack user). These three keys control how those runtime IDs map to Honcho peers. The resolver is config-driven and deterministic — no automatic merging or runtime inference.
+In gateway deployments (Telegram, Discord, Slack, etc.) each user arrives with a platform-native runtime ID (Telegram UID, Discord snowflake, Slack user). Before the resolver runs, Hermes normalizes unslugged gateway IDs by prefixing the platform (`1614192390` on Telegram becomes `u_telegram_1614192390`; IDs that already contain `_` are left unchanged). These three keys control how those normalized runtime IDs map to Honcho peers. The resolver is config-driven and deterministic — no automatic merging or runtime inference.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `pinUserPeer` | bool | `false` | When `true`, every gateway runtime user collapses to `peerName`. Single-operator deployments where you want all your platforms (and any other users) to share one peer |
-| `userPeerAliases` | object | `{}` | Map of runtime IDs to peer IDs (`{"7654321": "alice"}`). Many-to-one is the intended pattern — alias all your runtime IDs to one peer name. One-to-many is not supported; one runtime ID resolves to exactly one peer |
-| `runtimePeerPrefix` | string | `""` | Prepended to unknown runtime IDs to namespace them (e.g. `"telegram_"` → `telegram_7654321`). Used only when no alias matches. Prevents collisions between platforms whose runtime IDs share the same shape |
+| `userPeerAliases` | object | `{}` | Map of normalized runtime IDs to peer IDs (`{"u_telegram_7654321": "alice"}`). Many-to-one is the intended pattern — alias all your runtime IDs to one peer name. One-to-many is not supported; one runtime ID resolves to exactly one peer |
+| `runtimePeerPrefix` | string | `""` | Prepended to unknown normalized runtime IDs to namespace them (e.g. `"tenant_"` + `u_telegram_7654321` → `tenant_u_telegram_7654321`). Used only when no alias matches |
 
 > **Deprecated:** `pinPeerName` is a legacy alias for `pinUserPeer`, still read for back-compat (`pinUserPeer` wins where both are set). `hermes honcho setup` migrates it onto `pinUserPeer` on touch and never writes it.
 
@@ -147,10 +147,10 @@ In gateway deployments (Telegram, Discord, Slack, etc.) each user arrives with a
 
 ```
 1. pinUserPeer / pinPeerName=true → return peerName (ignore runtime ID)
-2. userPeerAliases[runtime_id]   → return aliased peer
-3. userPeerAliases[runtime_id_alt] → check alt-ID too (Telegram UID + username, etc.)
-4. runtimePeerPrefix + runtime_id → namespaced peer, with sha256 collision escalation
-5. raw sanitized runtime_id      → fallback peer
+2. userPeerAliases[normalized runtime_id]   → return aliased peer
+3. userPeerAliases[normalized runtime_id_alt] → check alt-ID too (Telegram UID + username, etc.)
+4. runtimePeerPrefix + normalized runtime_id → namespaced peer, with sha256 collision escalation
+5. raw sanitized normalized runtime_id      → fallback peer
 6. peerName                      → no runtime ID at all (CLI/TUI)
 7. session-key fallback          → no config either
 ```
@@ -162,12 +162,12 @@ In gateway deployments (Telegram, Discord, Slack, etc.) each user arrives with a
 **Setup — gateway identity tree.** `hermes honcho setup` only asks about identity mapping when it detects a connected gateway platform (it inspects the gateway config; off-gateway the step is skipped because these keys do nothing without a runtime user ID). When it runs, it asks *who talks to this gateway?* and derives the keys:
 
 - **just me** → `pinUserPeer: true`. Every non-agent gateway user collapses to `peerName`; the pin overrides all aliases, so pick this only when no user-side identity needs its own peer. Personal use where you connect Hermes to your own Telegram/Discord/etc. If separate agents reach the gateway and each needs a distinct peer, do **not** pin — leave `pinUserPeer: false` and map them via `userPeerAliases` (the `[e]` editor).
-- **me + other people, pooled** → `pinUserPeer: false` + `userPeerAliases` mapping your runtime IDs to `peerName`. You stay on the shared history; everyone else gets their own peer.
+- **me + other people, pooled** → `pinUserPeer: false` + `userPeerAliases` mapping your normalized runtime IDs to `peerName`. You stay on the shared history; everyone else gets their own peer.
 - **me + other people / only other people** → `pinUserPeer: false`, optional `runtimePeerPrefix`. Each runtime user → own peer. For bots serving many humans.
 
 Pick **[e]** at the prompt to set the three keys directly instead of going through the tree.
 
-**Un-pinning (single → per-user).** Flipping `pinUserPeer` from `true` to `false` does not migrate data. Memory accumulated under `peerName` while pinned stays there; runtime users now resolve to fresh, empty peers. To preserve your own continuity, choose the **pooled** path — alias your runtime IDs back to `peerName` so your turns keep landing on the pooled history while other users get their own peers. The wizard offers this steer automatically when it detects you're un-pinning a previously pinned profile.
+**Un-pinning (single → per-user).** Flipping `pinUserPeer` from `true` to `false` does not migrate data. Memory accumulated under `peerName` while pinned stays there; runtime users now resolve to fresh, empty peers. To preserve your own continuity, choose the **pooled** path — alias your normalized runtime IDs back to `peerName` so your turns keep landing on the pooled history while other users get their own peers. The wizard offers this steer automatically when it detects you're un-pinning a previously pinned profile.
 
 ### Memory & Recall
 

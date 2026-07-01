@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,6 +13,8 @@ const APP_DIR = path.resolve(HERE, '..', '..')
 const REPO_ROOT = path.resolve(APP_DIR, '..', '..')
 const DIST_DIR = path.join(APP_DIR, 'dist')
 const VENV_PYTHON = path.join(REPO_ROOT, 'venv', 'bin', 'python')
+const require = createRequire(import.meta.url)
+const ELECTRON_EXECUTABLE = require('electron') as string
 
 // The realtime voice settings section. We flip the voice and assert it sticks.
 const VOICES = ['marin', 'cedar', 'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'] as const
@@ -71,6 +74,7 @@ test.beforeAll(async () => {
   app = await electron.launch({
     args: ['.'],
     cwd: APP_DIR,
+    executablePath: ELECTRON_EXECUTABLE,
     env: {
       ...process.env,
       // Redirect ALL Hermes state to a throwaway dir — never touch ~/.hermes.

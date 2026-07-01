@@ -375,7 +375,7 @@ def _detect_claude_code_version() -> str:
 
 
 _CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
-_MCP_TOOL_PREFIX = "mcp__"
+_MCP_TOOL_PREFIX = "mcp_"
 
 
 # April 2026 Anthropic OAuth blocklist pattern. The edge rejects any request
@@ -2463,38 +2463,15 @@ def build_anthropic_kwargs(
                 text = text.replace("Nous Research", "Anthropic")
                 block["text"] = text
 
-        # 3. Normalize tool names so NOTHING goes on the OAuth wire with a
-        #    single-underscore ``mcp_`` prefix.  Anthropic's subscription/OAuth
-        #    billing classifier treats a single-underscore ``mcp_`` tool name as
-        #    a third-party-app fingerprint and rejects the request with HTTP 400
-        #    "Third-party apps now draw from extra usage, not plan limits"
-        #    (verified empirically: a single ``mcp_foo`` tool flips a request
-        #    from plan-billing to the extra-usage lane; ``mcp__foo`` is accepted).
-        #
-        #    Two cases, both must land on the double-underscore ``mcp__`` form:
-        #      a) bare Hermes-native tools (``read_file``)  -> ``mcp__read_file``
-        #      b) native MCP server tools registered under their full
-        #         single-underscore ``mcp_<server>_<tool>`` name
-        #         (``mcp_linear_get_issue``) -> ``mcp__linear_get_issue``
-        #    Case (b) is the gap that the bare ``mcp_``->``mcp__`` constant swap
-        #    left open: those tools were *skipped* and stayed single-underscore,
-        #    so any session with an MCP server configured still tripped the
-        #    classifier. normalize_response reverses both forms via registry
-        #    lookup so the dispatcher still sees the original name. GH-25255.
-        def _to_oauth_wire_name(name: str) -> str:
-            if name.startswith("mcp__"):
-                return name  # already correct, don't double-prefix
-            if name.startswith("mcp_"):
-                # single-underscore native MCP tool -> promote to double
-                return "mcp__" + name[len("mcp_"):]
-            return _MCP_TOOL_PREFIX + name  # bare name -> mcp__<name>
-
+        # 3. Encode tool names so OAuth requests avoid Anthropic's
+        #    ``^mcp_[a-z0-9_]+$`` blocklist while preserving a reversible
+        #    mapping back to canonical registry names.
         if anthropic_tools:
             for tool in anthropic_tools:
                 if "name" in tool:
-                    tool["name"] = _to_oauth_wire_name(tool["name"])
+                    tool["name"] = _encode_oauth_tool_name(tool["name"])
 
-        # 4. Apply the same normalization to tool names in message history
+        # 4. Apply the same encoding to tool names in message history
         #    (tool_use blocks) so replayed turns match the wire names above.
         for msg in anthropic_messages:
             content = msg.get("content")
@@ -2502,7 +2479,7 @@ def build_anthropic_kwargs(
                 for block in content:
                     if isinstance(block, dict):
                         if block.get("type") == "tool_use" and "name" in block:
-                            block["name"] = _to_oauth_wire_name(block["name"])
+                            block["name"] = _encode_oauth_tool_name(block["name"])
                         elif block.get("type") == "tool_result" and "tool_use_id" in block:
                             pass  # tool_result uses ID, not name
 
