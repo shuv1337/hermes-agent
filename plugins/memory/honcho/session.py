@@ -373,12 +373,12 @@ class HonchoSessionManager:
                 return self._cache[key]
 
         # Determine peer IDs — no lock needed (read-only, no shared state mutation).
-        # Gateway sessions normally use the runtime user identity (the
-        # platform-native ID: Telegram UID, Discord snowflake, Slack user,
-        # etc.) so multi-user bots scope memory per user.  Config can alias
-        # known runtime IDs or prefix unknown IDs.  For a single-user
-        # deployment, ``pinPeerName`` still pins all runtime identities to
-        # ``peerName`` (see #14984).
+        # Gateway sessions normally use the normalized runtime user identity
+        # (for example, an unslugged Telegram UID is prefixed upstream as
+        # ``u_telegram_<id>``) so multi-user bots scope memory per user.
+        # Config can alias known runtime IDs or prefix unknown IDs.  For a
+        # single-user deployment, ``pinPeerName`` still pins all runtime
+        # identities to ``peerName`` (see #14984).
         user_peer_id = self._resolve_user_peer_id(key)
 
         assistant_peer_id = self._sanitize_id(

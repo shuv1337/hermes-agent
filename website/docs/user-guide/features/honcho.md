@@ -130,8 +130,8 @@ When pointing Hermes at a self-hosted Honcho server, `hermes honcho setup` (and 
 | `dialecticMaxInputChars` | `10000` | Max chars for dialectic query input to `peer.chat()` |
 | `sessionStrategy` | `'per-directory'` | `per-directory`, `per-repo`, `per-session`, or `global` |
 | `pinUserPeer` | `false` | Gateway only. When `true`, every platform user collapses to `peerName` |
-| `userPeerAliases` | `{}` | Gateway only. Map of runtime IDs to peers (`{"7654321": "alice"}`). Many-to-one |
-| `runtimePeerPrefix` | `""` | Gateway only. Namespaces unknown runtime IDs (`telegram_7654321`) when no alias matches |
+| `userPeerAliases` | `{}` | Gateway only. Map of normalized runtime IDs to peers (`{"u_telegram_7654321": "alice"}`). Many-to-one |
+| `runtimePeerPrefix` | `""` | Gateway only. Namespaces unknown normalized runtime IDs (`tenant_u_telegram_7654321`) when no alias matches |
 
 **Session strategy** controls how Honcho sessions map to your work:
 - `per-session` — each `hermes` run gets a fresh session. Clean starts, memory via tools. Recommended for new users.
@@ -159,22 +159,22 @@ In `tools` mode, the model is fully in control — it calls `honcho_reasoning` w
 
 ## Gateway Identity Mapping
 
-These settings only matter when you run the [Hermes gateway](../../developer-guide/gateway-internals.md) — the one entrypoint where users arrive with platform-native runtime IDs (Telegram UID, Discord snowflake, Slack user). CLI, TUI, and desktop sessions have no runtime ID and always resolve to `peerName`, so off-gateway these keys do nothing.
+These settings only matter when you run the [Hermes gateway](../../developer-guide/gateway-internals.md) — the one entrypoint where users arrive with platform-native runtime IDs (Telegram UID, Discord snowflake, Slack user). Before lookup, Hermes normalizes unslugged IDs by prefixing the platform (`1614192390` on Telegram becomes `u_telegram_1614192390`; IDs already containing `_` pass through). CLI, TUI, and desktop sessions have no runtime ID and always resolve to `peerName`, so off-gateway these keys do nothing.
 
 The setup wizard detects whether a gateway platform is connected and skips this step entirely if not. When it runs, it asks one question — *who talks to this gateway?* — and derives the keys:
 
 | Answer | Result |
 |--------|--------|
 | **just me** | `pinUserPeer: true` — every non-agent gateway user collapses to your peer. Pin overrides all aliases, so pick this only when no user-side identity needs its own peer. If separate agents reach the gateway and each needs a distinct peer, do **not** pin — leave `pinUserPeer: false` and map them via `userPeerAliases` (the `[e]` editor) instead |
-| **me + other people** (pooled) | `pinUserPeer: false` + `userPeerAliases` mapping your runtime IDs to `peerName` — you stay on your shared history, others get their own peers |
+| **me + other people** (pooled) | `pinUserPeer: false` + `userPeerAliases` mapping your normalized runtime IDs to `peerName` — you stay on your shared history, others get their own peers |
 | **only other people** | `pinUserPeer: false`, optional `runtimePeerPrefix` — each user gets their own peer |
 
 Pick `[e]` at the prompt to set the three keys directly instead.
 
-The resolver tries the keys top-down, first match wins: `pinUserPeer` → `userPeerAliases[id]` → `runtimePeerPrefix + id` → raw runtime ID → `peerName` → session-key fallback.
+The resolver tries the keys top-down, first match wins: `pinUserPeer` → `userPeerAliases[normalized id]` → `runtimePeerPrefix + normalized id` → raw sanitized normalized ID → `peerName` → session-key fallback.
 
 :::warning Un-pinning orphans pooled memory
-Flipping `pinUserPeer` from `true` to `false` does not migrate data — memory accumulated under `peerName` stays there, and platform users resolve to fresh, empty peers. To keep your own continuity, choose the **pooled** path so your runtime IDs alias back to `peerName`. The wizard offers this steer automatically when it detects the transition.
+Flipping `pinUserPeer` from `true` to `false` does not migrate data — memory accumulated under `peerName` stays there, and platform users resolve to fresh, empty peers. To keep your own continuity, choose the **pooled** path so your normalized runtime IDs alias back to `peerName`. The wizard offers this steer automatically when it detects the transition.
 :::
 
 :::note Deprecated key
