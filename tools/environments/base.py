@@ -869,7 +869,18 @@ class BaseEnvironment(ABC):
         proc = self._run_bash(
             wrapped, login=login, timeout=effective_timeout, stdin_data=effective_stdin
         )
-        result = self._wait_for_process(proc, timeout=effective_timeout)
+        try:
+            result = self._wait_for_process(proc, timeout=effective_timeout)
+        except (KeyboardInterrupt, SystemExit):
+            # Async interrupts can land in the tiny window after the process has
+            # been spawned but before _wait_for_process's own cleanup guard is
+            # active. Kill here too so a thread/process shutdown cannot orphan
+            # the local backend's process group.
+            try:
+                self._kill_process(proc)
+            except Exception:
+                pass
+            raise
         self._update_cwd(result)
 
         return result
