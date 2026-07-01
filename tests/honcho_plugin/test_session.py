@@ -803,6 +803,20 @@ class TestToolsModeInitBehavior:
             == "u_telegram_1614192390"
         )
 
+    def test_numeric_user_id_prefixed_with_platform_when_not_slugged(self):
+        """Gateway adapters may pass numeric runtime ids as ints."""
+        _, _, mock_manager_cls = self._make_provider_with_config(
+            recall_mode="tools",
+            init_on_session_start=True,
+            peer_name=None,
+            user_id=1614192390,
+            platform="telegram",
+        )
+        assert (
+            mock_manager_cls.call_args.kwargs["runtime_user_peer_name"]
+            == "u_telegram_1614192390"
+        )
+
     def test_user_id_not_double_prefixed_when_already_slugged(self):
         """An id that already contains an underscore is passed through unchanged."""
         _, _, mock_manager_cls = self._make_provider_with_config(

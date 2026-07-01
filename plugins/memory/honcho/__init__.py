@@ -456,11 +456,12 @@ class HonchoMemoryProvider(MemoryProvider):
         "u_telegram_1614192390"); ids that already look slugged (contain an
         underscore) are passed through unchanged.
         """
-        if not raw_id:
+        if raw_id is None or raw_id == "":
             return None
-        if "_" in raw_id or not platform:
-            return raw_id
-        return f"u_{platform.lower()}_{raw_id}"
+        peer_name = str(raw_id)
+        if "_" in peer_name or not platform:
+            return peer_name
+        return f"u_{platform.lower()}_{peer_name}"
 
     def _do_session_init(self, cfg, session_id: str, **kwargs) -> None:
         """Shared session initialization logic for both eager and lazy paths."""
