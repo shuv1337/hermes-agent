@@ -414,18 +414,36 @@ class HonchoMemoryProvider(MemoryProvider):
             if wait_timeout > 0:
                 self._init_thread.join(timeout=wait_timeout)
 
+    @staticmethod
+    def _slugged_peer_name(raw_id, platform: str):
+        """Prefix an opaque runtime user id with its platform for peer naming.
+
+        Honcho's deriver renders every conversation line as
+        "<time> <peer_name>: <content>", so a bare gateway id (e.g. a
+        Telegram numeric user id) becomes the grammatical subject of every
+        extracted observation. Prefixing restores a legible peer name (e.g.
+        "u_telegram_1614192390"); ids that already look slugged (contain an
+        underscore) are passed through unchanged.
+        """
+        if not raw_id:
+            return None
+        if "_" in raw_id or not platform:
+            return raw_id
+        return f"u_{platform.lower()}_{raw_id}"
+
     def _do_session_init(self, cfg, session_id: str, **kwargs) -> None:
         """Shared session initialization logic for both eager and lazy paths."""
         from plugins.memory.honcho.client import get_honcho_client
         from plugins.memory.honcho.session import HonchoSessionManager
 
         client = get_honcho_client(cfg)
+        platform = kwargs.get("platform") or ""
         self._manager = HonchoSessionManager(
             honcho=client,
             config=cfg,
             context_tokens=cfg.context_tokens,
-            runtime_user_peer_name=kwargs.get("user_id") or None,
-            runtime_user_peer_name_alt=kwargs.get("user_id_alt") or None,
+            runtime_user_peer_name=self._slugged_peer_name(kwargs.get("user_id"), platform),
+            runtime_user_peer_name_alt=self._slugged_peer_name(kwargs.get("user_id_alt"), platform),
         )
 
         # ----- B3: resolve_session_name -----

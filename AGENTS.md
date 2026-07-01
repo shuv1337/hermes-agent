@@ -1263,6 +1263,18 @@ Unused code that was never shipped was dead for a reason. Before wiring an
 unused module into a live code path, E2E test the real resolution chain
 with actual imports (not mocks) against a temp `HERMES_HOME`.
 
+### Honcho peer names must not be bare gateway user IDs
+`plugins/memory/honcho/__init__.py`'s `_do_session_init` builds
+`runtime_user_peer_name`/`_alt` from gateway `user_id`/`user_id_alt` via
+`HonchoMemoryProvider._slugged_peer_name()`, which prefixes an unslugged id
+with its platform (e.g. Telegram `1614192390` → `u_telegram_1614192390`).
+Honcho's deriver renders every line as `<time> <peer_name>: <content>`, so a
+bare numeric/opaque id becomes the grammatical subject of every extracted
+observation (`"1614192390 is responding to..."`). This regressed once
+already (a bare `kwargs.get("user_id")` passthrough shipped upstream) — if
+you touch this code path, keep the platform-prefixing behavior and its
+tests in `tests/honcho_plugin/test_session.py::TestToolsModeInitBehavior`.
+
 ### Tests must not write to `~/.hermes/`
 The `_isolate_hermes_home` autouse fixture in `tests/conftest.py` redirects `HERMES_HOME` to a temp dir. Never hardcode `~/.hermes/` paths in tests.
 

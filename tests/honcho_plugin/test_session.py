@@ -608,7 +608,7 @@ class TestToolsModeInitBehavior:
     """Verify initOnSessionStart controls session init timing in tools mode."""
 
     def _make_provider_with_config(self, recall_mode="tools", init_on_session_start=False,
-                                    peer_name=None, user_id=None, user_id_alt=None):
+                                    peer_name=None, user_id=None, user_id_alt=None, platform=None):
         """Create a HonchoMemoryProvider with mocked config and dependencies."""
         from plugins.memory.honcho.client import HonchoClientConfig
 
@@ -635,6 +635,8 @@ class TestToolsModeInitBehavior:
             init_kwargs["user_id"] = user_id
         if user_id_alt:
             init_kwargs["user_id_alt"] = user_id_alt
+        if platform:
+            init_kwargs["platform"] = platform
 
         with patch("plugins.memory.honcho.client.HonchoClientConfig.from_global_config", return_value=cfg), \
              patch("plugins.memory.honcho.client.get_honcho_client", return_value=MagicMock()), \
@@ -700,6 +702,47 @@ class TestToolsModeInitBehavior:
         )
         assert mock_manager_cls.call_args.kwargs["runtime_user_peer_name"] == "open-id"
         assert mock_manager_cls.call_args.kwargs["runtime_user_peer_name_alt"] == "union-id"
+
+    def test_user_id_prefixed_with_platform_when_not_slugged(self):
+        """A bare numeric gateway id (e.g. Telegram) is prefixed with the platform.
+
+        Regression test: an unprefixed numeric id becomes the grammatical
+        subject of every line the Honcho deriver extracts ("1614192390 is
+        responding to..."). Prefixing with the platform keeps peer names
+        legible and matches the pre-regression naming convention.
+        """
+        _, _, mock_manager_cls = self._make_provider_with_config(
+            recall_mode="tools", init_on_session_start=True,
+            peer_name=None, user_id="1614192390", platform="telegram",
+        )
+        assert mock_manager_cls.call_args.kwargs["runtime_user_peer_name"] == "u_telegram_1614192390"
+
+    def test_user_id_not_double_prefixed_when_already_slugged(self):
+        """An id that already contains an underscore is passed through unchanged."""
+        _, _, mock_manager_cls = self._make_provider_with_config(
+            recall_mode="tools", init_on_session_start=True,
+            peer_name=None, user_id="u_telegram_1614192390", platform="telegram",
+        )
+        assert mock_manager_cls.call_args.kwargs["runtime_user_peer_name"] == "u_telegram_1614192390"
+
+    def test_user_id_unprefixed_when_platform_unknown(self):
+        """Without a platform, the raw id is passed through (no prefix to attach)."""
+        _, _, mock_manager_cls = self._make_provider_with_config(
+            recall_mode="tools", init_on_session_start=True,
+            peer_name=None, user_id="1614192390",
+        )
+        assert mock_manager_cls.call_args.kwargs["runtime_user_peer_name"] == "1614192390"
+
+    def test_user_id_alt_prefixed_with_platform_when_not_slugged(self):
+        """The alternate stable id (e.g. Signal UUID) gets the same prefixing treatment."""
+        _, _, mock_manager_cls = self._make_provider_with_config(
+            recall_mode="tools", init_on_session_start=True,
+            peer_name=None, user_id="open-id", user_id_alt="deadbeef-0000-0000-0000-000000000000",
+            platform="signal",
+        )
+        assert mock_manager_cls.call_args.kwargs["runtime_user_peer_name_alt"] == (
+            "u_signal_deadbeef-0000-0000-0000-000000000000"
+        )
 
 
 class TestPerSessionMigrateGuard:
