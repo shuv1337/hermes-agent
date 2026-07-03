@@ -143,8 +143,7 @@ function matchGlob(rel, pattern) {
 function stageOne(spec) {
   if (!fs.existsSync(spec.from)) {
     throw new Error(
-      `stage-native-deps: source missing at ${spec.from}.  Run \`npm install\` ` +
-        `at the workspace root first.`
+      `stage-native-deps: source missing at ${spec.from}.  Run \`npm install\` ` + `at the workspace root first.`
     )
   }
   rmrf(spec.to)
@@ -166,7 +165,11 @@ function stageOne(spec) {
     // re-assert +x defensively for the darwin spawn-helper (no extension
     // means a stripped mode would be silently broken at runtime).
     if (path.basename(rel) === 'spawn-helper' && process.platform !== 'win32') {
-      try { fs.chmodSync(dest, 0o755) } catch { /* best-effort */ }
+      try {
+        fs.chmodSync(dest, 0o755)
+      } catch {
+        /* best-effort */
+      }
     }
     copied += 1
   }
@@ -266,8 +269,7 @@ function stageJsClosure(roots) {
     staged += 1
   }
   console.log(
-    `[stage-native-deps] vendor/node_modules/: ${staged} package(s) ` +
-      `(${[...closure.keys()].sort().join(', ')})`
+    `[stage-native-deps] vendor/node_modules/: ${staged} package(s) ` + `(${[...closure.keys()].sort().join(', ')})`
   )
 }
 

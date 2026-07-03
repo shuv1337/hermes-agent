@@ -21,7 +21,18 @@ const rng = (seed: number) => () => {
 
 const pick = <T>(arr: readonly T[], r: number): T => arr[Math.floor(r * arr.length)]!
 
-const CATEGORIES = ['devops', 'research', 'creative', 'security', 'mlops', 'blockchain', 'email', 'health', 'web-development', 'comms'] as const
+const CATEGORIES = [
+  'devops',
+  'research',
+  'creative',
+  'security',
+  'mlops',
+  'blockchain',
+  'email',
+  'health',
+  'web-development',
+  'comms'
+] as const
 const STATES = ['active', 'active', 'active', 'archived', 'draft', 'disabled'] as const
 const CREATED = [null, 'agent', 'agent', 'user'] as const
 
@@ -50,7 +61,12 @@ const memNode = (i: number, source: 'memory' | 'profile', label: string, ts: nul
   useCount: 0
 })
 
-const card = (source: 'memory' | 'profile', title: string, body: string, ts: null | number): StarmapMemoryCard => ({ body, source, timestamp: ts, title })
+const card = (source: 'memory' | 'profile', title: string, body: string, ts: null | number): StarmapMemoryCard => ({
+  body,
+  source,
+  timestamp: ts,
+  title
+})
 
 // ── 1. Tiny + quirky ──────────────────────────────────────────────────────────
 function tiny(): StarmapGraph {
@@ -77,9 +93,28 @@ function tiny(): StarmapGraph {
 // ── 2. Mid-size, mixed signal ────────────────────────────────────────────────
 function mid(): StarmapGraph {
   const r = rng(42)
-  const names = ['Kubernetes Whispering', 'Prompt Surgery', 'Threat Modeling', 'Pixel Pushing', 'Vector Janitor', 'Smart-Contract Audit', 'Inbox Zero Ops', 'Sleep Debt Tracker', 'SSR Hydration', 'Standup Telepathy', 'Flaky-Test Exorcism', 'Cost Spelunking']
+  const names = [
+    'Kubernetes Whispering',
+    'Prompt Surgery',
+    'Threat Modeling',
+    'Pixel Pushing',
+    'Vector Janitor',
+    'Smart-Contract Audit',
+    'Inbox Zero Ops',
+    'Sleep Debt Tracker',
+    'SSR Hydration',
+    'Standup Telepathy',
+    'Flaky-Test Exorcism',
+    'Cost Spelunking'
+  ]
   const nodes: StarmapNode[] = names.map((label, i) => skill(`s${i}`, label, END - Math.floor(r() * 200) * DAY, r))
-  const memTitles = ['Hates meetings before noon', 'Lives in us-east-1', 'Allergic to YAML', 'Caffeine half-life ~5h', 'Reviews in dark mode']
+  const memTitles = [
+    'Hates meetings before noon',
+    'Lives in us-east-1',
+    'Allergic to YAML',
+    'Caffeine half-life ~5h',
+    'Reviews in dark mode'
+  ]
 
   memTitles.forEach((title, i) => {
     const ts = END - Math.floor(r() * 120) * DAY
@@ -92,7 +127,14 @@ function mid(): StarmapGraph {
     edges.push({ source: `s${Math.floor(r() * names.length)}`, target: `s${Math.floor(r() * names.length)}` })
   }
 
-  const memory = memTitles.map((title, i) => card(i % 2 ? 'memory' : 'profile', title, `${title}. Logged automatically.`, END - Math.floor(rng(99 + i)() * 120) * DAY))
+  const memory = memTitles.map((title, i) =>
+    card(
+      i % 2 ? 'memory' : 'profile',
+      title,
+      `${title}. Logged automatically.`,
+      END - Math.floor(rng(99 + i)() * 120) * DAY
+    )
+  )
 
   return { clusters: [], edges, memory, nodes, stats: {} }
 }
@@ -102,7 +144,12 @@ function web(): StarmapGraph {
   const r = rng(1337)
   const nodes: StarmapNode[] = Array.from({ length: 22 }, (_, i) =>
     // Half the skills carry no timestamp → exercises the ordinal recency path.
-    skill(`w${i}`, `Neuron ${String.fromCharCode(65 + (i % 26))}${i}`, i % 2 ? END - Math.floor(r() * 300) * DAY : (null as unknown as number), r)
+    skill(
+      `w${i}`,
+      `Neuron ${String.fromCharCode(65 + (i % 26))}${i}`,
+      i % 2 ? END - Math.floor(r() * 300) * DAY : (null as unknown as number),
+      r
+    )
   )
   const edges: StarmapEdge[] = []
 
@@ -132,7 +179,9 @@ function beast(): StarmapGraph {
   for (let i = 0; i < 150; i += 1) {
     const ts = burstAt(Math.floor(r() ** 1.5 * 12) / 12)
     const source = r() > 0.5 ? 'memory' : 'profile'
-    nodes.push(memNode(i, source, `Memory ${i}: ${pick(['quirk', 'fact', 'preference', 'incident', 'lesson'], r())}`, ts))
+    nodes.push(
+      memNode(i, source, `Memory ${i}: ${pick(['quirk', 'fact', 'preference', 'incident', 'lesson'], r())}`, ts)
+    )
     memory.push(card(source, `Memory ${i}`, `Auto-captured note #${i}.`, ts))
   }
 
@@ -164,7 +213,9 @@ for (const [name, g] of graphs) {
   const back = decodeShareCode(code) // round-trip assert — throws if invalid
   // v2 is viz-only: nodes + edge topology survive; memory prose is dropped.
   const ok = back.nodes.length === g.nodes.length && back.edges.length <= g.edges.length
-  console.log(`${ok ? 'ok ' : 'BAD'}  ${name} — ${g.nodes.length} nodes / ${g.edges.length} edges / ${g.memory.length} cards (${code.length} chars)`)
+  console.log(
+    `${ok ? 'ok ' : 'BAD'}  ${name} — ${g.nodes.length} nodes / ${g.edges.length} edges / ${g.memory.length} cards (${code.length} chars)`
+  )
   lines.push(`# ${name} — ${g.nodes.length} nodes, ${g.edges.length} edges, ${g.memory.length} cards`, code, '')
 }
 
