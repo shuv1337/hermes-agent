@@ -1203,6 +1203,61 @@ class TestDelegationCredentialResolution(unittest.TestCase):
 
 
     @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    def test_requested_provider_overrides_configured_base_url(self, mock_resolve):
+        mock_resolve.return_value = {
+            "provider": "anthropic",
+            "model": "claude-sonnet-5-20260929",
+            "base_url": "https://api.anthropic.com",
+            "api_key": "anthropic-key",
+            "api_mode": "anthropic_messages",
+        }
+        parent = _make_mock_parent(depth=0)
+        cfg = {
+            "model": "local-model",
+            "provider": "custom",
+            "base_url": "http://localhost:1234/v1",
+            "api_key": "local-key",
+        }
+        creds = _resolve_delegation_credentials(
+            cfg,
+            parent,
+            requested_provider="anthropic",
+            requested_model="claude-sonnet-5-20260929",
+        )
+        self.assertEqual(creds["provider"], "anthropic")
+        self.assertEqual(creds["model"], "claude-sonnet-5-20260929")
+        self.assertEqual(creds["base_url"], "https://api.anthropic.com")
+        self.assertEqual(creds["api_key"], "anthropic-key")
+        self.assertEqual(creds["api_mode"], "anthropic_messages")
+        mock_resolve.assert_called_once_with(
+            requested="anthropic", target_model="claude-sonnet-5-20260929"
+        )
+
+    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    def test_requested_custom_provider_name_is_preserved(self, mock_resolve):
+        mock_resolve.return_value = {
+            "provider": "custom",
+            "model": "deepseek-v4-pro-CEER",
+            "base_url": "https://api.crof.ai/v1",
+            "api_key": "crof-key-abc",
+            "api_mode": "chat_completions",
+        }
+        parent = _make_mock_parent(depth=0)
+        cfg = {"provider": "custom", "base_url": "http://localhost:1234/v1"}
+        creds = _resolve_delegation_credentials(
+            cfg,
+            parent,
+            requested_provider="crof.ai",
+            requested_model="deepseek-v4-pro-CEER",
+        )
+        self.assertEqual(creds["provider"], "crof.ai")
+        self.assertEqual(creds["model"], "deepseek-v4-pro-CEER")
+        self.assertEqual(creds["base_url"], "https://api.crof.ai/v1")
+        mock_resolve.assert_called_once_with(
+            requested="crof.ai", target_model="deepseek-v4-pro-CEER"
+        )
+
+    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
     def test_provider_resolution_failure_raises_valueerror(self, mock_resolve):
         """When provider resolution fails, ValueError is raised with helpful message."""
         mock_resolve.side_effect = RuntimeError("OPENROUTER_API_KEY not set")
