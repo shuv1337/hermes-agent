@@ -8,7 +8,7 @@ description: "On-demand knowledge documents — progressive disclosure, agent-ma
 
 Skills are on-demand knowledge documents the agent can load when needed. They follow a **progressive disclosure** pattern to minimize token usage and are compatible with the [agentskills.io](https://agentskills.io/specification) open standard.
 
-All skills live in **`~/.hermes/skills/`** — the primary directory and source of truth. On fresh install, bundled skills are copied from the repo. Hub-installed and agent-created skills also go here. The agent can modify or delete any skill.
+By default, skills live in **`~/.hermes/skills/`** — the primary directory and source of truth. You can move that primary directory with `skills.dir` in `config.yaml` or the `HERMES_SKILLS_DIR` environment variable. On fresh install, bundled skills are copied into the primary directory. Hub-installed and agent-created skills also go there. The agent can modify or delete any skill.
 
 You can also point Hermes at **external skill directories** — additional folders scanned alongside the local one. See [External Skill Directories](#external-skill-directories) below.
 
@@ -288,21 +288,24 @@ See [Skill Settings](/user-guide/configuration#skill-settings) and [Creating Ski
 
 If you maintain skills outside of Hermes — for example, a shared `~/.agents/skills/` directory used by multiple AI tools — you can tell Hermes to scan those directories too.
 
-Add `external_dirs` under the `skills` section in `~/.hermes/config.yaml`:
+Use `skills.dir` when you want to move Hermes' primary read-write skills tree, and `external_dirs` when you want to scan extra shared directories without changing where new skills are created. Add them under the `skills` section in `~/.hermes/config.yaml`:
 
 ```yaml
 skills:
+  # Optional: primary read-write skills directory.
+  # Relative paths resolve under HERMES_HOME.
+  dir: ~/my-hermes-skills
   external_dirs:
     - ~/.agents/skills
     - /home/shared/team-skills
     - ${SKILLS_REPO}/skills
 ```
 
-Paths support `~` expansion and `${VAR}` environment variable substitution.
+Paths support `~` expansion and `${VAR}` environment variable substitution. `HERMES_SKILLS_DIR` overrides `skills.dir` for the current process.
 
 ### How it works
 
-- **Create locally, update in place**: New agent-created skills are written to `~/.hermes/skills/`. Existing skills are modified where they are found, including skills under `external_dirs`, when the agent uses `skill_manage` actions such as `patch`, `edit`, `write_file`, `remove_file`, or `delete`.
+- **Create in the primary directory, update in place**: New agent-created skills are written to the primary skills directory (`skills.dir`, `HERMES_SKILLS_DIR`, or the default `~/.hermes/skills/`). Existing skills are modified where they are found, including skills under `external_dirs`, when the agent uses `skill_manage` actions such as `patch`, `edit`, `write_file`, `remove_file`, or `delete`.
 - **External dirs are not a write-protection boundary**: If an external skill directory is writable by the Hermes process, agent-managed skill updates can change files in that directory. Use filesystem permissions or a separate profile/toolset setup if shared external skills must stay read-only.
 - **Local precedence**: If the same skill name exists in both the local dir and an external dir, the local version wins.
 - **Full integration**: External skills appear in the system prompt index, `skills_list`, `skill_view`, and as `/skill-name` slash commands — no different from local skills.
@@ -311,7 +314,7 @@ Paths support `~` expansion and `${VAR}` environment variable substitution.
 ### Example
 
 ```text
-~/.hermes/skills/               # Local (primary, read-write)
+~/.hermes/skills/               # Default primary, read-write
 ├── devops/deploy-k8s/
 │   └── SKILL.md
 └── mlops/axolotl/

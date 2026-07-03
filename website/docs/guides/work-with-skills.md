@@ -101,7 +101,7 @@ hermes skills install https://sharethis.chat/SKILL.md
 ```
 
 What happens:
-1. The skill directory is copied to `~/.hermes/skills/`
+1. The skill directory is copied to your primary skills directory (`~/.hermes/skills/` by default, or `skills.dir` / `HERMES_SKILLS_DIR` if configured)
 2. It appears in your `skills_list` output
 3. It becomes available as a slash command
 
@@ -177,6 +177,8 @@ Skills are just markdown files with YAML frontmatter. Creating one takes under f
 mkdir -p ~/.hermes/skills/my-category/my-skill
 ```
 
+If you configured `skills.dir` or `HERMES_SKILLS_DIR`, create the skill under that primary directory instead.
+
 ### 2. Write SKILL.md
 
 ```markdown title="~/.hermes/skills/my-category/my-skill/SKILL.md"
@@ -238,7 +240,7 @@ Start a new session and try your skill:
 hermes chat -q "/my-skill help me with the thing"
 ```
 
-The skill appears automatically — no registration needed. Drop it in `~/.hermes/skills/` and it's live.
+The skill appears automatically — no registration needed. Drop it in the primary skills directory and it's live.
 
 :::info
 The agent can also create and update skills itself using `skill_manage`. After solving a complex problem, Hermes may offer to save the approach as a skill for next time.

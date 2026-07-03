@@ -554,14 +554,20 @@ See [Code Execution](features/code-execution.md) and the [Terminal section of th
 
 ## Skill Settings
 
-Skills can declare their own configuration settings via their SKILL.md frontmatter. These are non-secret values (paths, preferences, domain settings) stored under the `skills.config` namespace in `config.yaml`.
+The `skills` section controls both the skills library location and per-skill settings.
 
 ```yaml
 skills:
+  dir: ""              # default: <HERMES_HOME>/skills
+  external_dirs: []    # extra discovery-only directories
   config:
     myplugin:
       path: ~/myplugin-data   # Example — each skill defines its own keys
 ```
+
+`skills.dir` is the primary read-write skills directory: bundled sync, Hub installs, and new `skill_manage` creates land there. Empty string means `<HERMES_HOME>/skills`; relative paths resolve against `HERMES_HOME`; `~` and `${VAR}` are expanded. `HERMES_SKILLS_DIR` overrides `skills.dir` for the current process. `skills.external_dirs` are additional discovery directories only; they do not change where new skills are created.
+
+Skills can also declare their own configuration settings via their SKILL.md frontmatter. These are non-secret values (paths, preferences, domain settings) stored under the `skills.config` namespace in `config.yaml`.
 
 **How skill settings work:**
 

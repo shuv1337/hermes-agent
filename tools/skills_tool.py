@@ -87,12 +87,11 @@ from agent.skill_utils import (
 logger = logging.getLogger(__name__)
 
 
-# All skills live in ~/.hermes/skills/ (seeded from bundled skills/ on install).
+# Primary skills dir -- defaults to <HERMES_HOME>/skills, overridable via
+# HERMES_SKILLS_DIR / skills.dir in config.yaml (see get_skills_dir()).
 # This is the single source of truth -- agent edits, hub installs, and bundled
 # skills all coexist here without polluting the git repo.
 HERMES_HOME = get_hermes_home()
-# Primary skills dir -- defaults to <HERMES_HOME>/skills, overridable via
-# HERMES_SKILLS_DIR / skills.dir in config.yaml (see get_skills_dir()).
 SKILLS_DIR = get_skills_dir()
 
 # Anthropic-recommended limits for progressive disclosure efficiency
