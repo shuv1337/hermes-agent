@@ -3023,15 +3023,22 @@ def _resolve_delegation_credentials(
     """
     configured_model = str(cfg.get("model") or "").strip() or None
     configured_provider = str(cfg.get("provider") or "").strip() or None
-    # Per-call overrides beat the global delegation config.
-    effective_model = (requested_model or configured_model) or None
-    effective_provider = (requested_provider or configured_provider) or None
-    # Track whether the caller explicitly supplied a model so _build_child_agent
-    # can guard against inheriting a global-config model on a per-call provider.
-    # A configured delegation.model also counts — if the config pairs a provider
-    # with a model, that model is valid for that provider by definition.
-    model_explicitly_supplied = bool(effective_model)
     configured_base_url = str(cfg.get("base_url") or "").strip() or None
+    requested_provider_switches_backend = bool(
+        requested_provider
+        and (
+            configured_base_url
+            or (configured_provider and requested_provider != configured_provider)
+        )
+    )
+    config_model_applies = not requested_provider_switches_backend
+    effective_model = (
+        requested_model or (configured_model if config_model_applies else None)
+    ) or None
+    effective_provider = (requested_provider or configured_provider) or None
+    model_explicitly_supplied = bool(
+        requested_model or (configured_model and config_model_applies)
+    )
     configured_api_key = str(cfg.get("api_key") or "").strip() or None
     configured_api_mode = str(cfg.get("api_mode") or "").strip().lower() or None
 

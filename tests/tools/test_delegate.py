@@ -1234,6 +1234,32 @@ class TestDelegationCredentialResolution(unittest.TestCase):
         )
 
     @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    def test_requested_provider_does_not_reuse_configured_base_url_model(self, mock_resolve):
+        mock_resolve.return_value = {
+            "provider": "anthropic",
+            "model": "claude-sonnet-5-20260929",
+            "base_url": "https://api.anthropic.com",
+            "api_key": "anthropic-key",
+            "api_mode": "anthropic_messages",
+        }
+        parent = _make_mock_parent(depth=0)
+        cfg = {
+            "model": "local-model",
+            "provider": "custom",
+            "base_url": "http://localhost:1234/v1",
+            "api_key": "local-key",
+        }
+        creds = _resolve_delegation_credentials(
+            cfg,
+            parent,
+            requested_provider="anthropic",
+        )
+        self.assertEqual(creds["provider"], "anthropic")
+        self.assertEqual(creds["model"], "claude-sonnet-5-20260929")
+        self.assertFalse(creds["model_explicitly_supplied"])
+        mock_resolve.assert_called_once_with(requested="anthropic", target_model=None)
+
+    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
     def test_requested_custom_provider_name_is_preserved(self, mock_resolve):
         mock_resolve.return_value = {
             "provider": "custom",
