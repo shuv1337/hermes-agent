@@ -1682,12 +1682,14 @@ Hermes 使用两种不同的上下文范围：
 | 上下文 | 默认值 |
 |---------|---------|
 | **CLI（`hermes`）** | 运行命令的当前目录 |
-| **消息 gateway** | 主目录 `~`（用 `MESSAGING_CWD` 覆盖） |
+| **消息 gateway** | 主目录 `~`（用 `config.yaml` 中的 `terminal.cwd` 覆盖） |
 | **Docker / Singularity / Modal / SSH** | 容器或远程机器内用户的主目录 |
 
 覆盖工作目录：
-```bash
-# 在 ~/.hermes/.env 或 ~/.hermes/config.yaml 中：
-MESSAGING_CWD=/home/myuser/projects    # Gateway 会话
-TERMINAL_CWD=/workspace                # 所有终端会话
+```yaml
+# ~/.hermes/config.yaml
+terminal:
+  cwd: /home/myuser/projects
 ```
+
+`MESSAGING_CWD` 和直接写入 `~/.hermes/.env` 的 `TERMINAL_CWD` 仍是旧版兼容回退；新配置应使用 `terminal.cwd`。

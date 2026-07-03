@@ -181,10 +181,9 @@ def _resolve_cron_enabled_toolsets(job: dict, cfg: dict) -> list[str] | None:
     3. ``None`` on any lookup failure — AIAgent loads the full default set
        (legacy behavior before this change, preserved as the safety net).
 
-    _DEFAULT_OFF_TOOLSETS ({moa, homeassistant, rl}) are removed by
-    ``_get_platform_tools`` for unconfigured platforms, so fresh installs
-    get cron WITHOUT ``moa`` by default (issue reported by Norbert —
-    surprise $4.63 run).
+    _DEFAULT_OFF_TOOLSETS (for example homeassistant and spotify) are
+    removed by ``_get_platform_tools`` for unconfigured platforms, so fresh
+    installs get cron WITHOUT optional heavyweight integrations by default.
     """
     per_job = job.get("enabled_toolsets")
     if per_job:
