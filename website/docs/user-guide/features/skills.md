@@ -8,7 +8,7 @@ description: "On-demand knowledge documents — progressive disclosure, agent-ma
 
 Skills are on-demand knowledge documents the agent can load when needed. They follow a **progressive disclosure** pattern to minimize token usage and are compatible with the [agentskills.io](https://agentskills.io/specification) open standard.
 
-All skills live in **`~/.hermes/skills/`** — the primary directory and source of truth. On fresh install, bundled skills are copied from the repo. Hub-installed and agent-created skills also go here. The agent can modify or delete any skill.
+By default, skills live in **`~/.hermes/skills/`** — the primary directory and source of truth. You can move that primary directory with `skills.dir` in `config.yaml` or the `HERMES_SKILLS_DIR` environment variable. On fresh install, bundled skills are copied into the primary directory. Hub-installed and agent-created skills also go there. The agent can modify or delete any skill.
 
 You can also point Hermes at **external skill directories** — additional folders scanned alongside the local one. See [External Skill Directories](#external-skill-directories) below.
 
@@ -70,6 +70,42 @@ You can also interact with skills through natural conversation:
 hermes chat --toolsets skills -q "What skills do you have?"
 hermes chat --toolsets skills -q "Show me the axolotl skill"
 ```
+
+## Learning a skill from sources (`/learn`)
+
+`/learn` is the fast way to turn something you already know — or a pile of
+reference material — into a reusable skill, without hand-writing the
+`SKILL.md`. It is open-ended: point it at *anything you can describe* and the
+agent gathers the material with the tools it already has, then authors a skill
+that follows the [house authoring standards](#skillmd-format) (≤60-char
+description, the standard section order, Hermes-tool framing, no invented
+commands).
+
+```bash
+# A local SDK or doc directory — read with read_file / search_files
+/learn the REST client in ~/projects/acme-sdk, focus on auth + pagination
+
+# An online doc page — fetched with web_extract
+/learn https://docs.example.com/api/quickstart
+
+# The workflow you just walked the agent through in this conversation
+/learn how I just deployed the staging server
+
+# Pasted notes / a described procedure
+/learn filing an expense: open the portal, New > Expense, attach the receipt, submit
+```
+
+Because the live agent does the sourcing, `/learn` works the same in the CLI,
+the messaging gateway, the TUI, and the dashboard — and on any terminal backend
+(local, Docker, remote), since there is no separate ingestion engine. In the
+**dashboard**, the Skills page has a **Learn a skill** button that opens a panel
+with a directory field, a URL field, and an open-ended text box; it composes a
+`/learn` request and runs it in chat.
+
+There is no model-tool footprint: `/learn` builds a standards-guided prompt and
+hands it to the agent as a normal turn. The agent saves the result with the
+`skill_manage` tool, so the [write-approval gate](#gating-agent-skill-writes-skillswrite_approval)
+applies if you have it on.
 
 ## Progressive Disclosure
 
@@ -252,21 +288,24 @@ See [Skill Settings](/user-guide/configuration#skill-settings) and [Creating Ski
 
 If you maintain skills outside of Hermes — for example, a shared `~/.agents/skills/` directory used by multiple AI tools — you can tell Hermes to scan those directories too.
 
-Add `external_dirs` under the `skills` section in `~/.hermes/config.yaml`:
+Use `skills.dir` when you want to move Hermes' primary read-write skills tree, and `external_dirs` when you want to scan extra shared directories without changing where new skills are created. Add them under the `skills` section in `~/.hermes/config.yaml`:
 
 ```yaml
 skills:
+  # Optional: primary read-write skills directory.
+  # Relative paths resolve under HERMES_HOME.
+  dir: ~/my-hermes-skills
   external_dirs:
     - ~/.agents/skills
     - /home/shared/team-skills
     - ${SKILLS_REPO}/skills
 ```
 
-Paths support `~` expansion and `${VAR}` environment variable substitution.
+Paths support `~` expansion and `${VAR}` environment variable substitution. `HERMES_SKILLS_DIR` overrides `skills.dir` for the current process.
 
 ### How it works
 
-- **Create locally, update in place**: New agent-created skills are written to `~/.hermes/skills/`. Existing skills are modified where they are found, including skills under `external_dirs`, when the agent uses `skill_manage` actions such as `patch`, `edit`, `write_file`, `remove_file`, or `delete`.
+- **Create in the primary directory, update in place**: New agent-created skills are written to the primary skills directory (`skills.dir`, `HERMES_SKILLS_DIR`, or the default `~/.hermes/skills/`). Existing skills are modified where they are found, including skills under `external_dirs`, when the agent uses `skill_manage` actions such as `patch`, `edit`, `write_file`, `remove_file`, or `delete`.
 - **External dirs are not a write-protection boundary**: If an external skill directory is writable by the Hermes process, agent-managed skill updates can change files in that directory. Use filesystem permissions or a separate profile/toolset setup if shared external skills must stay read-only.
 - **Local precedence**: If the same skill name exists in both the local dir and an external dir, the local version wins.
 - **Full integration**: External skills appear in the system prompt index, `skills_list`, `skill_view`, and as `/skill-name` slash commands — no different from local skills.
@@ -275,7 +314,7 @@ Paths support `~` expansion and `${VAR}` environment variable substitution.
 ### Example
 
 ```text
-~/.hermes/skills/               # Local (primary, read-write)
+~/.hermes/skills/               # Default primary, read-write
 ├── devops/deploy-k8s/
 │   └── SKILL.md
 └── mlops/axolotl/
@@ -378,6 +417,12 @@ A bundle is just a YAML alias — it doesn't install skills for you. The skills 
 ## Agent-Managed Skills (skill_manage tool)
 
 The agent can create, update, and delete its own skills via the `skill_manage` tool. This is the agent's **procedural memory** — when it figures out a non-trivial workflow, it saves the approach as a skill for future reuse.
+
+Skills and memory work together in the self-improvement loop: memory stores
+small durable facts that should always be in context, while skills store longer
+procedures that should load only when relevant. The background review can
+suggest or stage skill changes after a session, but the write-approval gate
+below lets you require human review before those changes land.
 
 ### When the Agent Creates Skills
 

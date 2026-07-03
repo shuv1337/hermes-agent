@@ -93,7 +93,7 @@ class TestDevicePathBlocking(unittest.TestCase):
         self.assertFalse(_is_blocked_device_path("/proc/self/fd/3"))
 
     def test_proc_sensitive_pseudo_files_blocked(self):
-        """environ/cmdline/maps under /proc/<pid> must be blocked (issue #4427)."""
+        """environ/cmdline/maps (and maps variants) under /proc/<pid> must be blocked (issue #4427)."""
         for path in (
             "/proc/self/environ",
             "/proc/12345/environ",
@@ -101,6 +101,29 @@ class TestDevicePathBlocking(unittest.TestCase):
             "/proc/99/cmdline",
             "/proc/self/maps",
             "/proc/1/maps",
+            "/proc/self/smaps",
+            "/proc/12345/smaps",
+            "/proc/self/smaps_rollup",
+            "/proc/99/smaps_rollup",
+            "/proc/self/numa_maps",
+            "/proc/1/numa_maps",
+            "/proc/self/mem",
+            "/proc/12345/mem",
+            "/proc/self/auxv",
+            "/proc/1/auxv",
+            "/proc/self/pagemap",
+            "/proc/99/pagemap",
+        ):
+            self.assertTrue(_is_blocked_device(path), f"{path} should be blocked")
+
+    def test_proc_task_thread_sensitive_files_blocked(self):
+        """Per-thread /proc/<pid>/task/<tid>/<file> aliases leak the same data."""
+        for path in (
+            "/proc/self/task/1234/maps",
+            "/proc/self/task/1234/smaps",
+            "/proc/self/task/1234/auxv",
+            "/proc/self/task/1234/pagemap",
+            "/proc/self/task/1234/environ",
         ):
             self.assertTrue(_is_blocked_device(path), f"{path} should be blocked")
 
@@ -108,6 +131,10 @@ class TestDevicePathBlocking(unittest.TestCase):
         """Top-level /proc files like cpuinfo and meminfo must remain accessible."""
         for path in ("/proc/cpuinfo", "/proc/meminfo", "/proc/uptime", "/proc/version"):
             self.assertFalse(_is_blocked_device(path), f"{path} should not be blocked")
+
+    def test_normpath_alias_to_blocked_device_is_blocked(self):
+        self.assertTrue(_is_blocked_device("/dev/../dev/zero"))
+        self.assertTrue(_is_blocked_device("/dev/./urandom"))
 
     def test_normal_files_not_blocked(self):
         self.assertFalse(_is_blocked_device("/tmp/test.py"))
@@ -134,6 +161,17 @@ class TestDevicePathBlocking(unittest.TestCase):
                 self.skipTest(f"symlink unavailable: {exc}")
             self.assertFalse(_is_blocked_device(link_path))
 
+    def test_symlink_to_blocked_alias_is_blocked_before_realpath(self):
+        if not os.path.exists("/dev/stdin"):
+            self.skipTest("/dev/stdin is not available on this platform")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            link_path = os.path.join(tmpdir, "stdin-link")
+            try:
+                os.symlink("/dev/../dev/stdin", link_path)
+            except OSError as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+            self.assertTrue(_is_blocked_device(link_path))
+
     def test_read_file_tool_rejects_device(self):
         """read_file_tool returns an error without any file I/O."""
         result = json.loads(read_file_tool("/dev/zero", task_id="dev_test"))
@@ -150,6 +188,33 @@ class TestDevicePathBlocking(unittest.TestCase):
                 self.skipTest(f"symlink unavailable: {exc}")
 
             result = json.loads(read_file_tool(link_path, task_id="dev_link_test"))
+
+        self.assertIn("error", result)
+        self.assertIn("device file", result["error"])
+        mock_ops.assert_not_called()
+
+    @patch("tools.file_tools._get_file_ops")
+    def test_read_file_tool_rejects_task_cwd_relative_device_alias_symlink(self, mock_ops):
+        if not os.path.exists("/dev/stdin"):
+            self.skipTest("/dev/stdin is not available on this platform")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = os.path.join(tmpdir, "workspace")
+            process_cwd = os.path.join(tmpdir, "process")
+            os.mkdir(workspace)
+            os.mkdir(process_cwd)
+            link_path = os.path.join(workspace, "stdin-link")
+            try:
+                os.symlink("/dev/../dev/stdin", link_path)
+            except OSError as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(process_cwd)
+                with patch.dict(os.environ, {"TERMINAL_CWD": workspace}, clear=False):
+                    result = json.loads(read_file_tool("stdin-link", task_id="dev_rel_link_test"))
+            finally:
+                os.chdir(old_cwd)
 
         self.assertIn("error", result)
         self.assertIn("device file", result["error"])
@@ -217,7 +282,7 @@ class TestFileDedup(unittest.TestCase):
         _read_tracker.clear()
         self._tmpdir = _make_safe_tempdir("hermes-dedup-")
         self._tmpfile = os.path.join(self._tmpdir, "dedup_test.txt")
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("line one\nline two\n")
 
     def tearDown(self):
@@ -260,7 +325,7 @@ class TestFileDedup(unittest.TestCase):
         ))
 
         self.assertIn("error", result)
-        self.assertIn("internal read_file status text", result["error"])
+        self.assertIn("internal read_file display text", result["error"])
         fake.write_file.assert_not_called()
 
     @patch("tools.file_tools._get_file_ops")
@@ -284,7 +349,7 @@ class TestFileDedup(unittest.TestCase):
         ))
 
         self.assertIn("error", result)
-        self.assertIn("internal read_file status text", result["error"])
+        self.assertIn("internal read_file display text", result["error"])
         fake.write_file.assert_not_called()
 
     @patch("tools.file_tools._get_file_ops")
@@ -329,7 +394,7 @@ class TestFileDedup(unittest.TestCase):
 
         # Modify the file — ensure mtime changes
         time.sleep(0.05)
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("changed content\n")
 
         r2 = json.loads(read_file_tool(self._tmpfile, task_id="mod"))
@@ -373,7 +438,7 @@ class TestDedupStubLoopGuard(unittest.TestCase):
         _read_tracker.clear()
         self._tmpdir = tempfile.mkdtemp()
         self._tmpfile = os.path.join(self._tmpdir, "loop_test.txt")
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("line one\nline two\n")
 
     def tearDown(self):
@@ -440,7 +505,7 @@ class TestDedupStubLoopGuard(unittest.TestCase):
 
         # File changes — mtime updates
         time.sleep(0.05)
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("brand new content\n")
 
         r4 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
@@ -519,7 +584,7 @@ class TestDedupResetOnCompression(unittest.TestCase):
         _read_tracker.clear()
         self._tmpdir = tempfile.mkdtemp()
         self._tmpfile = os.path.join(self._tmpdir, "compress_test.txt")
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("original content\n")
 
     def tearDown(self):
@@ -682,7 +747,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         _read_tracker.clear()
         self._tmpdir = _make_safe_tempdir("hermes-write-dedup-")
         self._tmpfile = os.path.join(self._tmpdir, "write_dedup.txt")
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("original content\n")
 
     def tearDown(self):
@@ -759,7 +824,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
     def test_write_does_not_invalidate_other_files(self, mock_ops):
         """Writing file A should not invalidate dedup for file B."""
         other = os.path.join(self._tmpdir, "other.txt")
-        with open(other, "w") as f:
+        with open(other, "w", encoding="utf-8") as f:
             f.write("other content\n")
 
         fake = MagicMock()

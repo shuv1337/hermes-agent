@@ -27,7 +27,10 @@ import { cn } from "@/lib/utils";
  * viewport / overflow ancestors. Below the `sm` breakpoint, `dropUp` uses a
  * bottom sheet portaled to `document.body` instead of an anchored dropdown.
  */
-export function LanguageSwitcher({ collapsed = false, dropUp = false }: LanguageSwitcherProps) {
+export function LanguageSwitcher({
+  collapsed = false,
+  dropUp = false,
+}: LanguageSwitcherProps) {
   const { locale, setLocale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,7 +62,9 @@ export function LanguageSwitcher({ collapsed = false, dropUp = false }: Language
   }, [open, useMobileSheet]);
 
   const current = LOCALE_META[locale];
-  const allLocales = Object.entries(LOCALE_META) as Array<[Locale, typeof current]>;
+  const allLocales = Object.entries(LOCALE_META) as Array<
+    [Locale, typeof current]
+  >;
   const sheetTitle = t.language.switchTo;
 
   return (
@@ -77,10 +82,7 @@ export function LanguageSwitcher({ collapsed = false, dropUp = false }: Language
         )}
       >
         <span className="inline-flex items-center gap-1.5">
-          <Typography
-            mondwest
-            className="hidden sm:inline text-display tracking-wide text-xs"
-          >
+          <Typography className="hidden sm:inline text-display tracking-wide text-xs">
             {locale === "en" ? "EN" : current.name}
           </Typography>
         </span>
@@ -104,33 +106,40 @@ export function LanguageSwitcher({ collapsed = false, dropUp = false }: Language
         </BottomSheet>
       )}
 
-      {open && !useMobileSheet && (() => {
-        const rect = containerRef.current?.getBoundingClientRect();
-        const dropdown = (
-          <div
-            ref={dropdownRef}
-            aria-label={sheetTitle}
-            className={cn(
-              "min-w-[10rem] border border-border bg-popover shadow-md py-1 max-h-80 overflow-y-auto",
-              dropUp ? "fixed z-[100]" : "absolute z-50 right-0 top-full mt-1",
-            )}
-            role="listbox"
-            style={
-              dropUp && rect
-                ? { bottom: window.innerHeight - rect.top + 4, left: rect.left }
-                : undefined
-            }
-          >
-            <LanguageSwitcherOptions
-              allLocales={allLocales}
-              locale={locale}
-              setLocale={setLocale}
-              setOpen={setOpen}
-            />
-          </div>
-        );
-        return dropUp ? createPortal(dropdown, document.body) : dropdown;
-      })()}
+      {open &&
+        !useMobileSheet &&
+        (() => {
+          const rect = containerRef.current?.getBoundingClientRect();
+          const dropdown = (
+            <div
+              ref={dropdownRef}
+              aria-label={sheetTitle}
+              className={cn(
+                "min-w-[10rem] border border-border bg-popover shadow-md py-1 max-h-80 overflow-y-auto",
+                dropUp
+                  ? "fixed z-[100]"
+                  : "absolute z-50 right-0 top-full mt-1",
+              )}
+              role="listbox"
+              style={
+                dropUp && rect
+                  ? {
+                      bottom: window.innerHeight - rect.top + 4,
+                      left: rect.left,
+                    }
+                  : undefined
+              }
+            >
+              <LanguageSwitcherOptions
+                allLocales={allLocales}
+                locale={locale}
+                setLocale={setLocale}
+                setOpen={setOpen}
+              />
+            </div>
+          );
+          return dropUp ? createPortal(dropdown, document.body) : dropdown;
+        })()}
     </div>
   );
 }
@@ -151,9 +160,11 @@ function LanguageSwitcherOptions({
             aria-selected={selected}
             className={cn(
               "w-full text-left px-3 py-1.5 flex items-center gap-2 cursor-pointer",
-              "font-mondwest text-display text-xs tracking-[0.08em]",
+              "font-sans text-display text-xs tracking-[0.08em]",
               "hover:bg-accent hover:text-accent-foreground transition-colors",
-              selected ? "font-semibold text-foreground" : "text-muted-foreground",
+              selected
+                ? "font-semibold text-foreground"
+                : "text-muted-foreground",
             )}
             key={code}
             onClick={() => {
@@ -165,7 +176,9 @@ function LanguageSwitcherOptions({
           >
             <span className="truncate">{meta.name}</span>
 
-            {selected && <Check className="ml-auto h-3 w-3 shrink-0 text-midground" />}
+            {selected && (
+              <Check className="ml-auto h-3 w-3 shrink-0 text-midground" />
+            )}
           </button>
         );
       })}

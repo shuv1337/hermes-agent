@@ -1,7 +1,6 @@
-import { type CSSProperties } from 'react'
-import { Button } from '../components/button'
-import { startInstall } from '../store'
-import { ArrowRight } from 'lucide-react'
+import { type CSSProperties } from "react";
+import { HackeryButton } from "../components/hackery-button";
+import { startInstall } from "../store";
 
 /*
  * Welcome screen.
@@ -24,9 +23,9 @@ export default function Welcome() {
           className="fit-text mx-auto mb-4 w-full font-['Collapse'] font-bold uppercase leading-[0.9] tracking-[0.08em] text-midground mix-blend-plus-lighter dark:text-foreground/90"
           style={
             {
-              '--fit-text-line-height': '0.9',
-              '--fit-text-max': '6rem',
-              '--fit-text-min': '2.5rem'
+              "--fit-text-line-height": "0.9",
+              "--fit-text-max": "6rem",
+              "--fit-text-min": "2.5rem",
             } as CSSProperties
           }
         >
@@ -42,17 +41,7 @@ export default function Welcome() {
         </p>
       </div>
 
-      <Button
-        onClick={() => void startInstall()}
-        size="lg"
-        className="group inline-flex items-center gap-2 px-6"
-      >
-        Install Hermes
-        <ArrowRight
-          size={18}
-          className="transition-transform group-hover:translate-x-0.5"
-        />
-      </Button>
+      <HackeryButton label="Install" onClick={() => void startInstall()} />
     </div>
-  )
+  );
 }

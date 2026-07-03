@@ -1,336 +1,405 @@
 export type GatewayEventName =
-  | 'gateway.ready'
-  | 'session.info'
-  | 'message.start'
-  | 'message.delta'
-  | 'message.complete'
-  | 'thinking.delta'
-  | 'reasoning.delta'
-  | 'reasoning.available'
-  | 'status.update'
-  | 'tool.start'
-  | 'tool.progress'
-  | 'tool.complete'
-  | 'tool.generating'
-  | 'clarify.request'
-  | 'approval.request'
-  | 'sudo.request'
-  | 'secret.request'
-  | 'background.complete'
-  | 'error'
-  | 'skin.changed'
-  | (string & {})
+  | "gateway.ready"
+  | "session.info"
+  | "message.start"
+  | "message.delta"
+  | "message.complete"
+  | "thinking.delta"
+  | "reasoning.delta"
+  | "reasoning.available"
+  | "status.update"
+  | "tool.start"
+  | "tool.progress"
+  | "tool.complete"
+  | "tool.generating"
+  | "clarify.request"
+  | "approval.request"
+  | "sudo.request"
+  | "secret.request"
+  | "background.complete"
+  | "error"
+  | "skin.changed"
+  | (string & {});
 
 export interface GatewayEvent<P = unknown> {
-  payload?: P
-  session_id?: string
-  type: GatewayEventName
+  payload?: P;
+  session_id?: string;
+  type: GatewayEventName;
 }
 
-export type ConnectionState = 'idle' | 'connecting' | 'open' | 'closed' | 'error'
-export type GatewayRequestId = number | string
+export type ConnectionState =
+  | "idle"
+  | "connecting"
+  | "open"
+  | "closed"
+  | "error";
+export type GatewayRequestId = number | string;
 
 export interface JsonRpcFrame {
-  error?: { message?: string }
-  id?: GatewayRequestId | null
-  method?: string
-  params?: GatewayEvent
-  result?: unknown
+  error?: { message?: string };
+  id?: GatewayRequestId | null;
+  method?: string;
+  params?: GatewayEvent;
+  result?: unknown;
 }
 
-export type WebSocketLike = WebSocket
+export type WebSocketLike = WebSocket;
 
 type PendingCall = {
-  reject: (error: Error) => void
-  resolve: (value: unknown) => void
-  timer?: ReturnType<typeof setTimeout>
-}
+  reject: (error: Error) => void;
+  resolve: (value: unknown) => void;
+  timer?: ReturnType<typeof setTimeout>;
+};
 
 export interface GatewayClientOptions {
-  closedErrorMessage?: string
-  connectErrorMessage?: string
-  connectTimeoutMs?: number
-  createRequestId?: (nextId: number) => GatewayRequestId
-  requestIdPrefix?: string
-  requestTimeoutMs?: number
-  socketFactory?: (url: string) => WebSocketLike
-  notConnectedErrorMessage?: string
+  closedErrorMessage?: string;
+  connectErrorMessage?: string;
+  connectTimeoutMs?: number;
+  createRequestId?: (nextId: number) => GatewayRequestId;
+  requestIdPrefix?: string;
+  requestTimeoutMs?: number;
+  socketFactory?: (url: string) => WebSocketLike;
+  notConnectedErrorMessage?: string;
 }
 
-const ANY = '*'
-const DEFAULT_REQUEST_TIMEOUT_MS = 120_000
+const ANY = "*";
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 // A reconnect after sleep/wake must not hang forever in 'connecting' (which
 // keeps the composer disabled and stuck on "Starting Hermes..."). If the open
 // handshake doesn't land in this window, fail to 'error' so callers can retry.
-const DEFAULT_CONNECT_TIMEOUT_MS = 15_000
+const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 
 export class JsonRpcGatewayClient {
-  private nextId = 0
-  private pending = new Map<GatewayRequestId, PendingCall>()
-  private socket: WebSocketLike | null = null
-  private state: ConnectionState = 'idle'
-  private readonly eventHandlers = new Map<string, Set<(event: GatewayEvent) => void>>()
-  private readonly stateHandlers = new Set<(state: ConnectionState) => void>()
-  private readonly options: Required<Omit<GatewayClientOptions, 'socketFactory'>> &
-    Pick<GatewayClientOptions, 'socketFactory'>
+  private nextId = 0;
+  private pending = new Map<GatewayRequestId, PendingCall>();
+  private socket: WebSocketLike | null = null;
+  private state: ConnectionState = "idle";
+  private readonly eventHandlers = new Map<
+    string,
+    Set<(event: GatewayEvent) => void>
+  >();
+  private readonly stateHandlers = new Set<(state: ConnectionState) => void>();
+  private readonly options: Required<
+    Omit<GatewayClientOptions, "socketFactory">
+  > &
+    Pick<GatewayClientOptions, "socketFactory">;
 
   constructor(options: GatewayClientOptions = {}) {
     this.options = {
-      closedErrorMessage: options.closedErrorMessage ?? 'WebSocket closed',
-      connectErrorMessage: options.connectErrorMessage ?? 'WebSocket connection failed',
+      closedErrorMessage: options.closedErrorMessage ?? "WebSocket closed",
+      connectErrorMessage:
+        options.connectErrorMessage ?? "WebSocket connection failed",
       connectTimeoutMs: options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
       createRequestId:
-        options.createRequestId ?? ((nextId: number) => `${options.requestIdPrefix ?? 'r'}${nextId}`),
-      notConnectedErrorMessage: options.notConnectedErrorMessage ?? 'gateway not connected',
-      requestIdPrefix: options.requestIdPrefix ?? 'r',
+        options.createRequestId ??
+        ((nextId: number) => `${options.requestIdPrefix ?? "r"}${nextId}`),
+      notConnectedErrorMessage:
+        options.notConnectedErrorMessage ?? "gateway not connected",
+      requestIdPrefix: options.requestIdPrefix ?? "r",
       requestTimeoutMs: options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
-      socketFactory: options.socketFactory
-    }
+      socketFactory: options.socketFactory,
+    };
   }
 
   get connectionState(): ConnectionState {
-    return this.state
+    return this.state;
   }
 
   async connect(wsUrl: string): Promise<void> {
-    if (this.socket?.readyState === WebSocket.OPEN || this.state === 'connecting') {
-      return
+    if (
+      this.socket?.readyState === WebSocket.OPEN ||
+      this.state === "connecting"
+    ) {
+      return;
     }
 
-    this.setState('connecting')
+    this.setState("connecting");
 
-    const socket = this.options.socketFactory?.(wsUrl) ?? new WebSocket(wsUrl)
-    this.socket = socket
+    const socket = this.options.socketFactory?.(wsUrl) ?? new WebSocket(wsUrl);
+    this.socket = socket;
 
-    socket.addEventListener('message', message => {
+    socket.addEventListener("message", (message) => {
       if (this.socket !== socket) {
-        return
+        return;
       }
 
-      this.handleMessage(message.data)
-    })
+      this.handleMessage(message.data);
+    });
 
-    socket.addEventListener('close', () => {
+    socket.addEventListener("close", () => {
       if (this.socket !== socket) {
-        return
+        return;
       }
 
-      this.socket = null
-      this.setState('closed')
-      this.rejectAllPending(new Error(this.options.closedErrorMessage))
-    })
+      this.socket = null;
+      this.setState("closed");
+      this.rejectAllPending(new Error(this.options.closedErrorMessage));
+    });
 
     await new Promise<void>((resolve, reject) => {
-      let settled = false
-      let timer: ReturnType<typeof setTimeout> | undefined
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
 
       const cleanup = () => {
         if (timer !== undefined) {
-          clearTimeout(timer)
+          clearTimeout(timer);
         }
 
-        socket.removeEventListener('open', onOpen)
-        socket.removeEventListener('error', onError)
-      }
+        socket.removeEventListener("open", onOpen);
+        socket.removeEventListener("error", onError);
+      };
 
       const onOpen = () => {
         if (settled || this.socket !== socket) {
-          return
+          return;
         }
 
-        settled = true
-        cleanup()
-        this.setState('open')
-        resolve()
-      }
+        settled = true;
+        cleanup();
+        this.setState("open");
+        resolve();
+      };
 
       const onError = () => {
         if (settled || this.socket !== socket) {
-          return
+          return;
         }
 
-        settled = true
-        cleanup()
-        this.setState('error')
-        reject(new Error(this.options.connectErrorMessage))
-      }
+        settled = true;
+        cleanup();
+        this.setState("error");
+        reject(new Error(this.options.connectErrorMessage));
+      };
 
-      socket.addEventListener('open', onOpen, { once: true })
-      socket.addEventListener('error', onError, { once: true })
+      socket.addEventListener("open", onOpen, { once: true });
+      socket.addEventListener("error", onError, { once: true });
 
       if (this.options.connectTimeoutMs > 0) {
         timer = setTimeout(() => {
           if (settled) {
-            return
+            return;
           }
 
-          settled = true
-          cleanup()
+          settled = true;
+          cleanup();
           // Drop the half-open socket so the next connect() starts clean
           // instead of short-circuiting on a zombie 'connecting' state.
           if (this.socket === socket) {
             try {
-              socket.close()
+              socket.close();
             } catch {
               // ignore
             }
 
-            this.socket = null
+            this.socket = null;
           }
-          this.setState('error')
-          reject(new Error(this.options.connectErrorMessage))
-        }, this.options.connectTimeoutMs)
+          this.setState("error");
+          reject(new Error(this.options.connectErrorMessage));
+        }, this.options.connectTimeoutMs);
       }
-    })
+    });
   }
 
   close(): void {
-    this.socket?.close()
-    this.socket = null
-  }
+    const socket = this.socket;
 
-  on<P = unknown>(type: GatewayEventName, handler: (event: GatewayEvent<P>) => void): () => void {
-    let handlers = this.eventHandlers.get(type)
-
-    if (!handlers) {
-      handlers = new Set()
-      this.eventHandlers.set(type, handlers)
+    if (!socket) {
+      return;
     }
 
-    handlers.add(handler as (event: GatewayEvent) => void)
+    try {
+      socket.close();
+    } finally {
+      this.socket = null;
+      this.setState("closed");
+      this.rejectAllPending(new Error(this.options.closedErrorMessage));
+    }
+  }
 
-    return () => handlers?.delete(handler as (event: GatewayEvent) => void)
+  on<P = unknown>(
+    type: GatewayEventName,
+    handler: (event: GatewayEvent<P>) => void,
+  ): () => void {
+    let handlers = this.eventHandlers.get(type);
+
+    if (!handlers) {
+      handlers = new Set();
+      this.eventHandlers.set(type, handlers);
+    }
+
+    handlers.add(handler as (event: GatewayEvent) => void);
+
+    return () => handlers?.delete(handler as (event: GatewayEvent) => void);
   }
 
   onAny(handler: (event: GatewayEvent) => void): () => void {
-    return this.on(ANY as GatewayEventName, handler)
+    return this.on(ANY as GatewayEventName, handler);
   }
 
   onEvent(handler: (event: GatewayEvent) => void): () => void {
-    return this.onAny(handler)
+    return this.onAny(handler);
   }
 
   onState(handler: (state: ConnectionState) => void): () => void {
-    this.stateHandlers.add(handler)
-    handler(this.state)
+    this.stateHandlers.add(handler);
+    handler(this.state);
 
-    return () => this.stateHandlers.delete(handler)
+    return () => this.stateHandlers.delete(handler);
   }
 
-  request<T>(method: string, params: Record<string, unknown> = {}, timeoutMs = this.options.requestTimeoutMs): Promise<T> {
-    const socket = this.socket
+  request<T>(
+    method: string,
+    params: Record<string, unknown> = {},
+    timeoutMs = this.options.requestTimeoutMs,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const socket = this.socket;
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error(this.options.notConnectedErrorMessage))
+      return Promise.reject(new Error(this.options.notConnectedErrorMessage));
     }
 
-    const id = this.options.createRequestId(++this.nextId)
+    if (signal?.aborted) {
+      return Promise.reject(new DOMException("Aborted", "AbortError"));
+    }
+
+    const id = this.options.createRequestId(++this.nextId);
 
     return new Promise<T>((resolve, reject) => {
+      let onAbort: (() => void) | undefined;
+      const detach = () => {
+        if (onAbort && signal) {
+          signal.removeEventListener("abort", onAbort);
+        }
+      };
+
       const pending: PendingCall = {
-        reject,
-        resolve: value => resolve(value as T)
-      }
+        resolve: (value) => {
+          detach();
+          resolve(value as T);
+        },
+        reject: (error) => {
+          detach();
+          reject(error);
+        },
+      };
 
       if (timeoutMs > 0) {
         pending.timer = setTimeout(() => {
           if (this.pending.delete(id)) {
-            reject(new Error(`request timed out: ${method}`))
+            detach();
+            reject(new Error(`request timed out: ${method}`));
           }
-        }, timeoutMs)
+        }, timeoutMs);
       }
 
-      this.pending.set(id, pending)
+      // Abort drops the pending call immediately (no dangling resolver/timer);
+      // server-side cancellation is a separate cooperative RPC where it matters.
+      if (signal) {
+        onAbort = () => {
+          const call = this.pending.get(id);
+          if (call?.timer) {
+            clearTimeout(call.timer);
+          }
+          this.pending.delete(id);
+          detach();
+          reject(new DOMException("Aborted", "AbortError"));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
+      this.pending.set(id, pending);
 
       try {
         socket.send(
           JSON.stringify({
-            jsonrpc: '2.0',
+            jsonrpc: "2.0",
             id,
             method,
-            params
-          })
-        )
+            params,
+          }),
+        );
       } catch (error) {
-        this.clearPending(id)
-        reject(error instanceof Error ? error : new Error(String(error)))
+        this.clearPending(id);
+        detach();
+        reject(error instanceof Error ? error : new Error(String(error)));
       }
-    })
+    });
   }
 
   private handleMessage(raw: unknown): void {
-    const text = typeof raw === 'string' ? raw : String(raw)
-    let frame: JsonRpcFrame
+    const text = typeof raw === "string" ? raw : String(raw);
+    let frame: JsonRpcFrame;
 
     try {
-      frame = JSON.parse(text) as JsonRpcFrame
+      frame = JSON.parse(text) as JsonRpcFrame;
     } catch {
-      return
+      return;
     }
 
     if (frame.id !== undefined && frame.id !== null) {
-      const call = this.pending.get(frame.id)
+      const call = this.pending.get(frame.id);
 
       if (!call) {
-        return
+        return;
       }
 
-      this.clearPending(frame.id)
+      this.clearPending(frame.id);
 
       if (frame.error) {
-        call.reject(new Error(frame.error.message || 'Hermes RPC failed'))
+        call.reject(new Error(frame.error.message || "Hermes RPC failed"));
       } else {
-        call.resolve(frame.result)
+        call.resolve(frame.result);
       }
 
-      return
+      return;
     }
 
-    if (frame.method === 'event' && frame.params?.type) {
-      this.dispatchEvent(frame.params)
+    if (frame.method === "event" && frame.params?.type) {
+      this.dispatchEvent(frame.params);
     }
   }
 
   private clearPending(id: GatewayRequestId): void {
-    const call = this.pending.get(id)
+    const call = this.pending.get(id);
 
     if (call?.timer) {
-      clearTimeout(call.timer)
+      clearTimeout(call.timer);
     }
 
-    this.pending.delete(id)
+    this.pending.delete(id);
   }
 
   private dispatchEvent(event: GatewayEvent): void {
     for (const handler of this.eventHandlers.get(event.type) ?? []) {
-      handler(event)
+      handler(event);
     }
 
     for (const handler of this.eventHandlers.get(ANY) ?? []) {
-      handler(event)
+      handler(event);
     }
   }
 
   private rejectAllPending(error: Error): void {
     for (const [id, call] of this.pending) {
       if (call.timer) {
-        clearTimeout(call.timer)
+        clearTimeout(call.timer);
       }
 
-      call.reject(error)
-      this.pending.delete(id)
+      call.reject(error);
+      this.pending.delete(id);
     }
   }
 
   private setState(state: ConnectionState): void {
     if (this.state === state) {
-      return
+      return;
     }
 
-    this.state = state
+    this.state = state;
 
     for (const handler of this.stateHandlers) {
-      handler(state)
+      handler(state);
     }
   }
 }

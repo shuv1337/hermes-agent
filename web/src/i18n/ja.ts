@@ -118,7 +118,8 @@ export const ja: Translations = {
     runningRemote: "実行中 (リモート)",
     startFailed: "起動に失敗しました",
     starting: "起動中",
-    startedInBackground: "バックグラウンドで起動しました — 進行状況はログをご確認ください",
+    startedInBackground:
+      "バックグラウンドで起動しました — 進行状況はログをご確認ください",
     stopped: "停止",
     updateHermes: "Hermes を更新",
     updatingHermes: "Hermes を更新しています…",
@@ -286,7 +287,8 @@ export const ja: Translations = {
     nameRequired: "名前は必須です",
     nameRule:
       "小文字、数字、_ および - のみ使用可能。最初は文字または数字で始める必要があります。最大 64 文字。",
-    invalidName: "無効なプロファイル名",    cloneFrom: "プロファイルから複製",
+    invalidName: "無効なプロファイル名",
+    cloneFrom: "プロファイルから複製",
     cloneFromNone: "なし（空）",
     allProfiles: "プロファイル",
     noProfiles: "プロファイルが見つかりません。",
@@ -324,7 +326,8 @@ export const ja: Translations = {
     inactive: "非アクティブ",
     installBtn: "インストール",
     installHeading: "GitHub / Git URL からインストール",
-    installHint: "owner/repo の短縮形、または完全な https:// もしくは git@ クローン URL を使用してください。",
+    installHint:
+      "owner/repo の短縮形、または完全な https:// もしくは git@ クローン URL を使用してください。",
     memoryProviderLabel: "メモリプロバイダー",
     missingEnvWarn: "プラグインを実行する前にこれらをキーに設定してください:",
     noDashboardTab: "ダッシュボードタブなし",
@@ -337,9 +340,11 @@ export const ja: Translations = {
       "memory.provider (空 = 組み込み) と context.engine を config.yaml に書き込みます。次のセッションで有効になります。",
     refreshDashboard: "ダッシュボード拡張を再スキャン",
     removeConfirm: "このプラグインを ~/.hermes/plugins/ から削除しますか？",
-    removeHint: "削除できるのは ~/.hermes/plugins 配下のユーザーがインストールしたプラグインのみです。",
+    removeHint:
+      "削除できるのは ~/.hermes/plugins 配下のユーザーがインストールしたプラグインのみです。",
     rescanHeading: "SPA プラグインレジストリ",
-    rescanHint: "ディスクにファイルを追加した後に再スキャンすると、ダッシュボードのサイドバーが新しいマニフェストを認識します。",
+    rescanHint:
+      "ディスクにファイルを追加した後に再スキャンすると、ダッシュボードのサイドバーが新しいマニフェストを認識します。",
     runtimeHeading: "ゲートウェイランタイム (YAML プラグイン)",
     saveProviders: "プロバイダー設定を保存",
     savedProviders: "プロバイダー設定を保存しました。",
@@ -359,7 +364,8 @@ export const ja: Translations = {
     all: "すべて",
     categories: "カテゴリ",
     filters: "フィルター",
-    noSkills: "スキルが見つかりません。スキルは ~/.hermes/skills/ から読み込まれます",
+    noSkills:
+      "スキルが見つかりません。スキルは ~/.hermes/skills/ から読み込まれます",
     noSkillsMatch: "検索またはフィルターに一致するスキルはありません。",
     skillCount: "{count} スキル{s}",
     resultCount: "{count} 件の結果{s}",
@@ -380,8 +386,10 @@ export const ja: Translations = {
     importConfig: "JSON から設定をインポート",
     resetDefaults: "デフォルトにリセット",
     resetScopeTooltip: "{scope} をデフォルトにリセット",
-    confirmResetScope: "すべての {scope} 設定をデフォルトにリセットしますか？フォームのみ更新されます — 保存を押すまで config.yaml には書き込まれません。",
-    resetScopeToast: "{scope} をデフォルトにリセットしました — 確認して保存してください",
+    confirmResetScope:
+      "すべての {scope} 設定をデフォルトにリセットしますか？フォームのみ更新されます — 保存を押すまで config.yaml には書き込まれません。",
+    resetScopeToast:
+      "{scope} をデフォルトにリセットしました — 確認して保存してください",
     rawYaml: "生の YAML 設定",
     searchResults: "検索結果",
     fields: "フィールド{s}",
@@ -413,7 +421,8 @@ export const ja: Translations = {
   },
 
   env: {
-    changesNote: "変更は即座にディスクへ保存されます。アクティブなセッションは新しいキーを自動的に取得します。",
+    changesNote:
+      "変更は即座にディスクへ保存されます。アクティブなセッションは新しいキーを自動的に取得します。",
     confirmClearMessage:
       "この変数の保存値が .env ファイルから削除されます。この操作は UI から取り消せません。",
     confirmClearTitle: "このキーをクリアしますか？",
@@ -432,12 +441,23 @@ export const ja: Translations = {
     replaceCurrentValue: "現在の値を置き換える ({preview})",
     showValue: "実際の値を表示",
     hideValue: "値を非表示",
+    customTitle: "カスタムキー",
+    customHint:
+      "Hermes が認識しない、.env に保存された任意の環境変数。スキル、MCP サーバー、または独自のツール用に環境変数を注入するために使用します。",
+    customConfigured: "カスタムキーを {count} 個設定済み",
+    addCustomKey: "カスタムキーを追加",
+    customKeyName: "変数名",
+    customKeyNamePlaceholder: "例: MY_SERVICE_API_KEY",
+    add: "追加",
+    invalidKeyName:
+      "英字・数字・アンダースコアのみ使用できます（英字またはアンダースコアで始める必要があります）。",
   },
 
   oauth: {
     title: "プロバイダーログイン (OAuth)",
     providerLogins: "プロバイダーログイン (OAuth)",
-    description: "{connected} / {total} OAuth プロバイダーが接続されています。ログインフローは現在 CLI 経由で実行されます。「コマンドをコピー」をクリックして、ターミナルに貼り付けてセットアップしてください。",
+    description:
+      "{connected} / {total} OAuth プロバイダーが接続されています。ログインフローは現在 CLI 経由で実行されます。「コマンドをコピー」をクリックして、ターミナルに貼り付けてセットアップしてください。",
     connected: "接続済み",
     expired: "期限切れ",
     notConnected: "未接続です。ターミナルで {command} を実行してください。",
@@ -455,14 +475,18 @@ export const ja: Translations = {
     exchangingCode: "コードをトークンと交換しています…",
     connectedClosing: "接続しました！閉じています…",
     loginFailed: "ログインに失敗しました。",
-    sessionExpired: "セッションの有効期限が切れました。再試行をクリックして新しいログインを開始してください。",
+    sessionExpired:
+      "セッションの有効期限が切れました。再試行をクリックして新しいログインを開始してください。",
     reOpenAuth: "認証ページを再度開く",
     reOpenVerification: "確認ページを再度開く",
     submitCode: "コードを送信",
-    pasteCode: "認可コードを貼り付け (#state サフィックス付きでも問題ありません)",
+    pasteCode:
+      "認可コードを貼り付け (#state サフィックス付きでも問題ありません)",
     waitingAuth: "ブラウザでの認可をお待ちしています…",
-    enterCodePrompt: "新しいタブが開きました。プロンプトが表示されたらこのコードを入力してください:",
-    pkceStep1: "claude.ai への新しいタブが開きました。サインインして「Authorize」をクリックしてください。",
+    enterCodePrompt:
+      "新しいタブが開きました。プロンプトが表示されたらこのコードを入力してください:",
+    pkceStep1:
+      "claude.ai への新しいタブが開きました。サインインして「Authorize」をクリックしてください。",
     pkceStep2: "認可後に表示される認可コードをコピーしてください。",
     pkceStep3: "下に貼り付けて送信してください。",
     flowLabels: {
@@ -557,7 +581,8 @@ export const ja: Translations = {
       header: "最近の解除",
     },
     empty: {
-      no_secrets_header: "このスキャンに残っている隠しシークレットはありません。",
+      no_secrets_header:
+        "このスキャンに残っている隠しシークレットはありません。",
       no_secrets_body:
         "ヒント: シークレットは通常、想定外の失敗やパワーユーザー的なパターンから生まれます — ポート競合、権限の壁、環境変数の不足、YAML のミス、Docker の衝突、ロールバックやチェックポイントの利用、キャッシュヒット、あるいは大量の赤いエラーの後の小さな修正など。",
     },
@@ -581,11 +606,10 @@ export const ja: Translations = {
       copy_button: "画像をコピー",
       copied: "コピーしました ✓",
       download_button: "PNG をダウンロード",
-      hint:
-        "「X で共有」は事前入力された投稿を新しいタブで開きます。1200×630 のバッジを添付したい場合は、先に「画像をコピー」を押してください — X では投稿エディタに直接貼り付けられます。「PNG をダウンロード」はファイルとして保存し、どこでも使えるようにします。",
+      hint: "「X で共有」は事前入力された投稿を新しいタブで開きます。1200×630 のバッジを添付したい場合は、先に「画像をコピー」を押してください — X では投稿エディタに直接貼り付けられます。「PNG をダウンロード」はファイルとして保存し、どこでも使えるようにします。",
       clipboard_unsupported:
         "このブラウザではクリップボードへの画像コピーがサポートされていません — 代わりに「ダウンロード」をご利用ください。",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
   kanban: {
@@ -693,10 +717,13 @@ export const ja: Translations = {
     taskCreatedWarning: "タスクは作成されましたが: ",
     moveFailed: "移動に失敗しました: ",
     bulkFailed: "一括処理: ",
-    completionBlockedHallucination: "⚠ 完了がブロックされました — ファントムカード ID",
-    suspectedHallucinatedReferences: "⚠ 本文がファントムカード ID を参照しています",
+    completionBlockedHallucination:
+      "⚠ 完了がブロックされました — ファントムカード ID",
+    suspectedHallucinatedReferences:
+      "⚠ 本文がファントムカード ID を参照しています",
     pickProfileFirst: "まずプロファイルを選択してください。",
-    unblockedMessage: "{id} のブロックを解除しました。タスクは次のティックの準備ができています。",
+    unblockedMessage:
+      "{id} のブロックを解除しました。タスクは次のティックの準備ができています。",
     unblockFailed: "ブロック解除に失敗しました: ",
     reclaimedMessage: "{id} を回収しました。タスクは ready に戻りました。",
     reclaimFailed: "回収に失敗しました: ",
@@ -720,7 +747,8 @@ export const ja: Translations = {
       triage: "未整理のアイデア — スペシファイアが仕様を肉付けします",
       todo: "依存関係の待機中、または未割り当て",
       scheduled: "既知の時間遅延またはスケジュール済みのフォローアップ待ち",
-      ready: "依存関係は満たされています。ディスパッチするにはプロファイルを割り当ててください",
+      ready:
+        "依存関係は満たされています。ディスパッチするにはプロファイルを割り当ててください",
       running: "ワーカーが取得中 — 実行中",
       blocked: "ワーカーが人間の入力を求めています",
       done: "完了",

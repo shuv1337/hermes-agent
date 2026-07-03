@@ -19,7 +19,8 @@ import React, { Fragment, useEffect, useState } from "react";
  *  these in their manifest's `slots` field get wired in automatically.
  *
  *  Shell-wide slots:
- *  - `backdrop`         — rendered inside `<Backdrop />`, above the noise layer
+ *  - `backdrop`         — optional full-viewport background decoration;
+ *                         mounted behind shell chrome at z-0
  *  - `header-left`      — injected before the Hermes brand in the top bar
  *  - `header-right`     — injected before the theme/language switchers
  *  - `header-banner`    — injected below the top nav bar, full-width
@@ -175,7 +176,9 @@ interface PluginSlotProps {
  *  Component re-renders when the slot registry changes so plugins that
  *  arrive after initial mount show up without a manual refresh. */
 export function PluginSlot({ name, fallback }: PluginSlotProps) {
-  const [entries, setEntries] = useState<SlotEntry[]>(() => getSlotEntries(name));
+  const [entries, setEntries] = useState<SlotEntry[]>(() =>
+    getSlotEntries(name),
+  );
 
   useEffect(() => {
     // Pick up anything registered between the initial `useState` call

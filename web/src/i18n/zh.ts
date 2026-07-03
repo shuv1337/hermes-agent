@@ -45,7 +45,8 @@ export const zh: Translations = {
     messaging: "消息平台",
     pluginLoadFailed:
       "无法加载此插件的脚本。请检查网络请求（dashboard-plugins/…）以及服务器上的插件路径。",
-    pluginNotRegistered: "插件脚本未调用 register()，或执行出错。请打开浏览器控制台查看详情。",
+    pluginNotRegistered:
+      "插件脚本未调用 register()，或执行出错。请打开浏览器控制台查看详情。",
   },
 
   app: {
@@ -283,7 +284,8 @@ export const zh: Translations = {
     nameRequired: "名称必填",
     nameRule:
       "仅允许小写字母、数字、下划线和短横线；首字符必须是字母或数字；最多 64 个字符。",
-    invalidName: "多Agent配置名称非法",    cloneFrom: "从配置文件克隆",
+    invalidName: "多Agent配置名称非法",
+    cloneFrom: "从配置文件克隆",
     cloneFromNone: "无（空白）",
     allProfiles: "多Agent配置列表",
     noProfiles: "暂无多Agent配置。",
@@ -315,7 +317,8 @@ export const zh: Translations = {
     enableAfterInstall: "安装后启用",
     enableRuntime: "启用",
     forceReinstall: "强制重装（先删除已有目录）",
-    headline: "发现、安装、启用和更新 Hermes 插件（对齐 `hermes plugins` CLI）。",
+    headline:
+      "发现、安装、启用和更新 Hermes 插件（对齐 `hermes plugins` CLI）。",
     identifierLabel: "Git 地址或 owner/repo",
     inactive: "未启用",
     installBtn: "安装",
@@ -376,7 +379,8 @@ export const zh: Translations = {
     importConfig: "从 JSON 导入配置",
     resetDefaults: "恢复默认值",
     resetScopeTooltip: "将{scope}恢复为默认值",
-    confirmResetScope: "确定要将{scope}的所有设置恢复为默认值吗？此操作仅更新表单，在按下「保存」按钮前不会写入 config.yaml。",
+    confirmResetScope:
+      "确定要将{scope}的所有设置恢复为默认值吗？此操作仅更新表单，在按下「保存」按钮前不会写入 config.yaml。",
     resetScopeToast: "{scope}已恢复为默认值 — 请检查并保存以生效",
     rawYaml: "原始 YAML 配置",
     searchResults: "搜索结果",
@@ -410,7 +414,8 @@ export const zh: Translations = {
 
   env: {
     changesNote: "更改会立即保存到磁盘。活跃会话将自动获取新密钥。",
-    confirmClearMessage: "该变量的已存值将从 .env 文件中删除。无法在此界面撤销。",
+    confirmClearMessage:
+      "该变量的已存值将从 .env 文件中删除。无法在此界面撤销。",
     confirmClearTitle: "清除此密钥？",
     description: "管理存储在以下位置的 API 密钥和凭据",
     hideAdvanced: "隐藏高级选项",
@@ -427,12 +432,22 @@ export const zh: Translations = {
     replaceCurrentValue: "替换当前值（{preview}）",
     showValue: "显示实际值",
     hideValue: "隐藏值",
+    customTitle: "自定义密钥",
+    customHint:
+      "存储在 .env 中、Hermes 无法识别的任意环境变量。可用于为技能、MCP 服务器或你自己的工具注入环境变量。",
+    customConfigured: "已设置 {count} 个自定义密钥",
+    addCustomKey: "添加自定义密钥",
+    customKeyName: "变量名",
+    customKeyNamePlaceholder: "例如 MY_SERVICE_API_KEY",
+    add: "添加",
+    invalidKeyName: "只能使用字母、数字和下划线（必须以字母或下划线开头）。",
   },
 
   oauth: {
     title: "提供商登录（OAuth）",
     providerLogins: "提供商登录（OAuth）",
-    description: "已连接 {connected}/{total} 个 OAuth 提供商。登录流程目前通过 CLI 运行；点击「复制命令」并粘贴到终端中进行设置。",
+    description:
+      "已连接 {connected}/{total} 个 OAuth 提供商。登录流程目前通过 CLI 运行；点击「复制命令」并粘贴到终端中进行设置。",
     connected: "已连接",
     expired: "已过期",
     notConnected: "未连接。在终端中运行 {command}。",
@@ -518,8 +533,7 @@ export const zh: Translations = {
     },
     scan: {
       building_headline: "正在构建成就档案…",
-      building_detail:
-        "正在读取会话、工具调用、模型元数据和解锁状态。",
+      building_detail: "正在读取会话、工具调用、模型元数据和解锁状态。",
       starting_headline: "正在开始成就扫描…",
       progress_detail:
         "已扫描 {scanned} / {total} 个会话 · {pct}%。随着更多历史流入，徽章会陆续解锁。",
@@ -576,11 +590,9 @@ export const zh: Translations = {
       copy_button: "复制图片",
       copied: "已复制 ✓",
       download_button: "下载 PNG",
-      hint:
-        "「在 X 上分享」会在新标签页中打开预填好的帖子。如果想附上 1200×630 的徽章，请先点击「复制图片」—— X 允许你直接粘贴到推文编辑器中。「下载 PNG」会将文件保存下来，可在任意位置使用。",
-      clipboard_unsupported:
-        "此浏览器不支持复制剪贴板图片 —— 请改用「下载」。",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      hint: "「在 X 上分享」会在新标签页中打开预填好的帖子。如果想附上 1200×630 的徽章，请先点击「复制图片」—— X 允许你直接粘贴到推文编辑器中。「下载 PNG」会将文件保存下来，可在任意位置使用。",
+      clipboard_unsupported: "此浏览器不支持复制剪贴板图片 —— 请改用「下载」。",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
 
@@ -638,8 +650,7 @@ export const zh: Translations = {
     runHistory: "运行历史",
     workerLog: "工作日志",
     loadingLog: "正在加载日志…",
-    noWorkerLog:
-      "— 暂无工作日志（任务尚未启动或日志已被轮转）—",
+    noWorkerLog: "— 暂无工作日志（任务尚未启动或日志已被轮转）—",
     noDescription: "— 无描述 —",
     noComments: "— 无评论 —",
     edit: "编辑",
@@ -670,8 +681,7 @@ export const zh: Translations = {
     reassign: "重新分配",
     renderingError: "看板标签页发生渲染错误",
     reloadView: "重新加载视图",
-    wsAuthFailed:
-      "WebSocket 认证失败 — 请刷新页面以更新会话令牌。",
+    wsAuthFailed: "WebSocket 认证失败 — 请刷新页面以更新会话令牌。",
     markDone: "将 {n} 个任务标记为完成？",
     markArchived: "归档 {n} 个任务？",
     warning: "警告",
@@ -722,27 +732,20 @@ export const zh: Translations = {
       done: "已完成",
       archived: "已归档",
     },
-    confirmDone:
-      "将此任务标记为完成？工作者将被释放，依赖的子任务将变为就绪。",
-    confirmArchive:
-      "归档此任务？它将从默认看板视图中消失。",
-    confirmBlocked:
-      "将此任务标记为阻塞？工作者将被释放。",
-    completionSummary:
-      "{label} 的完成摘要。这将作为任务结果存储。",
-    completionSummaryRequired:
-      "在将任务标记为完成之前，必须提供完成摘要。",
+    confirmDone: "将此任务标记为完成？工作者将被释放，依赖的子任务将变为就绪。",
+    confirmArchive: "归档此任务？它将从默认看板视图中消失。",
+    confirmBlocked: "将此任务标记为阻塞？工作者将被释放。",
+    completionSummary: "{label} 的完成摘要。这将作为任务结果存储。",
+    completionSummaryRequired: "在将任务标记为完成之前，必须提供完成摘要。",
     triagePlaceholder: "粗略想法 — AI 将完善规格…",
     taskTitlePlaceholder: "新任务标题…",
     specifier: "规范制定者",
     assigneePlaceholder: "负责人",
     priority: "优先级",
-    skillsPlaceholder:
-      "技能（可选，逗号分隔）：翻译、github-code-review",
+    skillsPlaceholder: "技能（可选，逗号分隔）：翻译、github-code-review",
     noParent: "— 无父任务 —",
     workspacePathDir: "工作区路径（必填，例如 ~/projects/my-app）",
-    workspacePathOptional:
-      "工作区路径（可选，留空则根据负责人推导）",
+    workspacePathOptional: "工作区路径（可选，留空则根据负责人推导）",
     logTruncated: "（显示最后 100 KB — 完整日志位于 ",
     logAt: "）",
   },

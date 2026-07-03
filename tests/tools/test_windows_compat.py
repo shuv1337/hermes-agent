@@ -42,8 +42,27 @@ class TestNoUnconditionalSetsid:
         for val in values:
             # A bare os.setsid would be: Attribute(value=Name(id='os'), attr='setsid')
             assert "attr='setsid'" not in val or "IfExp" in val or "None" in val, (
-                f"{relpath} has unconditional preexec_fn=os.setsid"
+                f"{relpath} has unconditional preexec_fn=os.setsid"  # windows-footgun: ok
             )
+
+
+class TestStartNewSession:
+    """All guarded files must use start_new_session=True instead of preexec_fn."""
+
+    @pytest.mark.parametrize("relpath", GUARDED_FILES)
+    def test_uses_start_new_session(self, relpath):
+        """Each guarded file must use start_new_session=True for process isolation."""
+        filepath = PROJECT_ROOT / relpath
+        if not filepath.exists():
+            pytest.skip(f"{relpath} not found")
+        source = filepath.read_text(encoding="utf-8")
+        # Files should use start_new_session=True, not preexec_fn
+        assert "preexec_fn" not in source, (
+            f"{relpath} still uses preexec_fn; use start_new_session=True instead"
+        )
+        assert "start_new_session=True" in source, (
+            f"{relpath} missing start_new_session=True in Popen call"
+        )
 
 
 class TestIsWindowsConstant:
@@ -72,9 +91,9 @@ class TestKillpgGuarded:
         lines = source.splitlines()
         for i, line in enumerate(lines):
             stripped = line.strip()
-            if "os.killpg" in stripped or "os.getpgid" in stripped:
+            if "os.killpg" in stripped or "os.getpgid" in stripped:  # windows-footgun: ok
                 # Check that there's an _IS_WINDOWS guard in the surrounding context
                 context = "\n".join(lines[max(0, i - 15):i + 1])
                 assert "_IS_WINDOWS" in context or "else:" in context, (
-                    f"{relpath}:{i + 1} has unguarded os.killpg/os.getpgid call"
+                    f"{relpath}:{i + 1} has unguarded os.killpg/os.getpgid call"  # windows-footgun: ok
                 )

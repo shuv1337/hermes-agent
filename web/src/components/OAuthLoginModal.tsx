@@ -164,13 +164,18 @@ export function OAuthLoginModal({ provider, onClose, onSuccess }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 p-4"
       onClick={handleBackdrop}
       role="dialog"
       aria-modal="true"
       aria-labelledby="oauth-modal-title"
     >
-      <div className={cn(themedBody, "relative w-full max-w-md border border-border bg-card shadow-2xl")}>
+      <div
+        className={cn(
+          themedBody,
+          "relative w-full max-w-md border border-border bg-card shadow-2xl",
+        )}
+      >
         <Button
           ghost
           size="icon"

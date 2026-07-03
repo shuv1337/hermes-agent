@@ -2,11 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ExternalLink, Loader2, Terminal, X } from "lucide-react";
 import { api } from "@/lib/api";
-import type {
-  ToolsetConfig,
-  ToolsetInfo,
-  ToolsetProvider,
-} from "@/lib/api";
+import type { ToolsetConfig, ToolsetInfo, ToolsetProvider } from "@/lib/api";
 import { useToast } from "@nous-research/ui/hooks/use-toast";
 import { Button } from "@nous-research/ui/ui/components/button";
 import { Input } from "@nous-research/ui/ui/components/input";
@@ -34,7 +30,12 @@ interface Props {
  * the toolset on/off, pick a provider, enter API keys, and run a provider's
  * post-setup install hook (npm/pip/binary) with a live log tail.
  */
-export function ToolsetConfigDrawer({ toolset, profile, onClose, onChanged }: Props) {
+export function ToolsetConfigDrawer({
+  toolset,
+  profile,
+  onClose,
+  onChanged,
+}: Props) {
   const { toast, showToast } = useToast();
   const [config, setConfig] = useState<ToolsetConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -214,7 +215,7 @@ export function ToolsetConfigDrawer({ toolset, profile, onClose, onChanged }: Pr
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -393,8 +394,7 @@ export function ToolsetConfigDrawer({ toolset, profile, onClose, onChanged }: Pr
                   {provider.post_setup && (
                     <div className="mt-3 border-t border-border pt-3">
                       <p className="text-xs text-muted-foreground mb-1.5">
-                        This backend needs a one-time install
-                        {" "}
+                        This backend needs a one-time install{" "}
                         <span className="font-mono">
                           ({provider.post_setup})
                         </span>

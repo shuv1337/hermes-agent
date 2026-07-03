@@ -40,12 +40,12 @@ def _ensure_telegram_mock():
     sys.modules["telegram.request"] = telegram_mod.request
 
     # Force reimport so the adapter picks up the mock ChatType.
-    sys.modules.pop("gateway.platforms.telegram", None)
+    sys.modules.pop("plugins.platforms.telegram.adapter", None)
 
 
 _ensure_telegram_mock()
 
-from gateway.platforms.telegram import TelegramAdapter  # noqa: E402
+from plugins.platforms.telegram.adapter import TelegramAdapter  # noqa: E402
 
 
 def _make_adapter(dm_topics_config=None, group_topics_config=None):
@@ -279,7 +279,7 @@ def test_persist_dm_topic_thread_id_writes_config(tmp_path):
 
     config_file = tmp_path / ".hermes" / "config.yaml"
     config_file.parent.mkdir(parents=True)
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.dump(config_data, f)
 
     adapter = _make_adapter()
@@ -288,7 +288,7 @@ def test_persist_dm_topic_thread_id_writes_config(tmp_path):
          patch.dict(os.environ, {"HERMES_HOME": str(tmp_path / ".hermes")}):
         adapter._persist_dm_topic_thread_id(111, "General", 999)
 
-    with open(config_file) as f:
+    with open(config_file, encoding="utf-8") as f:
         result = yaml.safe_load(f)
 
     topics = result["platforms"]["telegram"]["extra"]["dm_topics"][0]["topics"]
@@ -319,7 +319,7 @@ def test_persist_dm_topic_thread_id_skips_if_already_set(tmp_path):
 
     config_file = tmp_path / ".hermes" / "config.yaml"
     config_file.parent.mkdir(parents=True)
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.dump(config_data, f)
 
     adapter = _make_adapter()
@@ -327,7 +327,7 @@ def test_persist_dm_topic_thread_id_skips_if_already_set(tmp_path):
     with patch.object(Path, "home", return_value=tmp_path):
         adapter._persist_dm_topic_thread_id(111, "General", 999)
 
-    with open(config_file) as f:
+    with open(config_file, encoding="utf-8") as f:
         result = yaml.safe_load(f)
 
     topics = result["platforms"]["telegram"]["extra"]["dm_topics"][0]["topics"]
@@ -357,7 +357,7 @@ def test_persist_dm_topic_thread_id_replaces_existing_when_requested(tmp_path):
 
     config_file = tmp_path / ".hermes" / "config.yaml"
     config_file.parent.mkdir(parents=True)
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.dump(config_data, f)
 
     adapter = _make_adapter()
@@ -366,7 +366,7 @@ def test_persist_dm_topic_thread_id_replaces_existing_when_requested(tmp_path):
          patch.dict(os.environ, {"HERMES_HOME": str(tmp_path / ".hermes")}):
         adapter._persist_dm_topic_thread_id(111, "General", 999, replace_existing=True)
 
-    with open(config_file) as f:
+    with open(config_file, encoding="utf-8") as f:
         result = yaml.safe_load(f)
 
     topics = result["platforms"]["telegram"]["extra"]["dm_topics"][0]["topics"]
@@ -502,7 +502,7 @@ def test_get_dm_topic_info_hot_reloads_from_config(tmp_path):
     }
     config_file = tmp_path / ".hermes" / "config.yaml"
     config_file.parent.mkdir(parents=True)
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.dump(config_data, f)
 
     with patch.object(Path, "home", return_value=tmp_path), \
@@ -851,6 +851,100 @@ def test_group_topic_chat_id_int_string_coercion():
 
     assert event.auto_skill == "hermes-agent-dev"
     assert event.source.chat_topic == "Dev"
+
+
+def test_group_topic_mapping_shape_config():
+    """Operator-edited mapping shape {chat_id: [topics]} must resolve like the list shape."""
+    from gateway.platforms.base import MessageType
+
+    # Dict/mapping shape instead of the canonical list-of-entries shape.
+    adapter = _make_adapter(group_topics_config={
+        "-1001234567890": [
+            {"name": "Engineering", "thread_id": 5, "skill": "software-development"},
+            {"name": "Sales", "thread_id": 12, "skill": "sales-framework"},
+        ],
+    })
+
+    msg = _make_mock_message(
+        chat_id=-1001234567890,
+        chat_type=_ChatType.SUPERGROUP,
+        thread_id=12,
+        text="deal update",
+        is_topic_message=True,
+        is_forum=True,
+    )
+    event = adapter._build_message_event(msg, MessageType.TEXT)
+
+    assert event.auto_skill == "sales-framework"
+    assert event.source.chat_topic == "Sales"
+
+
+def test_group_topic_malformed_config_does_not_crash():
+    """Non-dict entries / non-list topics must be skipped, not raise AttributeError."""
+    from gateway.platforms.base import MessageType
+
+    # Junk list entries (str) are filtered out; a matching entry with a good
+    # topic still resolves; non-dict topic entries within it are skipped.
+    adapter = _make_adapter(group_topics_config=[
+        "not-a-dict",
+        {"chat_id": -1001234567890, "topics": ["also-not-a-dict",
+                                               {"name": "Good", "thread_id": 5}]},
+    ])
+
+    msg = _make_mock_message(
+        chat_id=-1001234567890,
+        chat_type=_ChatType.SUPERGROUP,
+        thread_id=5,
+        text="hi",
+        is_topic_message=True,
+        is_forum=True,
+    )
+    event = adapter._build_message_event(msg, MessageType.TEXT)
+
+    assert event.auto_skill is None
+    assert event.source.chat_topic == "Good"
+
+
+def test_group_topic_non_list_topics_does_not_crash():
+    """A matched entry whose topics is not a list must fall through, not raise."""
+    from gateway.platforms.base import MessageType
+
+    adapter = _make_adapter(group_topics_config=[
+        {"chat_id": -1001234567890, "topics": "oops-not-a-list"},
+    ])
+
+    msg = _make_mock_message(
+        chat_id=-1001234567890,
+        chat_type=_ChatType.SUPERGROUP,
+        thread_id=5,
+        text="hi",
+        is_topic_message=True,
+        is_forum=True,
+    )
+    event = adapter._build_message_event(msg, MessageType.TEXT)
+
+    assert event.auto_skill is None
+    assert event.source.chat_topic is None
+
+
+def test_group_topic_scalar_config_falls_through():
+    """A scalar (int/str) group_topics value must fall through cleanly, not raise."""
+    from gateway.platforms.base import MessageType
+
+    adapter = _make_adapter(group_topics_config=42)
+
+    msg = _make_mock_message(
+        chat_id=-1001234567890,
+        chat_type=_ChatType.SUPERGROUP,
+        thread_id=5,
+        text="hi",
+        is_topic_message=True,
+        is_forum=True,
+    )
+    event = adapter._build_message_event(msg, MessageType.TEXT)
+
+    assert event.auto_skill is None
+    assert event.source.chat_topic is None
 
 
 # ── _build_message_event: from_user=None fallback in DMs ──

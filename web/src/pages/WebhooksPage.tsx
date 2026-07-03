@@ -303,13 +303,18 @@ export default function WebhooksPage() {
       {createModalOpen && (
         <div
           ref={createModalRef}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 p-4"
           onClick={(e) => e.target === e.currentTarget && closeCreateModal()}
           role="dialog"
           aria-modal="true"
           aria-labelledby="create-webhook-title"
         >
-          <div className={cn(themedBody, "relative w-full max-w-lg border border-border bg-card shadow-2xl flex flex-col max-h-[90vh] overflow-y-auto")}>
+          <div
+            className={cn(
+              themedBody,
+              "relative w-full max-w-lg border border-border bg-card shadow-2xl flex flex-col max-h-[90vh] overflow-y-auto",
+            )}
+          >
             <Button
               ghost
               size="icon"
@@ -512,7 +517,9 @@ export default function WebhooksPage() {
               className="uppercase shrink-0"
               onClick={handleRestart}
               disabled={restarting}
-              prefix={restarting ? <Spinner /> : <RotateCw className="h-4 w-4" />}
+              prefix={
+                restarting ? <Spinner /> : <RotateCw className="h-4 w-4" />
+              }
             >
               {restarting ? "Restarting…" : "Restart gateway"}
             </Button>
@@ -545,7 +552,9 @@ export default function WebhooksPage() {
         {subscriptions.map((sub: WebhookRoute) => (
           <Card key={sub.name}>
             <CardContent className="flex items-start gap-4 py-4">
-              <div className={cn("flex-1 min-w-0", !sub.enabled && "opacity-60")}>
+              <div
+                className={cn("flex-1 min-w-0", !sub.enabled && "opacity-60")}
+              >
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="font-medium text-sm truncate">
                     {sub.name}

@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useState, useMemo, useCallback } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useMemo,
+  useCallback,
+} from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Package,
   Search,
@@ -43,7 +50,12 @@ import { ToolsetConfigDrawer } from "@/components/ToolsetConfigDrawer";
 import { SkillEditorDialog } from "@/components/SkillEditorDialog";
 import { useToast } from "@nous-research/ui/hooks/use-toast";
 import { Toast } from "@nous-research/ui/ui/components/toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@nous-research/ui/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@nous-research/ui/ui/components/card";
 import { Badge } from "@nous-research/ui/ui/components/badge";
 import { Button } from "@nous-research/ui/ui/components/button";
 import { ListItem } from "@nous-research/ui/ui/components/list-item";
@@ -147,9 +159,7 @@ export default function SkillsPage() {
   // appends the param automatically; we still pass it explicitly where the
   // call signature supports it (clearer, and robust if a caller bypasses
   // the auto-injection).
-  const {
-    profile: selectedProfile,
-  } = useProfileScope();
+  const { profile: selectedProfile } = useProfileScope();
 
   useEffect(() => {
     // Promise-chain shape: setState fires only inside async callbacks so the
@@ -170,13 +180,17 @@ export default function SkillsPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedProfile]);
+  }, [selectedProfile, showToast, t.common.loading]);
 
   /* ---- Toggle skill ---- */
   const handleToggleSkill = async (skill: SkillInfo) => {
     setTogglingSkills((prev) => new Set(prev).add(skill.name));
     try {
-      await api.toggleSkill(skill.name, !skill.enabled, selectedProfile || undefined);
+      await api.toggleSkill(
+        skill.name,
+        !skill.enabled,
+        selectedProfile || undefined,
+      );
       setSkills((prev) =>
         prev.map((s) =>
           s.name === skill.name ? { ...s, enabled: !s.enabled } : s,
@@ -212,6 +226,40 @@ export default function SkillsPage() {
     setEditorSkill(null);
     setEditorOpen(true);
   }, []);
+  // ── "Learn a skill" panel ──────────────────────────────────────────────
+  // Open-ended: dir + URL + free-text inputs are composed into a single-line
+  // /learn command and handed to the chat. /learn resolves to a normal agent
+  // turn (command.dispatch → send), so the live agent gathers the sources
+  // with its own tools and authors the skill via skill_manage. No backend
+  // distill endpoint — one code path with the CLI/TUI/gateway /learn.
+  const navigate = useNavigate();
+  const [learnOpen, setLearnOpen] = useState(false);
+  const [learnDir, setLearnDir] = useState("");
+  const [learnUrl, setLearnUrl] = useState("");
+  const [learnText, setLearnText] = useState("");
+  const openLearn = useCallback(() => {
+    setLearnDir("");
+    setLearnUrl("");
+    setLearnText("");
+    setLearnOpen(true);
+  }, []);
+  const submitLearn = useCallback(() => {
+    const segs: string[] = [];
+    const dir = learnDir.trim();
+    const url = learnUrl.trim();
+    const text = learnText.trim();
+    if (dir) segs.push(`local source: ${dir}`);
+    if (url) segs.push(`URL: ${url}`);
+    if (text) segs.push(text);
+    // Flatten to a single line — the chat composer submits on the first Enter.
+    const composed = segs
+      .join("; ")
+      .replace(/\s*\n\s*/g, " ")
+      .trim();
+    if (!composed) return;
+    setLearnOpen(false);
+    navigate(`/chat?learn=${encodeURIComponent(composed)}`);
+  }, [learnDir, learnUrl, learnText, navigate]);
   const openEditEditor = useCallback((skillName: string) => {
     setEditorSkill(skillName);
     setEditorOpen(true);
@@ -316,15 +364,7 @@ export default function SkillsPage() {
       setAfterTitle(null);
       setEnd(null);
     };
-  }, [
-    enabledCount,
-    loading,
-    search,
-    setAfterTitle,
-    setEnd,
-    skills.length,
-    t,
-  ]);
+  }, [enabledCount, loading, search, setAfterTitle, setEnd, skills.length, t]);
 
   const filteredToolsets = useMemo(() => {
     return toolsets.filter(
@@ -495,6 +535,14 @@ export default function SkillsPage() {
                     <Button
                       size="sm"
                       outlined
+                      onClick={openLearn}
+                      prefix={<Sparkles />}
+                    >
+                      Learn a skill
+                    </Button>
+                    <Button
+                      size="sm"
+                      outlined
                       onClick={openCreateEditor}
                       prefix={<Plus />}
                     >
@@ -611,7 +659,10 @@ export default function SkillsPage() {
               )}
             </>
           ) : (
-            <HubBrowser showToast={showToast} profile={selectedProfile || undefined} />
+            <HubBrowser
+              showToast={showToast}
+              profile={selectedProfile || undefined}
+            />
           )}
         </div>
       </div>
@@ -630,6 +681,66 @@ export default function SkillsPage() {
         onClose={() => setEditorOpen(false)}
         onSaved={handleEditorSaved}
       />
+      <Dialog open={learnOpen} onOpenChange={setLearnOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Learn a skill</DialogTitle>
+            <DialogDescription>
+              Point Hermes at anything and it will distill a reusable skill —
+              following the house authoring standards. Fill in any combination
+              below; the agent gathers the sources and writes the skill in chat.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Local file or directory
+              </label>
+              <Input
+                placeholder="~/projects/some-sdk  (read with read_file / search_files)"
+                value={learnDir}
+                onChange={(e) => setLearnDir(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                URL
+              </label>
+              <Input
+                placeholder="https://docs.example.com/api  (fetched with web_extract)"
+                value={learnUrl}
+                onChange={(e) => setLearnUrl(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Anything else — describe the workflow, paste notes, or say "what
+                we just did"
+              </label>
+              <textarea
+                className="min-h-[90px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="e.g. how I file an expense report: open the portal, …"
+                value={learnText}
+                onChange={(e) => setLearnText(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button ghost onClick={() => setLearnOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={submitLearn}
+              prefix={<Sparkles />}
+              disabled={
+                !learnDir.trim() && !learnUrl.trim() && !learnText.trim()
+              }
+            >
+              Learn it
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <PluginSlot name="skills:bottom" />
     </div>
   );
@@ -750,7 +861,10 @@ function verdictVisual(verdict: string): {
   }
 }
 
-const SEVERITY_TONE: Record<string, "destructive" | "warning" | "secondary" | "outline"> = {
+const SEVERITY_TONE: Record<
+  string,
+  "destructive" | "warning" | "secondary" | "outline"
+> = {
   critical: "destructive",
   high: "destructive",
   medium: "warning",
@@ -779,7 +893,9 @@ function HubBrowser({
   const [sourcesLoading, setSourcesLoading] = useState(true);
 
   // identifier -> installed entry (drives "Installed" badges).
-  const [installed, setInstalled] = useState<Record<string, SkillHubInstalledEntry>>({});
+  const [installed, setInstalled] = useState<
+    Record<string, SkillHubInstalledEntry>
+  >({});
 
   // Live action log for the most recent install/update.
   const [action, setAction] = useState<string | null>(null);
@@ -923,7 +1039,9 @@ function HubBrowser({
               size="sm"
               onClick={() => void runSearch()}
               disabled={searching || !query.trim()}
-              prefix={searching ? <Spinner /> : <Search className="h-3.5 w-3.5" />}
+              prefix={
+                searching ? <Spinner /> : <Search className="h-3.5 w-3.5" />
+              }
             >
               Search
             </Button>
@@ -1218,7 +1336,12 @@ function HubResultCard({
             Details
           </Button>
           {installed ? (
-            <Button size="sm" ghost disabled prefix={<CheckCircle2 className="h-3.5 w-3.5" />}>
+            <Button
+              size="sm"
+              ghost
+              disabled
+              prefix={<CheckCircle2 className="h-3.5 w-3.5" />}
+            >
               Installed
             </Button>
           ) : (
@@ -1305,8 +1428,8 @@ function SkillDetailDialog({
             )}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Preview the SKILL.md source and run a security scan for {result.name}{" "}
-            before installing.
+            Preview the SKILL.md source and run a security scan for{" "}
+            {result.name} before installing.
           </DialogDescription>
         </DialogHeader>
 
@@ -1355,7 +1478,12 @@ function SkillDetailDialog({
               </a>
             )}
             {installed ? (
-              <Button size="sm" ghost disabled prefix={<CheckCircle2 className="h-3.5 w-3.5" />}>
+              <Button
+                size="sm"
+                ghost
+                disabled
+                prefix={<CheckCircle2 className="h-3.5 w-3.5" />}
+              >
                 Installed
               </Button>
             ) : (
@@ -1396,7 +1524,9 @@ function SkillDetailDialog({
                     <span className="font-mondwest tracking-[0.1em] uppercase">
                       Files:{" "}
                     </span>
-                    <span className="font-mono">{preview.files.join("  ")}</span>
+                    <span className="font-mono">
+                      {preview.files.join("  ")}
+                    </span>
                   </div>
                 )}
                 <pre className="whitespace-pre-wrap break-words bg-background/50 border border-border p-3 text-xs font-mono text-text-secondary leading-relaxed">
@@ -1515,7 +1645,10 @@ function ScanPanel({
         <div className="flex flex-col border border-border divide-y divide-border">
           {scan.findings.map((f, i) => (
             <div key={i} className="flex items-start gap-2 p-2">
-              <Badge tone={SEVERITY_TONE[f.severity] || "outline"} className="text-xs shrink-0">
+              <Badge
+                tone={SEVERITY_TONE[f.severity] || "outline"}
+                className="text-xs shrink-0"
+              >
                 {f.severity}
               </Badge>
               <div className="flex-1 min-w-0">

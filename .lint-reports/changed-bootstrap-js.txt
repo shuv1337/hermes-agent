@@ -1,0 +1,11 @@
+apps/bootstrap-installer/src/components/brand-mark.tsx
+apps/bootstrap-installer/src/components/button.tsx
+apps/bootstrap-installer/src/components/hackery-button.tsx
+apps/bootstrap-installer/src/components/loader.tsx
+apps/bootstrap-installer/src/main.tsx
+apps/bootstrap-installer/src/routes/failure.tsx
+apps/bootstrap-installer/src/routes/progress.tsx
+apps/bootstrap-installer/src/routes/success.tsx
+apps/bootstrap-installer/src/routes/welcome.tsx
+apps/bootstrap-installer/src/store.ts
+apps/bootstrap-installer/src/theme.ts

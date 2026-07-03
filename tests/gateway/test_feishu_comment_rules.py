@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from gateway.platforms.feishu_comment_rules import (
+from plugins.platforms.feishu.feishu_comment_rules import (
     CommentsConfig,
     CommentDocumentRule,
     ResolvedCommentRule,
@@ -195,7 +195,7 @@ class TestIsUserAllowed(unittest.TestCase):
     def test_pairing_checks_store(self):
         rule = ResolvedCommentRule(True, "pairing", frozenset(), "top")
         with patch(
-            "gateway.platforms.feishu_comment_rules._load_pairing_approved",
+            "plugins.platforms.feishu.feishu_comment_rules._load_pairing_approved",
             return_value={"ou_approved"},
         ):
             self.assertTrue(is_user_allowed(rule, "ou_approved"))
@@ -232,7 +232,7 @@ class TestMtimeCache(unittest.TestCase):
             self.assertEqual(cache.load(), {"v": 1})
             # Modify file
             time.sleep(0.05)
-            with open(path, "w") as f2:
+            with open(path, "w", encoding="utf-8") as f2:
                 json.dump({"v": 2}, f2)
             # Force mtime change detection
             os.utime(path, (time.time() + 1, time.time() + 1))
@@ -256,8 +256,8 @@ class TestLoadConfig(unittest.TestCase):
             json.dump(raw, f)
             path = Path(f.name)
         try:
-            with patch("gateway.platforms.feishu_comment_rules.RULES_FILE", path):
-                with patch("gateway.platforms.feishu_comment_rules._rules_cache", _MtimeCache(path)):
+            with patch("plugins.platforms.feishu.feishu_comment_rules.RULES_FILE", path):
+                with patch("plugins.platforms.feishu.feishu_comment_rules._rules_cache", _MtimeCache(path)):
                     cfg = load_config()
             self.assertTrue(cfg.enabled)
             self.assertEqual(cfg.policy, "allowlist")
@@ -269,7 +269,7 @@ class TestLoadConfig(unittest.TestCase):
             path.unlink()
 
     def test_load_missing_file_returns_defaults(self):
-        with patch("gateway.platforms.feishu_comment_rules._rules_cache", _MtimeCache(Path("/nonexistent"))):
+        with patch("plugins.platforms.feishu.feishu_comment_rules._rules_cache", _MtimeCache(Path("/nonexistent"))):
             cfg = load_config()
         self.assertTrue(cfg.enabled)
         self.assertEqual(cfg.policy, "pairing")
@@ -281,11 +281,11 @@ class TestPairingStore(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.mkdtemp()
         self._pairing_file = Path(self._tmpdir) / "pairing.json"
-        with open(self._pairing_file, "w") as f:
+        with open(self._pairing_file, "w", encoding="utf-8") as f:
             json.dump({"approved": {}}, f)
-        self._patcher_file = patch("gateway.platforms.feishu_comment_rules.PAIRING_FILE", self._pairing_file)
+        self._patcher_file = patch("plugins.platforms.feishu.feishu_comment_rules.PAIRING_FILE", self._pairing_file)
         self._patcher_cache = patch(
-            "gateway.platforms.feishu_comment_rules._pairing_cache",
+            "plugins.platforms.feishu.feishu_comment_rules._pairing_cache",
             _MtimeCache(self._pairing_file),
         )
         self._patcher_file.start()

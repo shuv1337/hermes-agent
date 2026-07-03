@@ -14,9 +14,7 @@ export function SidebarFooter({ status }: SidebarFooterProps) {
         "border-t border-current/10",
       )}
     >
-      <Typography
-        className="font-mono-ui text-xs tabular-nums tracking-[0.08em] text-text-tertiary lowercase"
-      >
+      <Typography className="font-mono-ui text-xs tabular-nums tracking-[0.08em] text-text-tertiary lowercase">
         {status?.version != null ? `v${status.version}` : "—"}
       </Typography>
 
@@ -25,11 +23,10 @@ export function SidebarFooter({ status }: SidebarFooterProps) {
         target="_blank"
         rel="noopener noreferrer"
         className={cn(
-          "font-mondwest text-display text-xs tracking-[0.12em] text-midground",
+          "font-sans text-display text-xs tracking-[0.12em] text-midground",
           "transition-opacity hover:opacity-90",
           "focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-midground/40",
         )}
-        style={{ mixBlendMode: "plus-lighter" }}
       >
         {t.app.footer.org}
       </a>

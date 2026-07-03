@@ -118,7 +118,8 @@ export const it: Translations = {
     runningRemote: "In esecuzione (remoto)",
     startFailed: "Avvio non riuscito",
     starting: "Avvio in corso",
-    startedInBackground: "Avviato in background — controlla i log per i progressi",
+    startedInBackground:
+      "Avviato in background — controlla i log per i progressi",
     stopped: "Arrestato",
     updateHermes: "Aggiorna Hermes",
     updatingHermes: "Aggiornamento di Hermes…",
@@ -287,7 +288,8 @@ export const it: Translations = {
     nameRequired: "Il nome è obbligatorio",
     nameRule:
       "Solo lettere minuscole, cifre, _ e -; deve iniziare con una lettera o cifra; fino a 64 caratteri.",
-    invalidName: "Nome del profilo non valido",    cloneFrom: "Clona configurazione dal profilo",
+    invalidName: "Nome del profilo non valido",
+    cloneFrom: "Clona configurazione dal profilo",
     cloneFromNone: "Nessuno (vuoto)",
     allProfiles: "Profili",
     noProfiles: "Nessun profilo trovato.",
@@ -318,19 +320,23 @@ export const it: Translations = {
     disableRuntime: "Disabilita",
     enableAfterInstall: "Abilita dopo l'installazione",
     enableRuntime: "Abilita",
-    forceReinstall: "Forza reinstallazione (elimina prima la cartella esistente)",
+    forceReinstall:
+      "Forza reinstallazione (elimina prima la cartella esistente)",
     headline:
       "Scopri, installa, abilita e aggiorna i plugin Hermes (parità con `hermes plugins`).",
     identifierLabel: "URL Git o owner/repo",
     inactive: "inattivo",
     installBtn: "Installa",
     installHeading: "Installa da GitHub / URL Git",
-    installHint: "Usa la forma breve owner/repo o un URL clone https:// o git@ completo.",
+    installHint:
+      "Usa la forma breve owner/repo o un URL clone https:// o git@ completo.",
     memoryProviderLabel: "Provider di memoria",
-    missingEnvWarn: "Imposta queste variabili in Chiavi prima di eseguire il plugin:",
+    missingEnvWarn:
+      "Imposta queste variabili in Chiavi prima di eseguire il plugin:",
     noDashboardTab: "Nessuna scheda nel dashboard",
     openTab: "Apri",
-    orphanHeading: "Estensioni solo dashboard (nessuna corrispondenza con plugin.yaml)",
+    orphanHeading:
+      "Estensioni solo dashboard (nessuna corrispondenza con plugin.yaml)",
     pluginListHeading: "Plugin installati",
     providerDefaults: "integrato / predefinito",
     providersHeading: "Plugin provider runtime",
@@ -338,9 +344,11 @@ export const it: Translations = {
       "Scrive memory.provider (vuoto = integrato) e context.engine in config.yaml. Effetto dalla prossima sessione.",
     refreshDashboard: "Riscansiona estensioni dashboard",
     removeConfirm: "Rimuovere questo plugin da ~/.hermes/plugins/?",
-    removeHint: "Solo i plugin installati dall'utente in ~/.hermes/plugins possono essere rimossi.",
+    removeHint:
+      "Solo i plugin installati dall'utente in ~/.hermes/plugins possono essere rimossi.",
     rescanHeading: "Registro plugin SPA",
-    rescanHint: "Riscansiona dopo aver aggiunto file su disco affinché la barra laterale rilevi i nuovi manifest.",
+    rescanHint:
+      "Riscansiona dopo aver aggiunto file su disco affinché la barra laterale rilevi i nuovi manifest.",
     runtimeHeading: "Runtime gateway (plugin YAML)",
     saveProviders: "Salva impostazioni provider",
     savedProviders: "Impostazioni provider salvate.",
@@ -360,7 +368,8 @@ export const it: Translations = {
     all: "Tutti",
     categories: "Categorie",
     filters: "Filtri",
-    noSkills: "Nessuna competenza trovata. Le competenze vengono caricate da ~/.hermes/skills/",
+    noSkills:
+      "Nessuna competenza trovata. Le competenze vengono caricate da ~/.hermes/skills/",
     noSkillsMatch: "Nessuna competenza corrisponde alla ricerca o al filtro.",
     skillCount: "{count} competenz{s}",
     resultCount: "{count} risultat{s}",
@@ -381,8 +390,10 @@ export const it: Translations = {
     importConfig: "Importa configurazione da JSON",
     resetDefaults: "Ripristina predefiniti",
     resetScopeTooltip: "Ripristina {scope} ai valori predefiniti",
-    confirmResetScope: "Ripristinare tutte le impostazioni di {scope} ai valori predefiniti? Questa operazione aggiorna solo il modulo — le modifiche non vengono scritte in config.yaml finché non premi Salva.",
-    resetScopeToast: "{scope} ripristinato ai valori predefiniti — controlla e Salva per rendere persistente",
+    confirmResetScope:
+      "Ripristinare tutte le impostazioni di {scope} ai valori predefiniti? Questa operazione aggiorna solo il modulo — le modifiche non vengono scritte in config.yaml finché non premi Salva.",
+    resetScopeToast:
+      "{scope} ripristinato ai valori predefiniti — controlla e Salva per rendere persistente",
     rawYaml: "Configurazione YAML grezza",
     searchResults: "Risultati della ricerca",
     fields: "camp{s}",
@@ -414,7 +425,8 @@ export const it: Translations = {
   },
 
   env: {
-    changesNote: "Le modifiche vengono salvate immediatamente su disco. Le sessioni attive rilevano automaticamente le nuove chiavi.",
+    changesNote:
+      "Le modifiche vengono salvate immediatamente su disco. Le sessioni attive rilevano automaticamente le nuove chiavi.",
     confirmClearMessage:
       "Il valore memorizzato per questa variabile sarà rimosso dal tuo file .env. Non può essere annullato dall'interfaccia.",
     confirmClearTitle: "Cancellare questa chiave?",
@@ -433,12 +445,23 @@ export const it: Translations = {
     replaceCurrentValue: "Sostituisci valore corrente ({preview})",
     showValue: "Mostra valore reale",
     hideValue: "Nascondi valore",
+    customTitle: "Chiavi personalizzate",
+    customHint:
+      "Variabili d'ambiente arbitrarie salvate nel tuo .env che Hermes non riconosce. Usale per iniettare variabili d'ambiente per skill, server MCP o i tuoi strumenti.",
+    customConfigured: "{count} chiave/i personalizzata/e impostata/e",
+    addCustomKey: "Aggiungi una chiave personalizzata",
+    customKeyName: "Nome della variabile",
+    customKeyNamePlaceholder: "es. MY_SERVICE_API_KEY",
+    add: "Aggiungi",
+    invalidKeyName:
+      "Usa solo lettere, numeri e trattini bassi (deve iniziare con una lettera o un trattino basso).",
   },
 
   oauth: {
     title: "Accessi provider (OAuth)",
     providerLogins: "Accessi provider (OAuth)",
-    description: "{connected} di {total} provider OAuth connessi. I flussi di accesso vengono attualmente eseguiti tramite la CLI; clicca Copia comando e incolla in un terminale per configurare.",
+    description:
+      "{connected} di {total} provider OAuth connessi. I flussi di accesso vengono attualmente eseguiti tramite la CLI; clicca Copia comando e incolla in un terminale per configurare.",
     connected: "Connesso",
     expired: "Scaduto",
     notConnected: "Non connesso. Esegui {command} in un terminale.",
@@ -456,15 +479,19 @@ export const it: Translations = {
     exchangingCode: "Scambio del codice per i token…",
     connectedClosing: "Connesso! Chiusura…",
     loginFailed: "Accesso non riuscito.",
-    sessionExpired: "Sessione scaduta. Clicca Riprova per iniziare un nuovo accesso.",
+    sessionExpired:
+      "Sessione scaduta. Clicca Riprova per iniziare un nuovo accesso.",
     reOpenAuth: "Riapri pagina di autenticazione",
     reOpenVerification: "Riapri pagina di verifica",
     submitCode: "Invia codice",
     pasteCode: "Incolla codice di autorizzazione (con suffisso #state va bene)",
     waitingAuth: "In attesa che tu autorizzi nel browser…",
-    enterCodePrompt: "È stata aperta una nuova scheda. Inserisci questo codice se richiesto:",
-    pkceStep1: "È stata aperta una nuova scheda su claude.ai. Accedi e clicca Autorizza.",
-    pkceStep2: "Copia il codice di autorizzazione mostrato dopo l'autorizzazione.",
+    enterCodePrompt:
+      "È stata aperta una nuova scheda. Inserisci questo codice se richiesto:",
+    pkceStep1:
+      "È stata aperta una nuova scheda su claude.ai. Accedi e clicca Autorizza.",
+    pkceStep2:
+      "Copia il codice di autorizzazione mostrato dopo l'autorizzazione.",
     pkceStep3: "Incollalo qui sotto e invia.",
     flowLabels: {
       pkce: "Accesso browser (PKCE)",
@@ -581,11 +608,10 @@ export const it: Translations = {
       copy_button: "Copia immagine",
       copied: "Copiato ✓",
       download_button: "Scarica PNG",
-      hint:
-        "Condividi su X apre un post precompilato in una nuova scheda. Clicca prima su Copia immagine se vuoi allegare il badge 1200×630 — X ti permette di incollarlo direttamente nell'editor del tweet. Scarica PNG salva il file per l'uso ovunque.",
+      hint: "Condividi su X apre un post precompilato in una nuova scheda. Clicca prima su Copia immagine se vuoi allegare il badge 1200×630 — X ti permette di incollarlo direttamente nell'editor del tweet. Scarica PNG salva il file per l'uso ovunque.",
       clipboard_unsupported:
         "La copia delle immagini negli appunti non è supportata in questo browser — usa Scarica invece.",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
   kanban: {
@@ -689,14 +715,18 @@ export const it: Translations = {
     archiveBoardConfirm:
       "Archiviare la bacheca '{name}'? Verrà spostata in boards/_archived/ in modo da poterla recuperare in seguito. Le attività di questa bacheca non appariranno più da nessuna parte nell'UI.",
     archiveBoardTitle: "Archivia questa bacheca",
-    boardSwitcherHint: "Le bacheche ti permettono di separare flussi di lavoro non correlati",
+    boardSwitcherHint:
+      "Le bacheche ti permettono di separare flussi di lavoro non correlati",
     taskCreatedWarning: "Attività creata, ma: ",
     moveFailed: "Spostamento non riuscito: ",
     bulkFailed: "Massivo: ",
-    completionBlockedHallucination: "⚠ Completamento bloccato — ID schede fantasma",
-    suspectedHallucinatedReferences: "⚠ Il testo ha fatto riferimento a ID schede fantasma",
+    completionBlockedHallucination:
+      "⚠ Completamento bloccato — ID schede fantasma",
+    suspectedHallucinatedReferences:
+      "⚠ Il testo ha fatto riferimento a ID schede fantasma",
     pickProfileFirst: "Scegli prima un profilo.",
-    unblockedMessage: "Sbloccato {id}. L'attività è pronta per il prossimo tick.",
+    unblockedMessage:
+      "Sbloccato {id}. L'attività è pronta per il prossimo tick.",
     unblockFailed: "Sblocco non riuscito: ",
     reclaimedMessage: "Recuperato {id}. L'attività è di nuovo pronta.",
     reclaimFailed: "Recupero non riuscito: ",
@@ -744,7 +774,8 @@ export const it: Translations = {
     skillsPlaceholder:
       "competenze (facoltative, separate da virgole): translation, github-code-review",
     noParent: "— nessun padre —",
-    workspacePathDir: "percorso del workspace (richiesto, ad es. ~/projects/my-app)",
+    workspacePathDir:
+      "percorso del workspace (richiesto, ad es. ~/projects/my-app)",
     workspacePathOptional:
       "percorso del workspace (facoltativo, derivato dall'assegnatario se vuoto)",
     logTruncated: "(mostrando ultimi 100 KB — log completo in ",

@@ -287,7 +287,8 @@ export const af: Translations = {
     nameRequired: "Naam word vereis",
     nameRule:
       "Slegs kleinletters, syfers, _ en -; moet met 'n letter of syfer begin; tot 64 karakters.",
-    invalidName: "Ongeldige profielnaam",    cloneFrom: "Kloon konfigurasie vanaf profiel",
+    invalidName: "Ongeldige profielnaam",
+    cloneFrom: "Kloon konfigurasie vanaf profiel",
     cloneFromNone: "Geen (leeg)",
     allProfiles: "Profiele",
     noProfiles: "Geen profiele gevind nie.",
@@ -325,12 +326,14 @@ export const af: Translations = {
     inactive: "onaktief",
     installBtn: "Installeer",
     installHeading: "Installeer vanaf GitHub / Git-URL",
-    installHint: "Gebruik owner/repo-kortvorm of 'n volledige https:// of git@ kloon-URL.",
+    installHint:
+      "Gebruik owner/repo-kortvorm of 'n volledige https:// of git@ kloon-URL.",
     memoryProviderLabel: "Geheueverskaffer",
     missingEnvWarn: "Stel hierdie in Sleutels voordat die inprop kan loop:",
     noDashboardTab: "Geen dashboard-oortjie",
     openTab: "Maak oop",
-    orphanHeading: "Slegs-dashboard-uitbreidings (geen ooreenstemmende agent plugin.yaml nie)",
+    orphanHeading:
+      "Slegs-dashboard-uitbreidings (geen ooreenstemmende agent plugin.yaml nie)",
     pluginListHeading: "Geïnstalleerde inproppe",
     providerDefaults: "ingebou / verstek",
     providersHeading: "Looptyd-verskafferinproppe",
@@ -338,9 +341,11 @@ export const af: Translations = {
       "Skryf memory.provider (leeg = ingebou) en context.engine na config.yaml. Tree volgende sessie in werking.",
     refreshDashboard: "Herskandeer dashboard-uitbreidings",
     removeConfirm: "Verwyder hierdie inprop uit ~/.hermes/plugins/?",
-    removeHint: "Slegs gebruiker-geïnstalleerde inproppe onder ~/.hermes/plugins kan verwyder word.",
+    removeHint:
+      "Slegs gebruiker-geïnstalleerde inproppe onder ~/.hermes/plugins kan verwyder word.",
     rescanHeading: "SPA-inprop-register",
-    rescanHint: "Herskandeer ná die byvoeg van lêers op skyf sodat die dashboard-sybalk nuwe manifeste optel.",
+    rescanHint:
+      "Herskandeer ná die byvoeg van lêers op skyf sodat die dashboard-sybalk nuwe manifeste optel.",
     runtimeHeading: "Gateway-looptyd (YAML-inproppe)",
     saveProviders: "Stoor verskaffer-instellings",
     savedProviders: "Verskaffer-instellings gestoor.",
@@ -360,8 +365,10 @@ export const af: Translations = {
     all: "Alles",
     categories: "Kategorieë",
     filters: "Filters",
-    noSkills: "Geen vaardighede gevind nie. Vaardighede word gelaai uit ~/.hermes/skills/",
-    noSkillsMatch: "Geen vaardighede stem ooreen met jou soektog of filter nie.",
+    noSkills:
+      "Geen vaardighede gevind nie. Vaardighede word gelaai uit ~/.hermes/skills/",
+    noSkillsMatch:
+      "Geen vaardighede stem ooreen met jou soektog of filter nie.",
     skillCount: "{count} vaardighe{s}id",
     resultCount: "{count} resulta{s}at",
     noDescription: "Geen beskrywing beskikbaar nie.",
@@ -381,8 +388,10 @@ export const af: Translations = {
     importConfig: "Voer konfigurasie in vanaf JSON",
     resetDefaults: "Stel terug na verstek",
     resetScopeTooltip: "Stel {scope} terug na verstek",
-    confirmResetScope: "Stel alle {scope}-instellings terug na hul verstek? Dit werk slegs die vorm op — veranderinge word nie na config.yaml geskryf voordat jy Stoor druk nie.",
-    resetScopeToast: "{scope} teruggestel na verstek — kontroleer en Stoor om te behou",
+    confirmResetScope:
+      "Stel alle {scope}-instellings terug na hul verstek? Dit werk slegs die vorm op — veranderinge word nie na config.yaml geskryf voordat jy Stoor druk nie.",
+    resetScopeToast:
+      "{scope} teruggestel na verstek — kontroleer en Stoor om te behou",
     rawYaml: "Rou YAML-konfigurasie",
     searchResults: "Soekresultate",
     fields: "veld{s}",
@@ -414,7 +423,8 @@ export const af: Translations = {
   },
 
   env: {
-    changesNote: "Veranderinge word onmiddellik na skyf gestoor. Aktiewe sessies tel nuwe sleutels outomaties op.",
+    changesNote:
+      "Veranderinge word onmiddellik na skyf gestoor. Aktiewe sessies tel nuwe sleutels outomaties op.",
     confirmClearMessage:
       "Die gestoorde waarde vir hierdie veranderlike sal uit jou .env-lêer verwyder word. Dit kan nie vanaf die UI ongedaan gemaak word nie.",
     confirmClearTitle: "Vee hierdie sleutel uit?",
@@ -433,12 +443,23 @@ export const af: Translations = {
     replaceCurrentValue: "Vervang huidige waarde ({preview})",
     showValue: "Wys werklike waarde",
     hideValue: "Versteek waarde",
+    customTitle: "Pasgemaakte sleutels",
+    customHint:
+      "Arbitrêre omgewingsveranderlikes wat in jou .env gestoor is en wat Hermes nie herken nie. Gebruik dit om omgewingsveranderlikes vir vaardighede, MCP-bedieners of jou eie gereedskap in te spuit.",
+    customConfigured: "{count} pasgemaakte sleutel(s) gestel",
+    addCustomKey: "Voeg 'n pasgemaakte sleutel by",
+    customKeyName: "Veranderlike naam",
+    customKeyNamePlaceholder: "bv. MY_SERVICE_API_KEY",
+    add: "Voeg by",
+    invalidKeyName:
+      "Gebruik slegs letters, syfers en onderstrepe (moet met 'n letter of onderstreep begin).",
   },
 
   oauth: {
     title: "Verskaffer-aanmeldings (OAuth)",
     providerLogins: "Verskaffer-aanmeldings (OAuth)",
-    description: "{connected} van {total} OAuth-verskaffers gekoppel. Aanmeldvloei loop tans via die CLI; klik Kopieer opdrag en plak in 'n terminaal om op te stel.",
+    description:
+      "{connected} van {total} OAuth-verskaffers gekoppel. Aanmeldvloei loop tans via die CLI; klik Kopieer opdrag en plak in 'n terminaal om op te stel.",
     connected: "Gekoppel",
     expired: "Verval",
     notConnected: "Nie gekoppel nie. Voer {command} uit in 'n terminaal.",
@@ -456,14 +477,17 @@ export const af: Translations = {
     exchangingCode: "Kode word vir tokens omgeruil…",
     connectedClosing: "Gekoppel! Besig om toe te maak…",
     loginFailed: "Aanmelding het misluk.",
-    sessionExpired: "Sessie het verval. Klik Probeer weer om 'n nuwe aanmelding te begin.",
+    sessionExpired:
+      "Sessie het verval. Klik Probeer weer om 'n nuwe aanmelding te begin.",
     reOpenAuth: "Heropen verifikasiebladsy",
     reOpenVerification: "Heropen verifikasiebladsy",
     submitCode: "Dien kode in",
     pasteCode: "Plak magtigingskode (met #state agtervoegsel is in die haak)",
     waitingAuth: "Wag vir jou om in die blaaier te magtig…",
-    enterCodePrompt: "'n Nuwe oortjie het oopgegaan. Voer hierdie kode in indien gevra:",
-    pkceStep1: "'n Nuwe oortjie het na claude.ai oopgegaan. Meld aan en klik Magtig.",
+    enterCodePrompt:
+      "'n Nuwe oortjie het oopgegaan. Voer hierdie kode in indien gevra:",
+    pkceStep1:
+      "'n Nuwe oortjie het na claude.ai oopgegaan. Meld aan en klik Magtig.",
     pkceStep2: "Kopieer die magtigingskode wat ná magtiging vertoon word.",
     pkceStep3: "Plak dit hieronder en dien in.",
     flowLabels: {
@@ -582,11 +606,10 @@ export const af: Translations = {
       copy_button: "Kopieer beeld",
       copied: "Gekopieer ✓",
       download_button: "Laai PNG af",
-      hint:
-        "Deel op X maak 'n vooraf-ingevulde plasing in 'n nuwe oortjie oop. Klik eers op Kopieer beeld as jy die 1200×630-kenteken aangeheg wil hê — X laat jou dit direk in die tweet-skrywer plak. Laai PNG af stoor die lêer om enige plek te gebruik.",
+      hint: "Deel op X maak 'n vooraf-ingevulde plasing in 'n nuwe oortjie oop. Klik eers op Kopieer beeld as jy die 1200×630-kenteken aangeheg wil hê — X laat jou dit direk in die tweet-skrywer plak. Laai PNG af stoor die lêer om enige plek te gebruik.",
       clipboard_unsupported:
         "Beeldkopiëring na knipbord word nie in hierdie blaaier ondersteun nie — gebruik eerder Aflaai.",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
   kanban: {
@@ -694,7 +717,8 @@ export const af: Translations = {
     taskCreatedWarning: "Taak geskep, maar: ",
     moveFailed: "Skuif het misluk: ",
     bulkFailed: "Grootmaat: ",
-    completionBlockedHallucination: "⚠ Voltooiing geblokkeer — spook-kaart-ID's",
+    completionBlockedHallucination:
+      "⚠ Voltooiing geblokkeer — spook-kaart-ID's",
     suspectedHallucinatedReferences: "⚠ Teks het na spook-kaart-ID's verwys",
     pickProfileFirst: "Kies eers 'n profiel.",
     unblockedMessage: "{id} gedeblokkeer. Taak is gereed vir die volgende tik.",

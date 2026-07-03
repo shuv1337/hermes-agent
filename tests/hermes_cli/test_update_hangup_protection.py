@@ -18,6 +18,8 @@ from hermes_cli.main import (
     _UpdateOutputStream,
     _finalize_update_output,
     _install_hangup_protection,
+    _log_only_write,
+    _run_logged_subprocess,
 )
 
 
@@ -172,7 +174,7 @@ class TestInstallHangupProtection:
             assert state["log_file"] is None
             assert state["installed"] is False
             if hasattr(signal, "SIGHUP"):
-                assert signal.getsignal(signal.SIGHUP) == prev_sighup
+                assert signal.getsignal(signal.SIGHUP) == prev_sighup  # windows-footgun: ok
         finally:
             _finalize_update_output(state)
 
@@ -187,15 +189,15 @@ class TestInstallHangupProtection:
         if hasattr(_cfg, "_HERMES_HOME_CACHE"):
             _cfg._HERMES_HOME_CACHE = None  # type: ignore[attr-defined]
 
-        original_handler = signal.getsignal(signal.SIGHUP)
+        original_handler = signal.getsignal(signal.SIGHUP)  # windows-footgun: ok
         state = _install_hangup_protection(gateway_mode=False)
 
         try:
-            assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN
+            assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN  # windows-footgun: ok
         finally:
             _finalize_update_output(state)
             # Restore whatever was there before so we don't leak to other tests.
-            signal.signal(signal.SIGHUP, original_handler)
+            signal.signal(signal.SIGHUP, original_handler)  # windows-footgun: ok
 
     def test_wraps_stdout_and_stderr_with_mirror(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -268,11 +270,11 @@ class TestInstallHangupProtection:
             assert state["installed"] is False
             # SIGHUP must still be installed even when log setup fails.
             if hasattr(signal, "SIGHUP"):
-                assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN
+                assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN  # windows-footgun: ok
         finally:
             _finalize_update_output(state)
             if hasattr(signal, "SIGHUP") and original_handler is not None:
-                signal.signal(signal.SIGHUP, original_handler)
+                signal.signal(signal.SIGHUP, original_handler)  # windows-footgun: ok
 
 
 # -----------------------------------------------------------------------------
@@ -320,3 +322,68 @@ class TestFinalizeUpdateOutput:
 
         assert sys.stdout is before_out
         assert sys.stderr is before_err
+
+
+# -----------------------------------------------------------------------------
+# _log_only_write / _run_logged_subprocess (spam suppression)
+# -----------------------------------------------------------------------------
+
+
+class TestLogOnlyWrite:
+    def test_writes_to_log_not_terminal(self, monkeypatch):
+        """During an update, loud output should land in update.log only —
+        never on the mirroring terminal stream."""
+        terminal = io.StringIO()
+        log = io.StringIO()
+        stream = _UpdateOutputStream(terminal, log)
+        monkeypatch.setattr(sys, "stdout", stream)
+
+        _log_only_write("npm warn deprecated foo\nadded 1302 packages")
+
+        assert terminal.getvalue() == ""  # terminal stays quiet
+        assert "npm warn deprecated foo" in log.getvalue()
+        assert "added 1302 packages" in log.getvalue()
+
+    def test_noop_without_update_stream(self, monkeypatch):
+        """When stdout isn't the mirroring update stream (no ``_log``), it must
+        be a silent no-op rather than crash."""
+        plain = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", plain)
+        _log_only_write("something")  # should not raise
+        assert plain.getvalue() == ""
+
+    def test_empty_text_is_noop(self, monkeypatch):
+        terminal = io.StringIO()
+        log = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", _UpdateOutputStream(terminal, log))
+        _log_only_write("")
+        assert log.getvalue() == ""
+
+
+class TestRunLoggedSubprocess:
+    def test_captures_output_to_log_only(self, monkeypatch):
+        terminal = io.StringIO()
+        log = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", _UpdateOutputStream(terminal, log))
+
+        result = _run_logged_subprocess(
+            [sys.executable, "-c", "print('LOUD BUILD OUTPUT')"]
+        )
+
+        assert result.returncode == 0
+        assert "LOUD BUILD OUTPUT" in (result.stdout or "")
+        assert terminal.getvalue() == ""  # not echoed to terminal
+        assert "LOUD BUILD OUTPUT" in log.getvalue()  # but kept in the log
+
+    def test_nonzero_exit_still_captures(self, monkeypatch):
+        terminal = io.StringIO()
+        log = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", _UpdateOutputStream(terminal, log))
+
+        result = _run_logged_subprocess(
+            [sys.executable, "-c", "import sys; print('boom'); sys.exit(3)"]
+        )
+
+        assert result.returncode == 3
+        assert "boom" in (result.stdout or "")
+        assert terminal.getvalue() == ""
