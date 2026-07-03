@@ -3027,8 +3027,8 @@ def _resolve_delegation_credentials(
     requested_provider_switches_backend = bool(
         requested_provider
         and (
-            configured_base_url
-            or (configured_provider and requested_provider != configured_provider)
+            not configured_provider
+            or requested_provider != configured_provider
         )
     )
     config_model_applies = not requested_provider_switches_backend
@@ -3052,7 +3052,7 @@ def _resolve_delegation_credentials(
     _provider_lower = (configured_provider or "").strip().lower()
     _is_native_sdk_provider = _provider_lower in _NATIVE_SDK_PROVIDERS
 
-    if configured_base_url and not requested_provider and not _is_native_sdk_provider:
+    if configured_base_url and not requested_provider_switches_backend and not _is_native_sdk_provider:
         # When delegation.api_key is not set, return None so _build_child_agent
         # falls back to the parent agent's API key via the credential inheritance
         # path (effective_api_key = override_api_key or parent_api_key). This

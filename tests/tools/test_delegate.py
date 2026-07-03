@@ -1203,6 +1203,27 @@ class TestDelegationCredentialResolution(unittest.TestCase):
 
 
     @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    def test_redundant_requested_provider_uses_configured_base_url(self, mock_resolve):
+        parent = _make_mock_parent(depth=0)
+        cfg = {
+            "model": "local-model",
+            "provider": "custom",
+            "base_url": "http://localhost:1234/v1",
+            "api_key": "local-key",
+        }
+        creds = _resolve_delegation_credentials(
+            cfg,
+            parent,
+            requested_provider="custom",
+        )
+        self.assertEqual(creds["provider"], "custom")
+        self.assertEqual(creds["model"], "local-model")
+        self.assertEqual(creds["base_url"], "http://localhost:1234/v1")
+        self.assertEqual(creds["api_key"], "local-key")
+        self.assertEqual(creds["api_mode"], "chat_completions")
+        mock_resolve.assert_not_called()
+
+    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
     def test_requested_provider_overrides_configured_base_url(self, mock_resolve):
         mock_resolve.return_value = {
             "provider": "anthropic",
