@@ -118,7 +118,8 @@ export const es: Translations = {
     runningRemote: "En ejecución (remoto)",
     startFailed: "Inicio fallido",
     starting: "Iniciando",
-    startedInBackground: "Iniciado en segundo plano — revisa los registros para ver el progreso",
+    startedInBackground:
+      "Iniciado en segundo plano — revisa los registros para ver el progreso",
     stopped: "Detenido",
     updateHermes: "Actualizar Hermes",
     updatingHermes: "Actualizando Hermes…",
@@ -156,7 +157,8 @@ export const es: Translations = {
     deleteSelectedConfirmMessage:
       "Esto elimina permanentemente {count} sesiones seleccionadas y todos sus mensajes. No se puede deshacer.",
     selectedSessionsDeleted: "{count} sesiones eliminadas",
-    failedToDeleteSelected: "No se pudieron eliminar las sesiones seleccionadas",
+    failedToDeleteSelected:
+      "No se pudieron eliminar las sesiones seleccionadas",
     resumeInChat: "Reanudar en el chat",
     newChat: "Nuevo chat",
     previousPage: "Página anterior",
@@ -326,12 +328,15 @@ export const es: Translations = {
     inactive: "inactivo",
     installBtn: "Instalar",
     installHeading: "Instalar desde GitHub / URL de Git",
-    installHint: "Usa la forma corta owner/repo o una URL de clonación https:// o git@ completa.",
+    installHint:
+      "Usa la forma corta owner/repo o una URL de clonación https:// o git@ completa.",
     memoryProviderLabel: "Proveedor de memoria",
-    missingEnvWarn: "Configura estos en Claves antes de que el complemento pueda ejecutarse:",
+    missingEnvWarn:
+      "Configura estos en Claves antes de que el complemento pueda ejecutarse:",
     noDashboardTab: "Sin pestaña de panel",
     openTab: "Abrir",
-    orphanHeading: "Extensiones solo del panel (sin coincidencia de plugin.yaml del agente)",
+    orphanHeading:
+      "Extensiones solo del panel (sin coincidencia de plugin.yaml del agente)",
     pluginListHeading: "Complementos instalados",
     providerDefaults: "incorporado / predeterminado",
     providersHeading: "Complementos de proveedor en tiempo de ejecución",
@@ -339,9 +344,11 @@ export const es: Translations = {
       "Escribe memory.provider (vacío = incorporado) y context.engine en config.yaml. Surte efecto en la próxima sesión.",
     refreshDashboard: "Volver a escanear extensiones del panel",
     removeConfirm: "¿Eliminar este complemento de ~/.hermes/plugins/?",
-    removeHint: "Solo se pueden eliminar complementos instalados por el usuario en ~/.hermes/plugins.",
+    removeHint:
+      "Solo se pueden eliminar complementos instalados por el usuario en ~/.hermes/plugins.",
     rescanHeading: "Registro de complementos SPA",
-    rescanHint: "Vuelve a escanear tras añadir archivos en disco para que la barra lateral del panel detecte nuevos manifiestos.",
+    rescanHint:
+      "Vuelve a escanear tras añadir archivos en disco para que la barra lateral del panel detecte nuevos manifiestos.",
     runtimeHeading: "Tiempo de ejecución del Gateway (complementos YAML)",
     saveProviders: "Guardar configuración del proveedor",
     savedProviders: "Configuración del proveedor guardada.",
@@ -361,14 +368,16 @@ export const es: Translations = {
     all: "Todas",
     categories: "Categorías",
     filters: "Filtros",
-    noSkills: "No se encontraron habilidades. Las habilidades se cargan desde ~/.hermes/skills/",
+    noSkills:
+      "No se encontraron habilidades. Las habilidades se cargan desde ~/.hermes/skills/",
     noSkillsMatch: "Ninguna habilidad coincide con tu búsqueda o filtro.",
     skillCount: "{count} habilidad{s}",
     resultCount: "{count} resultado{s}",
     noDescription: "No hay descripción disponible.",
     toolsets: "Conjuntos de herramientas",
     toolsetLabel: "conjunto de herramientas {name}",
-    noToolsetsMatch: "Ningún conjunto de herramientas coincide con la búsqueda.",
+    noToolsetsMatch:
+      "Ningún conjunto de herramientas coincide con la búsqueda.",
     setupNeeded: "Configuración necesaria",
     disabledForCli: "Deshabilitado para CLI",
     more: "+{count} más",
@@ -382,8 +391,10 @@ export const es: Translations = {
     importConfig: "Importar configuración desde JSON",
     resetDefaults: "Restablecer valores predeterminados",
     resetScopeTooltip: "Restablecer {scope} a los valores predeterminados",
-    confirmResetScope: "¿Restablecer todos los ajustes de {scope} a sus valores predeterminados? Esto solo actualiza el formulario — los cambios no se escriben en config.yaml hasta que pulses Guardar.",
-    resetScopeToast: "{scope} restablecido a los valores predeterminados — revisa y guarda para que persista",
+    confirmResetScope:
+      "¿Restablecer todos los ajustes de {scope} a sus valores predeterminados? Esto solo actualiza el formulario — los cambios no se escriben en config.yaml hasta que pulses Guardar.",
+    resetScopeToast:
+      "{scope} restablecido a los valores predeterminados — revisa y guarda para que persista",
     rawYaml: "Configuración YAML en bruto",
     searchResults: "Resultados de búsqueda",
     fields: "campo{s}",
@@ -415,7 +426,8 @@ export const es: Translations = {
   },
 
   env: {
-    changesNote: "Los cambios se guardan en disco inmediatamente. Las sesiones activas adoptan las nuevas claves automáticamente.",
+    changesNote:
+      "Los cambios se guardan en disco inmediatamente. Las sesiones activas adoptan las nuevas claves automáticamente.",
     confirmClearMessage:
       "El valor almacenado para esta variable se eliminará de tu archivo .env. Esto no se puede deshacer desde la UI.",
     confirmClearTitle: "¿Limpiar esta clave?",
@@ -435,19 +447,22 @@ export const es: Translations = {
     showValue: "Mostrar valor real",
     hideValue: "Ocultar valor",
     customTitle: "Claves personalizadas",
-    customHint: "Variables de entorno arbitrarias almacenadas en tu .env que Hermes no reconoce. Úsalas para inyectar variables de entorno para skills, servidores MCP o tus propias herramientas.",
+    customHint:
+      "Variables de entorno arbitrarias almacenadas en tu .env que Hermes no reconoce. Úsalas para inyectar variables de entorno para skills, servidores MCP o tus propias herramientas.",
     customConfigured: "{count} clave(s) personalizada(s) configurada(s)",
     addCustomKey: "Añadir una clave personalizada",
     customKeyName: "Nombre de la variable",
     customKeyNamePlaceholder: "p. ej. MY_SERVICE_API_KEY",
     add: "Añadir",
-    invalidKeyName: "Usa solo letras, números y guiones bajos (debe empezar por una letra o un guion bajo).",
+    invalidKeyName:
+      "Usa solo letras, números y guiones bajos (debe empezar por una letra o un guion bajo).",
   },
 
   oauth: {
     title: "Inicios de sesión de proveedores (OAuth)",
     providerLogins: "Inicios de sesión de proveedores (OAuth)",
-    description: "{connected} de {total} proveedores OAuth conectados. Los flujos de inicio de sesión actualmente se ejecutan a través de la CLI; haz clic en Copiar comando y pégalo en una terminal para configurar.",
+    description:
+      "{connected} de {total} proveedores OAuth conectados. Los flujos de inicio de sesión actualmente se ejecutan a través de la CLI; haz clic en Copiar comando y pégalo en una terminal para configurar.",
     connected: "Conectado",
     expired: "Caducado",
     notConnected: "No conectado. Ejecuta {command} en una terminal.",
@@ -465,14 +480,18 @@ export const es: Translations = {
     exchangingCode: "Intercambiando código por tokens…",
     connectedClosing: "¡Conectado! Cerrando…",
     loginFailed: "Inicio de sesión fallido.",
-    sessionExpired: "Sesión caducada. Haz clic en Reintentar para iniciar un nuevo inicio de sesión.",
+    sessionExpired:
+      "Sesión caducada. Haz clic en Reintentar para iniciar un nuevo inicio de sesión.",
     reOpenAuth: "Reabrir página de autenticación",
     reOpenVerification: "Reabrir página de verificación",
     submitCode: "Enviar código",
-    pasteCode: "Pega el código de autorización (con el sufijo #state está bien)",
+    pasteCode:
+      "Pega el código de autorización (con el sufijo #state está bien)",
     waitingAuth: "Esperando que autorices en el navegador…",
-    enterCodePrompt: "Se abrió una nueva pestaña. Introduce este código si se solicita:",
-    pkceStep1: "Se abrió una nueva pestaña en claude.ai. Inicia sesión y haz clic en Autorizar.",
+    enterCodePrompt:
+      "Se abrió una nueva pestaña. Introduce este código si se solicita:",
+    pkceStep1:
+      "Se abrió una nueva pestaña en claude.ai. Inicia sesión y haz clic en Autorizar.",
     pkceStep2: "Copia el código de autorización mostrado tras autorizar.",
     pkceStep3: "Pégalo abajo y envía.",
     flowLabels: {
@@ -590,11 +609,10 @@ export const es: Translations = {
       copy_button: "Copiar imagen",
       copied: "Copiado ✓",
       download_button: "Descargar PNG",
-      hint:
-        "Compartir en X abre una publicación predefinida en una nueva pestaña. Haz clic primero en Copiar imagen si quieres adjuntar la insignia 1200×630: X te permite pegarla directamente en el redactor del tuit. Descargar PNG guarda el archivo para usarlo en cualquier lugar.",
+      hint: "Compartir en X abre una publicación predefinida en una nueva pestaña. Haz clic primero en Copiar imagen si quieres adjuntar la insignia 1200×630: X te permite pegarla directamente en el redactor del tuit. Descargar PNG guarda el archivo para usarlo en cualquier lugar.",
       clipboard_unsupported:
         "Este navegador no admite copiar imágenes al portapapeles: usa Descargar en su lugar.",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
   kanban: {
@@ -694,18 +712,23 @@ export const es: Translations = {
     noProfile: "(sin perfil)",
     showAllAttempts: "Mostrar todos los intentos",
     sendingUpdates: "Enviando actualizaciones a",
-    sendNotifications: "Enviar notificaciones de completed / blocked / gave_up a",
+    sendNotifications:
+      "Enviar notificaciones de completed / blocked / gave_up a",
     archiveBoardConfirm:
       "¿Archivar el tablero '{name}'? Se moverá a boards/_archived/ para que puedas recuperarlo más tarde. Las tareas de este tablero ya no aparecerán en ninguna parte de la UI.",
     archiveBoardTitle: "Archivar este tablero",
-    boardSwitcherHint: "Los tableros te permiten separar flujos de trabajo no relacionados",
+    boardSwitcherHint:
+      "Los tableros te permiten separar flujos de trabajo no relacionados",
     taskCreatedWarning: "Tarea creada, pero: ",
     moveFailed: "Error al mover: ",
     bulkFailed: "Lote: ",
-    completionBlockedHallucination: "⚠ Completado bloqueado — IDs de tarjeta fantasma",
-    suspectedHallucinatedReferences: "⚠ El texto referenció IDs de tarjeta fantasma",
+    completionBlockedHallucination:
+      "⚠ Completado bloqueado — IDs de tarjeta fantasma",
+    suspectedHallucinatedReferences:
+      "⚠ El texto referenció IDs de tarjeta fantasma",
     pickProfileFirst: "Elige primero un perfil.",
-    unblockedMessage: "Desbloqueado {id}. La tarea está lista para el próximo tick.",
+    unblockedMessage:
+      "Desbloqueado {id}. La tarea está lista para el próximo tick.",
     unblockFailed: "Error al desbloquear: ",
     reclaimedMessage: "Recuperado {id}. La tarea vuelve a estar lista.",
     reclaimFailed: "Error al recuperar: ",
@@ -753,7 +776,8 @@ export const es: Translations = {
     skillsPlaceholder:
       "habilidades (opcional, separadas por comas): translation, github-code-review",
     noParent: "— sin padre —",
-    workspacePathDir: "ruta del workspace (obligatoria, p. ej. ~/projects/my-app)",
+    workspacePathDir:
+      "ruta del workspace (obligatoria, p. ej. ~/projects/my-app)",
     workspacePathOptional:
       "ruta del workspace (opcional, derivada del asignado si está vacía)",
     logTruncated: "(mostrando los últimos 100 KB — registro completo en ",

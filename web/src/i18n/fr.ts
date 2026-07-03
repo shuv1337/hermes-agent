@@ -118,7 +118,8 @@ export const fr: Translations = {
     runningRemote: "En cours (distant)",
     startFailed: "Échec du démarrage",
     starting: "Démarrage",
-    startedInBackground: "Démarré en arrière-plan — consultez les journaux pour la progression",
+    startedInBackground:
+      "Démarré en arrière-plan — consultez les journaux pour la progression",
     stopped: "Arrêté",
     updateHermes: "Mettre à jour Hermes",
     updatingHermes: "Mise à jour de Hermes…",
@@ -156,7 +157,8 @@ export const fr: Translations = {
     deleteSelectedConfirmMessage:
       "Cela supprime définitivement {count} sessions sélectionnées et tous leurs messages. Cette action est irréversible.",
     selectedSessionsDeleted: "{count} sessions supprimées",
-    failedToDeleteSelected: "Échec de la suppression des sessions sélectionnées",
+    failedToDeleteSelected:
+      "Échec de la suppression des sessions sélectionnées",
     resumeInChat: "Reprendre dans le chat",
     newChat: "Nouveau chat",
     previousPage: "Page précédente",
@@ -319,19 +321,23 @@ export const fr: Translations = {
     disableRuntime: "Désactiver",
     enableAfterInstall: "Activer après l'installation",
     enableRuntime: "Activer",
-    forceReinstall: "Forcer la réinstallation (supprimer d'abord le dossier existant)",
+    forceReinstall:
+      "Forcer la réinstallation (supprimer d'abord le dossier existant)",
     headline:
       "Découvrez, installez, activez et mettez à jour les plugins Hermes (parité avec `hermes plugins`).",
     identifierLabel: "URL Git ou owner/repo",
     inactive: "inactif",
     installBtn: "Installer",
     installHeading: "Installer depuis GitHub / URL Git",
-    installHint: "Utilisez le raccourci owner/repo ou une URL de clonage complète https:// ou git@.",
+    installHint:
+      "Utilisez le raccourci owner/repo ou une URL de clonage complète https:// ou git@.",
     memoryProviderLabel: "Fournisseur de mémoire",
-    missingEnvWarn: "Définissez ces variables dans Clés avant que le plugin puisse s'exécuter:",
+    missingEnvWarn:
+      "Définissez ces variables dans Clés avant que le plugin puisse s'exécuter:",
     noDashboardTab: "Aucun onglet de tableau de bord",
     openTab: "Ouvrir",
-    orphanHeading: "Extensions du tableau de bord uniquement (aucune correspondance plugin.yaml d'agent)",
+    orphanHeading:
+      "Extensions du tableau de bord uniquement (aucune correspondance plugin.yaml d'agent)",
     pluginListHeading: "Plugins installés",
     providerDefaults: "intégré / par défaut",
     providersHeading: "Plugins fournisseurs d'exécution",
@@ -339,9 +345,11 @@ export const fr: Translations = {
       "Écrit memory.provider (vide = intégré) et context.engine dans config.yaml. Prend effet à la prochaine session.",
     refreshDashboard: "Re-scanner les extensions du tableau de bord",
     removeConfirm: "Retirer ce plugin de ~/.hermes/plugins/ ?",
-    removeHint: "Seuls les plugins installés par l'utilisateur sous ~/.hermes/plugins peuvent être supprimés.",
+    removeHint:
+      "Seuls les plugins installés par l'utilisateur sous ~/.hermes/plugins peuvent être supprimés.",
     rescanHeading: "Registre des plugins SPA",
-    rescanHint: "Re-scannez après avoir ajouté des fichiers sur le disque pour que la barre latérale prenne en compte les nouveaux manifestes.",
+    rescanHint:
+      "Re-scannez après avoir ajouté des fichiers sur le disque pour que la barre latérale prenne en compte les nouveaux manifestes.",
     runtimeHeading: "Exécution de la passerelle (plugins YAML)",
     saveProviders: "Enregistrer les paramètres de fournisseur",
     savedProviders: "Paramètres de fournisseur enregistrés.",
@@ -361,8 +369,10 @@ export const fr: Translations = {
     all: "Toutes",
     categories: "Catégories",
     filters: "Filtres",
-    noSkills: "Aucune compétence trouvée. Les compétences sont chargées depuis ~/.hermes/skills/",
-    noSkillsMatch: "Aucune compétence ne correspond à votre recherche ou filtre.",
+    noSkills:
+      "Aucune compétence trouvée. Les compétences sont chargées depuis ~/.hermes/skills/",
+    noSkillsMatch:
+      "Aucune compétence ne correspond à votre recherche ou filtre.",
     skillCount: "{count} compétence{s}",
     resultCount: "{count} résultat{s}",
     noDescription: "Aucune description disponible.",
@@ -382,8 +392,10 @@ export const fr: Translations = {
     importConfig: "Importer la configuration depuis JSON",
     resetDefaults: "Réinitialiser aux valeurs par défaut",
     resetScopeTooltip: "Réinitialiser {scope} aux valeurs par défaut",
-    confirmResetScope: "Réinitialiser tous les paramètres de {scope} aux valeurs par défaut ? Cela ne met à jour que le formulaire — les modifications ne sont écrites dans config.yaml qu'après avoir appuyé sur Enregistrer.",
-    resetScopeToast: "{scope} réinitialisé aux valeurs par défaut — vérifiez et enregistrez pour conserver",
+    confirmResetScope:
+      "Réinitialiser tous les paramètres de {scope} aux valeurs par défaut ? Cela ne met à jour que le formulaire — les modifications ne sont écrites dans config.yaml qu'après avoir appuyé sur Enregistrer.",
+    resetScopeToast:
+      "{scope} réinitialisé aux valeurs par défaut — vérifiez et enregistrez pour conserver",
     rawYaml: "Configuration YAML brute",
     searchResults: "Résultats de recherche",
     fields: "champ{s}",
@@ -415,7 +427,8 @@ export const fr: Translations = {
   },
 
   env: {
-    changesNote: "Les modifications sont enregistrées sur le disque immédiatement. Les sessions actives récupèrent les nouvelles clés automatiquement.",
+    changesNote:
+      "Les modifications sont enregistrées sur le disque immédiatement. Les sessions actives récupèrent les nouvelles clés automatiquement.",
     confirmClearMessage:
       "La valeur stockée pour cette variable sera supprimée de votre fichier .env. Cette action ne peut pas être annulée depuis l'interface.",
     confirmClearTitle: "Effacer cette clé ?",
@@ -435,19 +448,22 @@ export const fr: Translations = {
     showValue: "Afficher la valeur réelle",
     hideValue: "Masquer la valeur",
     customTitle: "Clés personnalisées",
-    customHint: "Variables d'environnement arbitraires stockées dans votre .env que Hermes ne reconnaît pas. Utilisez-les pour injecter des variables d'environnement pour des compétences, des serveurs MCP ou vos propres outils.",
+    customHint:
+      "Variables d'environnement arbitraires stockées dans votre .env que Hermes ne reconnaît pas. Utilisez-les pour injecter des variables d'environnement pour des compétences, des serveurs MCP ou vos propres outils.",
     customConfigured: "{count} clé(s) personnalisée(s) définie(s)",
     addCustomKey: "Ajouter une clé personnalisée",
     customKeyName: "Nom de la variable",
     customKeyNamePlaceholder: "p. ex. MY_SERVICE_API_KEY",
     add: "Ajouter",
-    invalidKeyName: "Utilisez uniquement des lettres, des chiffres et des traits de soulignement (doit commencer par une lettre ou un trait de soulignement).",
+    invalidKeyName:
+      "Utilisez uniquement des lettres, des chiffres et des traits de soulignement (doit commencer par une lettre ou un trait de soulignement).",
   },
 
   oauth: {
     title: "Connexions fournisseurs (OAuth)",
     providerLogins: "Connexions fournisseurs (OAuth)",
-    description: "{connected} sur {total} fournisseurs OAuth connectés. Les flux de connexion s'exécutent actuellement via le CLI ; cliquez sur Copier la commande et collez-la dans un terminal pour configurer.",
+    description:
+      "{connected} sur {total} fournisseurs OAuth connectés. Les flux de connexion s'exécutent actuellement via le CLI ; cliquez sur Copier la commande et collez-la dans un terminal pour configurer.",
     connected: "Connecté",
     expired: "Expiré",
     notConnected: "Non connecté. Exécutez {command} dans un terminal.",
@@ -465,14 +481,17 @@ export const fr: Translations = {
     exchangingCode: "Échange du code contre des jetons…",
     connectedClosing: "Connecté ! Fermeture…",
     loginFailed: "Échec de la connexion.",
-    sessionExpired: "Session expirée. Cliquez sur Réessayer pour démarrer une nouvelle connexion.",
+    sessionExpired:
+      "Session expirée. Cliquez sur Réessayer pour démarrer une nouvelle connexion.",
     reOpenAuth: "Rouvrir la page d'authentification",
     reOpenVerification: "Rouvrir la page de vérification",
     submitCode: "Soumettre le code",
     pasteCode: "Collez le code d'autorisation (avec suffixe #state accepté)",
     waitingAuth: "En attente de votre autorisation dans le navigateur…",
-    enterCodePrompt: "Un nouvel onglet s'est ouvert. Saisissez ce code si demandé:",
-    pkceStep1: "Un nouvel onglet s'est ouvert vers claude.ai. Connectez-vous et cliquez sur Autoriser.",
+    enterCodePrompt:
+      "Un nouvel onglet s'est ouvert. Saisissez ce code si demandé:",
+    pkceStep1:
+      "Un nouvel onglet s'est ouvert vers claude.ai. Connectez-vous et cliquez sur Autoriser.",
     pkceStep2: "Copiez le code d'autorisation affiché après autorisation.",
     pkceStep3: "Collez-le ci-dessous et soumettez.",
     flowLabels: {
@@ -590,11 +609,10 @@ export const fr: Translations = {
       copy_button: "Copier l'image",
       copied: "Copié ✓",
       download_button: "Télécharger le PNG",
-      hint:
-        "Partager sur X ouvre une publication préremplie dans un nouvel onglet. Cliquez d'abord sur Copier l'image si vous voulez joindre le badge 1200×630 — X vous laisse le coller directement dans l'éditeur de tweet. Télécharger le PNG enregistre le fichier pour l'utiliser n'importe où.",
+      hint: "Partager sur X ouvre une publication préremplie dans un nouvel onglet. Cliquez d'abord sur Copier l'image si vous voulez joindre le badge 1200×630 — X vous laisse le coller directement dans l'éditeur de tweet. Télécharger le PNG enregistre le fichier pour l'utiliser n'importe où.",
       clipboard_unsupported:
         "La copie d'image dans le presse-papiers n'est pas prise en charge par ce navigateur — utilisez Télécharger à la place.",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
   kanban: {
@@ -694,18 +712,23 @@ export const fr: Translations = {
     noProfile: "(aucun profil)",
     showAllAttempts: "Afficher toutes les tentatives",
     sendingUpdates: "Envoi des mises à jour à",
-    sendNotifications: "Envoyer les notifications completed / blocked / gave_up à",
+    sendNotifications:
+      "Envoyer les notifications completed / blocked / gave_up à",
     archiveBoardConfirm:
       "Archiver le tableau '{name}' ? Il sera déplacé vers boards/_archived/ pour pouvoir être récupéré plus tard. Les tâches de ce tableau n'apparaîtront plus nulle part dans l'UI.",
     archiveBoardTitle: "Archiver ce tableau",
-    boardSwitcherHint: "Les tableaux vous permettent de séparer des flux de travail indépendants",
+    boardSwitcherHint:
+      "Les tableaux vous permettent de séparer des flux de travail indépendants",
     taskCreatedWarning: "Tâche créée, mais: ",
     moveFailed: "Échec du déplacement: ",
     bulkFailed: "Lot: ",
-    completionBlockedHallucination: "⚠ Achèvement bloqué — IDs de carte fantômes",
-    suspectedHallucinatedReferences: "⚠ Le texte a référencé des IDs de carte fantômes",
+    completionBlockedHallucination:
+      "⚠ Achèvement bloqué — IDs de carte fantômes",
+    suspectedHallucinatedReferences:
+      "⚠ Le texte a référencé des IDs de carte fantômes",
     pickProfileFirst: "Choisissez d'abord un profil.",
-    unblockedMessage: "Débloqué {id}. La tâche est prête pour le prochain tick.",
+    unblockedMessage:
+      "Débloqué {id}. La tâche est prête pour le prochain tick.",
     unblockFailed: "Échec du déblocage: ",
     reclaimedMessage: "Récupéré {id}. La tâche est de nouveau prête.",
     reclaimFailed: "Échec de la récupération: ",

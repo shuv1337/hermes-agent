@@ -6,8 +6,8 @@ export {
   type GatewayEventName,
   type GatewayRequestId,
   type JsonRpcFrame,
-  type WebSocketLike
-} from './json-rpc-gateway'
+  type WebSocketLike,
+} from "./json-rpc-gateway";
 export {
   GatewayReauthRequiredError,
   buildHermesWebSocketUrl,
@@ -17,5 +17,5 @@ export {
   type GatewayWsConnection,
   type HermesWebSocketUrlOptions,
   type ResolveGatewayWsUrlDeps,
-  type WebSocketAuthParam
-} from './websocket-url'
+  type WebSocketAuthParam,
+} from "./websocket-url";

@@ -376,7 +376,8 @@ export const en: Translations = {
     inactive: "inactive",
     installBtn: "Install",
     installHeading: "Install from GitHub / Git URL",
-    installHint: "Use owner/repo shorthand or a full https:// or git@ clone URL. For a plugin in a subdirectory, append the path: owner/repo/path/to/plugin (or <url>#path/to/plugin).",
+    installHint:
+      "Use owner/repo shorthand or a full https:// or git@ clone URL. For a plugin in a subdirectory, append the path: owner/repo/path/to/plugin (or <url>#path/to/plugin).",
     memoryProviderLabel: "Memory provider",
     missingEnvWarn: "Set these in Keys before the plugin can run:",
     noDashboardTab: "No dashboard tab",
@@ -389,9 +390,11 @@ export const en: Translations = {
       "Writes memory.provider (empty = built-in) and context.engine to config.yaml. Takes effect next session.",
     refreshDashboard: "Rescan dashboard extensions",
     removeConfirm: "Remove this plugin from ~/.hermes/plugins/?",
-    removeHint: "Only user-installed plugins under ~/.hermes/plugins can be removed.",
+    removeHint:
+      "Only user-installed plugins under ~/.hermes/plugins can be removed.",
     rescanHeading: "SPA plugin registry",
-    rescanHint: "Rescan after adding files on disk so the dashboard sidebar picks up new manifests.",
+    rescanHint:
+      "Rescan after adding files on disk so the dashboard sidebar picks up new manifests.",
     runtimeHeading: "Gateway runtime (YAML plugins)",
     saveProviders: "Save provider settings",
     savedProviders: "Provider settings saved.",
@@ -436,7 +439,8 @@ export const en: Translations = {
     importConfig: "Import config from JSON",
     resetDefaults: "Reset to defaults",
     resetScopeTooltip: "Reset {scope} to defaults",
-    confirmResetScope: "Reset all {scope} settings to their defaults? This only updates the form — changes aren't written to config.yaml until you press Save.",
+    confirmResetScope:
+      "Reset all {scope} settings to their defaults? This only updates the form — changes aren't written to config.yaml until you press Save.",
     resetScopeToast: "{scope} reset to defaults — review and Save to persist",
     rawYaml: "Raw YAML Configuration",
     searchResults: "Search Results",
@@ -469,7 +473,8 @@ export const en: Translations = {
   },
 
   env: {
-    changesNote: "Changes are saved to disk immediately. Active sessions pick up new keys automatically.",
+    changesNote:
+      "Changes are saved to disk immediately. Active sessions pick up new keys automatically.",
     confirmClearMessage:
       "The stored value for this variable will be removed from your .env file. This cannot be undone from the UI.",
     confirmClearTitle: "Clear this key?",
@@ -489,19 +494,22 @@ export const en: Translations = {
     showValue: "Show real value",
     hideValue: "Hide value",
     customTitle: "Custom Keys",
-    customHint: "Arbitrary environment variables stored in your .env that Hermes doesn't recognise. Use these to inject env vars for skills, MCP servers, or your own tooling.",
+    customHint:
+      "Arbitrary environment variables stored in your .env that Hermes doesn't recognise. Use these to inject env vars for skills, MCP servers, or your own tooling.",
     customConfigured: "{count} custom key{s} set",
     addCustomKey: "Add a custom key",
     customKeyName: "Variable name",
     customKeyNamePlaceholder: "e.g. MY_SERVICE_API_KEY",
     add: "Add",
-    invalidKeyName: "Use letters, numbers and underscores only (must start with a letter or underscore).",
+    invalidKeyName:
+      "Use letters, numbers and underscores only (must start with a letter or underscore).",
   },
 
   oauth: {
     title: "Provider Logins (OAuth)",
     providerLogins: "Provider Logins (OAuth)",
-    description: "{connected} of {total} OAuth providers connected. Login flows currently run via the CLI; click Copy command and paste into a terminal to set up.",
+    description:
+      "{connected} of {total} OAuth providers connected. Login flows currently run via the CLI; click Copy command and paste into a terminal to set up.",
     connected: "Connected",
     expired: "Expired",
     notConnected: "Not connected. Run {command} in a terminal.",
@@ -651,11 +659,10 @@ export const en: Translations = {
       copy_button: "Copy image",
       copied: "Copied ✓",
       download_button: "Download PNG",
-      hint:
-        "Share on X opens a pre-filled post in a new tab. Click Copy image first if you want the 1200×630 badge attached — X lets you paste it right into the tweet composer. Download PNG saves the file for use anywhere.",
+      hint: "Share on X opens a pre-filled post in a new tab. Click Copy image first if you want the 1200×630 badge attached — X lets you paste it right into the tweet composer. Download PNG saves the file for use anywhere.",
       clipboard_unsupported:
         "Clipboard image copy not supported in this browser — use Download instead.",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
 

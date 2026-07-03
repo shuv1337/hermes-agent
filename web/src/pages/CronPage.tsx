@@ -58,9 +58,7 @@ function asText(value: unknown): string {
 }
 
 function truncateText(value: string, maxLength: number): string {
-  return value.length > maxLength
-    ? value.slice(0, maxLength) + "..."
-    : value;
+  return value.length > maxLength ? value.slice(0, maxLength) + "..." : value;
 }
 
 function getJobPrompt(job: CronJob): string {
@@ -82,7 +80,10 @@ function NameCheckboxPicker({
 }) {
   const names = available.map((item) => item.name);
   const orphaned = selected.filter((s) => !names.includes(s));
-  const all = [...orphaned.map((name) => ({ name, description: "" })), ...available];
+  const all = [
+    ...orphaned.map((name) => ({ name, description: "" })),
+    ...available,
+  ];
 
   if (all.length === 0) {
     return <p className="text-xs text-muted-foreground">{emptyLabel}</p>;
@@ -194,7 +195,7 @@ function CronAdvancedFields({
   modelOptions: ModelOptionsResponse | null;
   availableToolsets: ToolsetInfo[];
 }) {
-  const update = <K extends keyof CronJobEditorState,>(
+  const update = <K extends keyof CronJobEditorState>(
     key: K,
     next: CronJobEditorState[K],
   ) => {
@@ -289,7 +290,9 @@ function CronAdvancedFields({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="grid gap-1">
-            <Label htmlFor={`${idPrefix}-context-from`}>context_from job IDs</Label>
+            <Label htmlFor={`${idPrefix}-context-from`}>
+              context_from job IDs
+            </Label>
             <textarea
               id={`${idPrefix}-context-from`}
               className="flex min-h-[64px] w-full border border-border bg-background/40 px-3 py-2 text-xs font-courier shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/30 focus-visible:border-foreground/25"
@@ -330,8 +333,9 @@ function CronJobFormFields({
   onChange,
 }: CronJobFormFieldsProps) {
   const { t } = useI18n();
-  const { availableSkills, availableToolsets, deliveryTargets, modelOptions } = resources;
-  const update = <K extends keyof CronJobEditorState,>(
+  const { availableSkills, availableToolsets, deliveryTargets, modelOptions } =
+    resources;
+  const update = <K extends keyof CronJobEditorState>(
     key: K,
     next: CronJobEditorState[K],
   ) => {
@@ -345,7 +349,8 @@ function CronJobFormFields({
     deliveryTargets.map((target) => {
       const base = target.id === "local" ? t.cron.delivery.local : target.name;
       if (target.id !== "local" && !target.home_target_set) {
-        const hint = t.cron.delivery.needsHomeChannel ?? "set a home channel first";
+        const hint =
+          t.cron.delivery.needsHomeChannel ?? "set a home channel first";
         return { value: target.id, label: `${base} — ${hint}` };
       }
       return { value: target.id, label: base };
@@ -408,8 +413,8 @@ function CronJobFormFields({
           emptyLabel="No skills installed for this profile."
         />
         <p className="text-xs text-muted-foreground">
-          Selected skills are loaded before the prompt runs — the cron
-          sets when, the skill sets how.
+          Selected skills are loaded before the prompt runs — the cron sets
+          when, the skill sets how.
         </p>
       </div>
 
@@ -459,14 +464,18 @@ function getJobScheduleDisplay(
 }
 
 function getJobState(job: CronJob): string {
-  return asText(job.state) || (job.enabled === false ? "disabled" : "scheduled");
+  return (
+    asText(job.state) || (job.enabled === false ? "disabled" : "scheduled")
+  );
 }
 
 function getRepeatDisplay(job: CronJob): string {
   const repeat = job.repeat;
   if (!repeat || repeat.times == null) return "forever";
   const completed = repeat.completed ?? 0;
-  return completed > 0 ? `${completed}/${repeat.times}` : `${repeat.times} times`;
+  return completed > 0
+    ? `${completed}/${repeat.times}`
+    : `${repeat.times} times`;
 }
 
 function getJobMode(job: CronJob): string {
@@ -536,9 +545,8 @@ export default function CronPage() {
   // New job modal state
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createProfile, setCreateProfile] = useState("default");
-  const [createForm, setCreateForm] = useState<CronJobEditorState>(
-    emptyCronJobForm,
-  );
+  const [createForm, setCreateForm] =
+    useState<CronJobEditorState>(emptyCronJobForm);
   const closeCreateModal = useCallback(() => setCreateModalOpen(false), []);
   const createModalRef = useModalBehavior({
     open: createModalOpen,
@@ -551,9 +559,8 @@ export default function CronPage() {
 
   // Edit job modal state
   const [editJob, setEditJob] = useState<CronJob | null>(null);
-  const [editForm, setEditForm] = useState<CronJobEditorState>(
-    emptyCronJobForm,
-  );
+  const [editForm, setEditForm] =
+    useState<CronJobEditorState>(emptyCronJobForm);
   const [saving, setSaving] = useState(false);
   const closeEditModal = useCallback(() => setEditJob(null), []);
   const editModalRef = useModalBehavior({
@@ -567,7 +574,9 @@ export default function CronPage() {
   // a job's current skills are always shown even if not in it.
   const [availableSkills, setAvailableSkills] = useState<SkillInfo[]>([]);
   const [availableToolsets, setAvailableToolsets] = useState<ToolsetInfo[]>([]);
-  const [modelOptions, setModelOptions] = useState<ModelOptionsResponse | null>(null);
+  const [modelOptions, setModelOptions] = useState<ModelOptionsResponse | null>(
+    null,
+  );
 
   const resourceProfile = editJob ? getJobProfile(editJob) : createProfile;
 
@@ -598,7 +607,12 @@ export default function CronPage() {
       .catch(() =>
         // Fall back to local-only so the modal still works if the endpoint fails.
         setDeliveryTargets([
-          { id: "local", name: "Local", home_target_set: true, home_env_var: null },
+          {
+            id: "local",
+            name: "Local",
+            home_target_set: true,
+            home_env_var: null,
+          },
         ]),
       );
   }, []);
@@ -618,8 +632,12 @@ export default function CronPage() {
       api.getModelOptions(resourceProfile).catch(() => null),
     ]).then(([skills, toolsets, options]) => {
       if (cancelled) return;
-      setAvailableSkills([...skills].sort((a, b) => a.name.localeCompare(b.name)));
-      setAvailableToolsets([...toolsets].sort((a, b) => a.name.localeCompare(b.name)));
+      setAvailableSkills(
+        [...skills].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setAvailableToolsets(
+        [...toolsets].sort((a, b) => a.name.localeCompare(b.name)),
+      );
       setModelOptions(options);
     });
     return () => {
@@ -670,11 +688,7 @@ export default function CronPage() {
     }
     setSaving(true);
     try {
-      await api.updateCronJob(
-        editJob.id,
-        payload,
-        getJobProfile(editJob),
-      );
+      await api.updateCronJob(editJob.id, payload, getJobProfile(editJob));
       showToast("Saved changes ✓", "success");
       setEditJob(null);
       loadJobs();
@@ -749,7 +763,9 @@ export default function CronPage() {
         className="uppercase"
         size="sm"
         onClick={() => {
-          setCreateProfile(selectedProfile === "all" ? "default" : selectedProfile);
+          setCreateProfile(
+            selectedProfile === "all" ? "default" : selectedProfile,
+          );
           setCreateModalOpen(true);
         }}
       >
@@ -794,7 +810,6 @@ export default function CronPage() {
         />
       )}
 
-
       <DeleteConfirmDialog
         open={jobDelete.isOpen}
         onCancel={jobDelete.cancel}
@@ -815,12 +830,19 @@ export default function CronPage() {
         <div
           ref={createModalRef}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 p-4"
-          onClick={(e) => e.target === e.currentTarget && setCreateModalOpen(false)}
+          onClick={(e) =>
+            e.target === e.currentTarget && setCreateModalOpen(false)
+          }
           role="dialog"
           aria-modal="true"
           aria-labelledby="create-cron-title"
         >
-          <div className={cn(themedBody, "relative w-full max-w-3xl max-h-[90vh] border border-border bg-card shadow-2xl flex flex-col")}>
+          <div
+            className={cn(
+              themedBody,
+              "relative w-full max-w-3xl max-h-[90vh] border border-border bg-card shadow-2xl flex flex-col",
+            )}
+          >
             <Button
               ghost
               size="icon"
@@ -895,7 +917,12 @@ export default function CronPage() {
           aria-modal="true"
           aria-labelledby="edit-cron-title"
         >
-          <div className={cn(themedBody, "relative w-full max-w-3xl max-h-[90vh] border border-border bg-card shadow-2xl flex flex-col")}>
+          <div
+            className={cn(
+              themedBody,
+              "relative w-full max-w-3xl max-h-[90vh] border border-border bg-card shadow-2xl flex flex-col",
+            )}
+          >
             <Button
               ghost
               size="icon"
@@ -949,172 +976,170 @@ export default function CronPage() {
       )}
 
       {view === "jobs" && (
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <H2
-            variant="sm"
-            className="flex items-center gap-2 text-muted-foreground"
-          >
-            <Clock className="h-4 w-4" />
-            {t.cron.scheduledJobs} ({jobs.length})
-          </H2>
-
-          <div className="grid gap-1 min-w-[220px]">
-            <Label htmlFor="cron-profile-filter">Profile</Label>
-            <Select
-              id="cron-profile-filter"
-              value={selectedProfile}
-              onValueChange={(v) => setSelectedProfile(v)}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <H2
+              variant="sm"
+              className="flex items-center gap-2 text-muted-foreground"
             >
-              <SelectOption value="all">All profiles</SelectOption>
-              {profiles.map((profile) => (
-                <SelectOption key={profile.name} value={profile.name}>
-                  {profileLabel(profile.name)}
-                </SelectOption>
-              ))}
-            </Select>
+              <Clock className="h-4 w-4" />
+              {t.cron.scheduledJobs} ({jobs.length})
+            </H2>
+
+            <div className="grid gap-1 min-w-[220px]">
+              <Label htmlFor="cron-profile-filter">Profile</Label>
+              <Select
+                id="cron-profile-filter"
+                value={selectedProfile}
+                onValueChange={(v) => setSelectedProfile(v)}
+              >
+                <SelectOption value="all">All profiles</SelectOption>
+                {profiles.map((profile) => (
+                  <SelectOption key={profile.name} value={profile.name}>
+                    {profileLabel(profile.name)}
+                  </SelectOption>
+                ))}
+              </Select>
+            </div>
           </div>
-        </div>
 
-        {jobs.length === 0 && (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              {t.cron.noJobs}
-            </CardContent>
-          </Card>
-        )}
-
-        {jobs.map((job) => {
-          const state = getJobState(job);
-          const promptText = getJobPrompt(job);
-          const title = getJobTitle(job);
-          const hasName = Boolean(getJobName(job));
-          const deliver = asText(job.deliver);
-          const profile = getJobProfile(job);
-          const jobKey = getJobKey(job);
-          const mode = getJobMode(job);
-          const modelDisplay = getModelDisplay(job);
-          const toolsets = Array.isArray(job.enabled_toolsets)
-            ? job.enabled_toolsets.filter(Boolean)
-            : [];
-
-          return (
-            <Card key={jobKey}>
-              <CardContent className="flex items-start gap-4 py-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-sm truncate">
-                      {title}
-                    </span>
-                    <Badge tone={STATUS_TONE[state] ?? "secondary"}>
-                      {state}
-                    </Badge>
-                    <Badge tone="outline">{profileLabel(profile)}</Badge>
-                    {deliver && deliver !== "local" && (
-                      <Badge tone="outline">{deliver}</Badge>
-                    )}
-                    {Array.isArray(job.skills) && job.skills.length > 0 && (
-                      <Badge tone="outline" title={job.skills.join(", ")}>
-                        {job.skills.length === 1
-                          ? job.skills[0]
-                          : `${job.skills.length} skills`}
-                      </Badge>
-                    )}
-                    {mode !== "agent" && (
-                      <Badge tone="outline">{mode}</Badge>
-                    )}
-                    {modelDisplay && (
-                      <Badge tone="outline" title={modelDisplay}>
-                        model
-                      </Badge>
-                    )}
-                    {toolsets.length > 0 && (
-                      <Badge tone="outline" title={toolsets.join(", ")}>
-                        {toolsets.length} toolsets
-                      </Badge>
-                    )}
-                  </div>
-                  {hasName && promptText && (
-                    <p className="text-xs text-muted-foreground truncate mb-1">
-                      {truncateText(promptText, 100)}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span className="font-mono-ui">
-                      {getJobScheduleDisplay(job, scheduleDescribeStrings)}
-                    </span>
-                    <span>repeat: {getRepeatDisplay(job)}</span>
-                    <span>
-                      {t.cron.last}: {formatTime(job.last_run_at)}
-                    </span>
-                    <span>
-                      {t.cron.next}: {formatTime(job.next_run_at)}
-                    </span>
-                  </div>
-                  {job.last_delivery_error && (
-                    <p className="text-xs text-destructive mt-1">
-                      delivery: {job.last_delivery_error}
-                    </p>
-                  )}
-                  {job.last_error && (
-                    <p className="text-xs text-destructive mt-1">
-                      {job.last_error}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    ghost
-                    size="icon"
-                    title={state === "paused" ? t.cron.resume : t.cron.pause}
-                    aria-label={
-                      state === "paused" ? t.cron.resume : t.cron.pause
-                    }
-                    onClick={() => handlePauseResume(job)}
-                    className={
-                      state === "paused" ? "text-success" : "text-warning"
-                    }
-                  >
-                    {state === "paused" ? <Play /> : <Pause />}
-                  </Button>
-
-                  <Button
-                    ghost
-                    size="icon"
-                    title={t.cron.triggerNow}
-                    aria-label={t.cron.triggerNow}
-                    onClick={() => handleTrigger(job)}
-                  >
-                    <Zap />
-                  </Button>
-
-                  <Button
-                    ghost
-                    size="icon"
-                    title="Edit job"
-                    aria-label="Edit job"
-                    onClick={() => openEditModal(job)}
-                  >
-                    <Pencil />
-                  </Button>
-
-                  <Button
-                    ghost
-                    destructive
-                    size="icon"
-                    title={t.common.delete}
-                    aria-label={t.common.delete}
-                    onClick={() => jobDelete.requestDelete(jobKey)}
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
+          {jobs.length === 0 && (
+            <Card>
+              <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                {t.cron.noJobs}
               </CardContent>
             </Card>
-          );
-        })}
-      </div>
+          )}
+
+          {jobs.map((job) => {
+            const state = getJobState(job);
+            const promptText = getJobPrompt(job);
+            const title = getJobTitle(job);
+            const hasName = Boolean(getJobName(job));
+            const deliver = asText(job.deliver);
+            const profile = getJobProfile(job);
+            const jobKey = getJobKey(job);
+            const mode = getJobMode(job);
+            const modelDisplay = getModelDisplay(job);
+            const toolsets = Array.isArray(job.enabled_toolsets)
+              ? job.enabled_toolsets.filter(Boolean)
+              : [];
+
+            return (
+              <Card key={jobKey}>
+                <CardContent className="flex items-start gap-4 py-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium text-sm truncate">
+                        {title}
+                      </span>
+                      <Badge tone={STATUS_TONE[state] ?? "secondary"}>
+                        {state}
+                      </Badge>
+                      <Badge tone="outline">{profileLabel(profile)}</Badge>
+                      {deliver && deliver !== "local" && (
+                        <Badge tone="outline">{deliver}</Badge>
+                      )}
+                      {Array.isArray(job.skills) && job.skills.length > 0 && (
+                        <Badge tone="outline" title={job.skills.join(", ")}>
+                          {job.skills.length === 1
+                            ? job.skills[0]
+                            : `${job.skills.length} skills`}
+                        </Badge>
+                      )}
+                      {mode !== "agent" && <Badge tone="outline">{mode}</Badge>}
+                      {modelDisplay && (
+                        <Badge tone="outline" title={modelDisplay}>
+                          model
+                        </Badge>
+                      )}
+                      {toolsets.length > 0 && (
+                        <Badge tone="outline" title={toolsets.join(", ")}>
+                          {toolsets.length} toolsets
+                        </Badge>
+                      )}
+                    </div>
+                    {hasName && promptText && (
+                      <p className="text-xs text-muted-foreground truncate mb-1">
+                        {truncateText(promptText, 100)}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="font-mono-ui">
+                        {getJobScheduleDisplay(job, scheduleDescribeStrings)}
+                      </span>
+                      <span>repeat: {getRepeatDisplay(job)}</span>
+                      <span>
+                        {t.cron.last}: {formatTime(job.last_run_at)}
+                      </span>
+                      <span>
+                        {t.cron.next}: {formatTime(job.next_run_at)}
+                      </span>
+                    </div>
+                    {job.last_delivery_error && (
+                      <p className="text-xs text-destructive mt-1">
+                        delivery: {job.last_delivery_error}
+                      </p>
+                    )}
+                    {job.last_error && (
+                      <p className="text-xs text-destructive mt-1">
+                        {job.last_error}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      ghost
+                      size="icon"
+                      title={state === "paused" ? t.cron.resume : t.cron.pause}
+                      aria-label={
+                        state === "paused" ? t.cron.resume : t.cron.pause
+                      }
+                      onClick={() => handlePauseResume(job)}
+                      className={
+                        state === "paused" ? "text-success" : "text-warning"
+                      }
+                    >
+                      {state === "paused" ? <Play /> : <Pause />}
+                    </Button>
+
+                    <Button
+                      ghost
+                      size="icon"
+                      title={t.cron.triggerNow}
+                      aria-label={t.cron.triggerNow}
+                      onClick={() => handleTrigger(job)}
+                    >
+                      <Zap />
+                    </Button>
+
+                    <Button
+                      ghost
+                      size="icon"
+                      title="Edit job"
+                      aria-label="Edit job"
+                      onClick={() => openEditModal(job)}
+                    >
+                      <Pencil />
+                    </Button>
+
+                    <Button
+                      ghost
+                      destructive
+                      size="icon"
+                      title={t.common.delete}
+                      aria-label={t.common.delete}
+                      onClick={() => jobDelete.requestDelete(jobKey)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       )}
 
       <PluginSlot name="cron:bottom" />

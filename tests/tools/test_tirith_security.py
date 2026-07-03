@@ -1019,7 +1019,7 @@ class TestDiskFailureMarker:
         tmpdir = tempfile.mkdtemp()
         hermes_bin = os.path.join(tmpdir, "tirith")
         # Create a fake executable
-        with open(hermes_bin, "w") as f:
+        with open(hermes_bin, "w", encoding="utf-8") as f:
             f.write("#!/bin/sh\n")
         os.chmod(hermes_bin, 0o755)
 

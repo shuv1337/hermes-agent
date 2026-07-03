@@ -207,7 +207,7 @@ export function HermesConsoleModal({ open, onClose }: HermesConsoleModalProps) {
         }
       }
       const idx = historyIndexRef.current;
-      redrawInput(idx === null ? "" : history[idx] ?? "");
+      redrawInput(idx === null ? "" : (history[idx] ?? ""));
     },
     [redrawInput],
   );
@@ -373,7 +373,11 @@ export function HermesConsoleModal({ open, onClose }: HermesConsoleModalProps) {
     term.focus();
 
     const fitTerminal = () => {
-      if (!host.isConnected || host.clientWidth <= 0 || host.clientHeight <= 0) {
+      if (
+        !host.isConnected ||
+        host.clientWidth <= 0 ||
+        host.clientHeight <= 0
+      ) {
         return;
       }
       try {

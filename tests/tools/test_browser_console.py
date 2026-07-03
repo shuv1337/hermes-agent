@@ -542,19 +542,19 @@ class TestDogfoodSkill:
         )
 
     def test_skill_md_has_frontmatter(self):
-        with open(os.path.join(self.skill_dir, "SKILL.md")) as f:
+        with open(os.path.join(self.skill_dir, "SKILL.md")) as f:  # windows-footgun: ok
             content = f.read()
         assert content.startswith("---")
         assert "name: dogfood" in content
         assert "description:" in content
 
     def test_skill_references_browser_console(self):
-        with open(os.path.join(self.skill_dir, "SKILL.md")) as f:
+        with open(os.path.join(self.skill_dir, "SKILL.md")) as f:  # windows-footgun: ok
             content = f.read()
         assert "browser_console" in content
 
     def test_skill_references_annotate(self):
-        with open(os.path.join(self.skill_dir, "SKILL.md")) as f:
+        with open(os.path.join(self.skill_dir, "SKILL.md")) as f:  # windows-footgun: ok
             content = f.read()
         assert "annotate" in content
 

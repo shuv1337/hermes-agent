@@ -82,7 +82,9 @@ describe("cronJobHasExecutionContent", () => {
   });
 
   it("rejects payloads with no prompt, skills, or script", () => {
-    const payload = buildCronJobPayload(form({ prompt: "", skills: [], script: "" }));
+    const payload = buildCronJobPayload(
+      form({ prompt: "", skills: [], script: "" }),
+    );
 
     expect(cronJobHasExecutionContent(payload)).toBe(false);
   });

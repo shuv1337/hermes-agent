@@ -282,7 +282,7 @@ class TestOrphanedPipeReconciliation:
             ["sh", "-c", "exec 1>&2; ( sleep 30 ) & disown; exit 0"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            preexec_fn=os.setsid,
+            preexec_fn=os.setsid,  # windows-footgun: ok
         )
 
         s = _make_session(sid="proc_orphan_test")
@@ -312,7 +312,7 @@ class TestOrphanedPipeReconciliation:
 
         # Clean up the orphaned descendant.
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # windows-footgun: ok
         except (ProcessLookupError, PermissionError):
             pass
 
@@ -356,7 +356,7 @@ class TestOrphanedPipeReconciliation:
             ["sh", "-c", "( sleep 30 ) & disown; exit 0"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            preexec_fn=os.setsid,
+            preexec_fn=os.setsid,  # windows-footgun: ok
         )
 
         s = _make_session(sid="proc_wait_orphan")
@@ -376,7 +376,7 @@ class TestOrphanedPipeReconciliation:
         )
 
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # windows-footgun: ok
         except (ProcessLookupError, PermissionError):
             pass
 
@@ -1780,7 +1780,7 @@ class TestSigkillEscalation:
         finally:
             for p in all_pids:
                 try:
-                    os.kill(p, signal.SIGKILL)
+                    os.kill(p, signal.SIGKILL)  # windows-footgun: ok
                 except (ProcessLookupError, PermissionError, OSError):
                     pass
             parent.wait()

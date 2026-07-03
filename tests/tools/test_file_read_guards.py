@@ -282,7 +282,7 @@ class TestFileDedup(unittest.TestCase):
         _read_tracker.clear()
         self._tmpdir = _make_safe_tempdir("hermes-dedup-")
         self._tmpfile = os.path.join(self._tmpdir, "dedup_test.txt")
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("line one\nline two\n")
 
     def tearDown(self):
@@ -394,7 +394,7 @@ class TestFileDedup(unittest.TestCase):
 
         # Modify the file — ensure mtime changes
         time.sleep(0.05)
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("changed content\n")
 
         r2 = json.loads(read_file_tool(self._tmpfile, task_id="mod"))
@@ -438,7 +438,7 @@ class TestDedupStubLoopGuard(unittest.TestCase):
         _read_tracker.clear()
         self._tmpdir = tempfile.mkdtemp()
         self._tmpfile = os.path.join(self._tmpdir, "loop_test.txt")
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("line one\nline two\n")
 
     def tearDown(self):
@@ -505,7 +505,7 @@ class TestDedupStubLoopGuard(unittest.TestCase):
 
         # File changes — mtime updates
         time.sleep(0.05)
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("brand new content\n")
 
         r4 = json.loads(read_file_tool(self._tmpfile, task_id="loop"))
@@ -584,7 +584,7 @@ class TestDedupResetOnCompression(unittest.TestCase):
         _read_tracker.clear()
         self._tmpdir = tempfile.mkdtemp()
         self._tmpfile = os.path.join(self._tmpdir, "compress_test.txt")
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("original content\n")
 
     def tearDown(self):
@@ -747,7 +747,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
         _read_tracker.clear()
         self._tmpdir = _make_safe_tempdir("hermes-write-dedup-")
         self._tmpfile = os.path.join(self._tmpdir, "write_dedup.txt")
-        with open(self._tmpfile, "w") as f:
+        with open(self._tmpfile, "w", encoding="utf-8") as f:
             f.write("original content\n")
 
     def tearDown(self):
@@ -824,7 +824,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
     def test_write_does_not_invalidate_other_files(self, mock_ops):
         """Writing file A should not invalidate dedup for file B."""
         other = os.path.join(self._tmpdir, "other.txt")
-        with open(other, "w") as f:
+        with open(other, "w", encoding="utf-8") as f:
             f.write("other content\n")
 
         fake = MagicMock()

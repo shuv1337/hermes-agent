@@ -208,6 +208,7 @@ export function ChatSidebar({
       gw.close();
     };
     // `profile` is read from render; scope changes bump `version` → new `gw`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gw]);
 
   // Event subscriber WebSocket — receives the rebroadcast of every
@@ -239,7 +240,8 @@ export function ChatSidebar({
       // `unmounting` suppresses the banner during cleanup — `ws.close()`
       // from the effect's return fires a close event with code 1005 that
       // would otherwise look like an unexpected drop.
-      const DISCONNECTED = "events feed disconnected — tool calls may not appear";
+      const DISCONNECTED =
+        "events feed disconnected — tool calls may not appear";
       const surface = (msg: string) => !unmounting && setError(msg);
 
       ws.addEventListener("error", () => surface(DISCONNECTED));

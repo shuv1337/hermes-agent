@@ -36,10 +36,7 @@ import { Badge } from "@nous-research/ui/ui/components/badge";
 import { Button } from "@nous-research/ui/ui/components/button";
 import { Input } from "@nous-research/ui/ui/components/input";
 import { Label } from "@nous-research/ui/ui/components/label";
-import {
-  Select,
-  SelectOption,
-} from "@nous-research/ui/ui/components/select";
+import { Select, SelectOption } from "@nous-research/ui/ui/components/select";
 import { Checkbox } from "@nous-research/ui/ui/components/checkbox";
 import { useI18n } from "@/i18n";
 import { usePageHeader } from "@/contexts/usePageHeader";
@@ -239,7 +236,10 @@ function ProfileActionsMenu({
             <button
               type="button"
               role="menuitem"
-              className={cn(itemClass, "text-destructive hover:bg-destructive/10")}
+              className={cn(
+                itemClass,
+                "text-destructive hover:bg-destructive/10",
+              )}
               onClick={run(onDelete)}
             >
               <Trash2 className="h-4 w-4" />
@@ -298,8 +298,7 @@ export default function ProfilesPage() {
       modelOptional: p.modelOptional ?? "Model (optional)",
       modelInherit: p.modelInherit ?? "Inherit from clone / default",
       modelLoading: p.modelLoading ?? "Loading models…",
-      modelNone:
-        p.modelNone ?? "No authenticated providers — set a key first",
+      modelNone: p.modelNone ?? "No authenticated providers — set a key first",
       editModel: p.editModel ?? "Change model",
       modelSaved: p.modelSaved ?? "Model updated",
       modelSelect: p.modelSelect ?? "Select a model",
@@ -482,7 +481,10 @@ export default function ProfilesPage() {
     }
     try {
       await api.renameProfile(renamingFrom, target);
-      showToast(`${t.profiles.renamed}: ${renamingFrom} → ${target}`, "success");
+      showToast(
+        `${t.profiles.renamed}: ${renamingFrom} → ${target}`,
+        "success",
+      );
       setRenamingFrom(null);
       setRenameTo("");
       load();
@@ -872,7 +874,9 @@ export default function ProfilesPage() {
                     if (next === null) setCloneAll(false);
                   }}
                 >
-                  <SelectOption value="">{t.profiles.cloneFromNone}</SelectOption>
+                  <SelectOption value="">
+                    {t.profiles.cloneFromNone}
+                  </SelectOption>
                   {profiles.map((profile) => (
                     <SelectOption key={profile.name} value={profile.name}>
                       {profile.name}

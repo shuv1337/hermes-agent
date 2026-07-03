@@ -176,7 +176,9 @@ interface PluginSlotProps {
  *  Component re-renders when the slot registry changes so plugins that
  *  arrive after initial mount show up without a manual refresh. */
 export function PluginSlot({ name, fallback }: PluginSlotProps) {
-  const [entries, setEntries] = useState<SlotEntry[]>(() => getSlotEntries(name));
+  const [entries, setEntries] = useState<SlotEntry[]>(() =>
+    getSlotEntries(name),
+  );
 
   useEffect(() => {
     // Pick up anything registered between the initial `useState` call

@@ -182,13 +182,27 @@ function seriesColorVars(
 
 /** Well-known named asset slots a theme may populate. Kept in sync with
  *  `_THEME_NAMED_ASSET_KEYS` in `hermes_cli/web_server.py`. */
-const NAMED_ASSET_KEYS = ["bg", "hero", "logo", "crest", "sidebar", "header"] as const;
+const NAMED_ASSET_KEYS = [
+  "bg",
+  "hero",
+  "logo",
+  "crest",
+  "sidebar",
+  "header",
+] as const;
 
 /** Component buckets mirrored from the backend's `_THEME_COMPONENT_BUCKETS`.
  *  Each bucket emits `--component-<bucket>-<kebab-prop>` CSS vars. */
 const COMPONENT_BUCKETS = [
-  "card", "header", "footer", "sidebar", "tab",
-  "progress", "badge", "backdrop", "page",
+  "card",
+  "header",
+  "footer",
+  "sidebar",
+  "tab",
+  "progress",
+  "badge",
+  "backdrop",
+  "page",
 ] as const;
 
 /** Camel → kebab (`clipPath` → `clip-path`). */
@@ -206,7 +220,11 @@ function assetVars(assets: ThemeAssets | undefined): Record<string, string> {
     const trimmed = v.trim();
     if (!trimmed) return "";
     // Already a CSS image/gradient/url/none — don't re-wrap.
-    if (/^(url\(|linear-gradient|radial-gradient|conic-gradient|none$)/i.test(trimmed)) {
+    if (
+      /^(url\(|linear-gradient|radial-gradient|conic-gradient|none$)/i.test(
+        trimmed,
+      )
+    ) {
       return trimmed;
     }
     // Bare path / http(s) URL / data: URL → wrap in url().
@@ -238,7 +256,9 @@ function componentStyleVars(
   if (!styles) return {};
   const out: Record<string, string> = {};
   for (const bucket of COMPONENT_BUCKETS) {
-    const props = (styles as Record<string, Record<string, string> | undefined>)[bucket];
+    const props = (
+      styles as Record<string, Record<string, string> | undefined>
+    )[bucket];
     if (!props) continue;
     for (const [prop, value] of Object.entries(props)) {
       if (typeof value !== "string" || !value.trim()) continue;
@@ -261,7 +281,9 @@ const CUSTOM_CSS_STYLE_ID = "hermes-theme-custom-css";
 
 function applyCustomCSS(css: string | undefined) {
   if (typeof document === "undefined") return;
-  let el = document.getElementById(CUSTOM_CSS_STYLE_ID) as HTMLStyleElement | null;
+  let el = document.getElementById(
+    CUSTOM_CSS_STYLE_ID,
+  ) as HTMLStyleElement | null;
   if (!css || !css.trim()) {
     if (el) el.remove();
     return;
@@ -443,7 +465,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [fontId, setFontId] = useState<string>(() => {
     if (typeof window === "undefined") return THEME_DEFAULT_FONT_ID;
     const stored = window.localStorage.getItem(FONT_STORAGE_KEY);
-    const valid = stored && getFontChoice(stored) ? stored : THEME_DEFAULT_FONT_ID;
+    const valid =
+      stored && getFontChoice(stored) ? stored : THEME_DEFAULT_FONT_ID;
     _ACTIVE_FONT_OVERRIDE = valid;
     return valid;
   });
@@ -452,11 +475,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // only when neither a built-in nor a user theme is found.
   const resolveTheme = useCallback(
     (name: string): DashboardTheme => {
-      return (
-        BUILTIN_THEMES[name] ??
-        userThemeDefs[name] ??
-        defaultTheme
-      );
+      return BUILTIN_THEMES[name] ?? userThemeDefs[name] ?? defaultTheme;
     },
     [userThemeDefs],
   );
@@ -525,7 +544,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .then((resp) => {
         if (cancelled) return;
         const serverId =
-          resp?.font && getFontChoice(resp.font) ? resp.font : THEME_DEFAULT_FONT_ID;
+          resp?.font && getFontChoice(resp.font)
+            ? resp.font
+            : THEME_DEFAULT_FONT_ID;
         if (serverId !== fontId) {
           setFontId(serverId);
           if (typeof window !== "undefined") {
@@ -580,7 +601,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [themeName, availableThemes, setTheme, resolveTheme, fontId, setFont],
   );
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+  );
 }
 
 export function useTheme(): ThemeContextValue {

@@ -1011,7 +1011,7 @@ def test_reap_unsupervised_orphans_sigterms_then_sigkills_survivor(monkeypatch):
 
     assert gateway._reap_unsupervised_gateway_orphans() is True
     assert (708, signal.SIGTERM) in sent
-    assert (708, signal.SIGKILL) in sent
+    assert (708, signal.SIGKILL) in sent  # windows-footgun: ok
 
 
 def test_reap_unsupervised_orphans_returns_false_when_none_found(monkeypatch):
@@ -1027,10 +1027,10 @@ def test_reap_unsupervised_orphans_returns_false_when_none_found(monkeypatch):
 def test_scan_gateway_pids_detects_windows_hermes_exe_case_variants(monkeypatch):
     monkeypatch.setattr(gateway, "is_windows", lambda: True)
     monkeypatch.setattr(gateway, "_get_ancestor_pids", lambda: set())
-    monkeypatch.setattr(gateway.shutil, "which", lambda name: "wmic.exe" if name == "wmic" else None)
+    monkeypatch.setattr(gateway.shutil, "which", lambda name: "wmic.exe" if name == "wmic" else None)  # windows-footgun: ok
 
     def fake_run(cmd, **kwargs):
-        if cmd[:4] == ["wmic.exe", "process", "get", "ProcessId,CommandLine"]:
+        if cmd[:4] == ["wmic.exe", "process", "get", "ProcessId,CommandLine"]:  # windows-footgun: ok
             return SimpleNamespace(
                 returncode=0,
                 stdout=(

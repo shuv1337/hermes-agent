@@ -279,7 +279,7 @@ def test_persist_dm_topic_thread_id_writes_config(tmp_path):
 
     config_file = tmp_path / ".hermes" / "config.yaml"
     config_file.parent.mkdir(parents=True)
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.dump(config_data, f)
 
     adapter = _make_adapter()
@@ -288,7 +288,7 @@ def test_persist_dm_topic_thread_id_writes_config(tmp_path):
          patch.dict(os.environ, {"HERMES_HOME": str(tmp_path / ".hermes")}):
         adapter._persist_dm_topic_thread_id(111, "General", 999)
 
-    with open(config_file) as f:
+    with open(config_file, encoding="utf-8") as f:
         result = yaml.safe_load(f)
 
     topics = result["platforms"]["telegram"]["extra"]["dm_topics"][0]["topics"]
@@ -319,7 +319,7 @@ def test_persist_dm_topic_thread_id_skips_if_already_set(tmp_path):
 
     config_file = tmp_path / ".hermes" / "config.yaml"
     config_file.parent.mkdir(parents=True)
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.dump(config_data, f)
 
     adapter = _make_adapter()
@@ -327,7 +327,7 @@ def test_persist_dm_topic_thread_id_skips_if_already_set(tmp_path):
     with patch.object(Path, "home", return_value=tmp_path):
         adapter._persist_dm_topic_thread_id(111, "General", 999)
 
-    with open(config_file) as f:
+    with open(config_file, encoding="utf-8") as f:
         result = yaml.safe_load(f)
 
     topics = result["platforms"]["telegram"]["extra"]["dm_topics"][0]["topics"]
@@ -357,7 +357,7 @@ def test_persist_dm_topic_thread_id_replaces_existing_when_requested(tmp_path):
 
     config_file = tmp_path / ".hermes" / "config.yaml"
     config_file.parent.mkdir(parents=True)
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.dump(config_data, f)
 
     adapter = _make_adapter()
@@ -366,7 +366,7 @@ def test_persist_dm_topic_thread_id_replaces_existing_when_requested(tmp_path):
          patch.dict(os.environ, {"HERMES_HOME": str(tmp_path / ".hermes")}):
         adapter._persist_dm_topic_thread_id(111, "General", 999, replace_existing=True)
 
-    with open(config_file) as f:
+    with open(config_file, encoding="utf-8") as f:
         result = yaml.safe_load(f)
 
     topics = result["platforms"]["telegram"]["extra"]["dm_topics"][0]["topics"]
@@ -502,7 +502,7 @@ def test_get_dm_topic_info_hot_reloads_from_config(tmp_path):
     }
     config_file = tmp_path / ".hermes" / "config.yaml"
     config_file.parent.mkdir(parents=True)
-    with open(config_file, "w") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.dump(config_data, f)
 
     with patch.object(Path, "home", return_value=tmp_path), \

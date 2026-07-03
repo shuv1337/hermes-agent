@@ -467,7 +467,7 @@ class WebToolsTester:
         }
         
         try:
-            with open(filename, 'w') as f:
+            with open(filename, 'w', encoding="utf-8") as f:
                 json.dump(results, f, indent=2, ensure_ascii=False)
             print_info(f"Test results saved to: {filename}")
         except Exception as e:

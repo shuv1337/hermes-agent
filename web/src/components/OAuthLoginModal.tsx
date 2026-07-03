@@ -170,7 +170,12 @@ export function OAuthLoginModal({ provider, onClose, onSuccess }: Props) {
       aria-modal="true"
       aria-labelledby="oauth-modal-title"
     >
-      <div className={cn(themedBody, "relative w-full max-w-md border border-border bg-card shadow-2xl")}>
+      <div
+        className={cn(
+          themedBody,
+          "relative w-full max-w-md border border-border bg-card shadow-2xl",
+        )}
+      >
         <Button
           ghost
           size="icon"

@@ -74,7 +74,7 @@ class TestTruncation:
         path_line = next(ln for ln in out.splitlines() if "Full text saved to:" in ln)
         stored_path = path_line.split("Full text saved to:", 1)[1].strip()
         assert os.path.exists(stored_path)
-        full = open(stored_path).read()
+        full = open(stored_path, encoding="utf-8").read()
         assert "UNIQUE_MIDDLE_MARKER" in full
         assert "row 2500" in full  # the omitted-middle row is in the stored file
 

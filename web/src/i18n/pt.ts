@@ -118,7 +118,8 @@ export const pt: Translations = {
     runningRemote: "A executar (remoto)",
     startFailed: "Falha ao iniciar",
     starting: "A iniciar",
-    startedInBackground: "Iniciado em segundo plano — verifique os registos para acompanhar",
+    startedInBackground:
+      "Iniciado em segundo plano — verifique os registos para acompanhar",
     stopped: "Parado",
     updateHermes: "Atualizar Hermes",
     updatingHermes: "A atualizar Hermes…",
@@ -326,12 +327,15 @@ export const pt: Translations = {
     inactive: "inativo",
     installBtn: "Instalar",
     installHeading: "Instalar a partir de GitHub / URL Git",
-    installHint: "Use a forma curta owner/repo ou um URL completo de clone https:// ou git@.",
+    installHint:
+      "Use a forma curta owner/repo ou um URL completo de clone https:// ou git@.",
     memoryProviderLabel: "Fornecedor de memória",
-    missingEnvWarn: "Defina os seguintes em Chaves antes de o plugin poder executar:",
+    missingEnvWarn:
+      "Defina os seguintes em Chaves antes de o plugin poder executar:",
     noDashboardTab: "Sem separador no dashboard",
     openTab: "Abrir",
-    orphanHeading: "Extensões só de dashboard (sem plugin.yaml de agente correspondente)",
+    orphanHeading:
+      "Extensões só de dashboard (sem plugin.yaml de agente correspondente)",
     pluginListHeading: "Plugins instalados",
     providerDefaults: "incorporado / predefinido",
     providersHeading: "Plugins de fornecedor em runtime",
@@ -339,9 +343,11 @@ export const pt: Translations = {
       "Escreve memory.provider (vazio = incorporado) e context.engine no config.yaml. Aplicado na próxima sessão.",
     refreshDashboard: "Re-analisar extensões do dashboard",
     removeConfirm: "Remover este plugin de ~/.hermes/plugins/?",
-    removeHint: "Apenas plugins instalados pelo utilizador em ~/.hermes/plugins podem ser removidos.",
+    removeHint:
+      "Apenas plugins instalados pelo utilizador em ~/.hermes/plugins podem ser removidos.",
     rescanHeading: "Registo de plugins SPA",
-    rescanHint: "Re-analise depois de adicionar ficheiros em disco para que a barra lateral detete novos manifestos.",
+    rescanHint:
+      "Re-analise depois de adicionar ficheiros em disco para que a barra lateral detete novos manifestos.",
     runtimeHeading: "Runtime do gateway (plugins YAML)",
     saveProviders: "Guardar definições do fornecedor",
     savedProviders: "Definições do fornecedor guardadas.",
@@ -361,7 +367,8 @@ export const pt: Translations = {
     all: "Todas",
     categories: "Categorias",
     filters: "Filtros",
-    noSkills: "Nenhuma competência encontrada. As competências são carregadas de ~/.hermes/skills/",
+    noSkills:
+      "Nenhuma competência encontrada. As competências são carregadas de ~/.hermes/skills/",
     noSkillsMatch: "Nenhuma competência corresponde à pesquisa ou filtro.",
     skillCount: "{count} competência{s}",
     resultCount: "{count} resultado{s}",
@@ -382,8 +389,10 @@ export const pt: Translations = {
     importConfig: "Importar configuração de JSON",
     resetDefaults: "Repor predefinições",
     resetScopeTooltip: "Repor {scope} para predefinições",
-    confirmResetScope: "Repor todas as definições de {scope} para os valores predefinidos? Isto apenas atualiza o formulário — as alterações só são escritas em config.yaml quando premir Guardar.",
-    resetScopeToast: "{scope} reposto para predefinições — reveja e Guarde para persistir",
+    confirmResetScope:
+      "Repor todas as definições de {scope} para os valores predefinidos? Isto apenas atualiza o formulário — as alterações só são escritas em config.yaml quando premir Guardar.",
+    resetScopeToast:
+      "{scope} reposto para predefinições — reveja e Guarde para persistir",
     rawYaml: "Configuração YAML em bruto",
     searchResults: "Resultados da pesquisa",
     fields: "campo{s}",
@@ -415,7 +424,8 @@ export const pt: Translations = {
   },
 
   env: {
-    changesNote: "As alterações são guardadas em disco imediatamente. As sessões ativas detetam novas chaves automaticamente.",
+    changesNote:
+      "As alterações são guardadas em disco imediatamente. As sessões ativas detetam novas chaves automaticamente.",
     confirmClearMessage:
       "O valor armazenado para esta variável será removido do seu ficheiro .env. Esta ação não pode ser anulada a partir da UI.",
     confirmClearTitle: "Limpar esta chave?",
@@ -435,19 +445,22 @@ export const pt: Translations = {
     showValue: "Mostrar valor real",
     hideValue: "Ocultar valor",
     customTitle: "Chaves personalizadas",
-    customHint: "Variáveis de ambiente arbitrárias armazenadas no seu .env que o Hermes não reconhece. Use-as para injetar variáveis de ambiente para skills, servidores MCP ou suas próprias ferramentas.",
+    customHint:
+      "Variáveis de ambiente arbitrárias armazenadas no seu .env que o Hermes não reconhece. Use-as para injetar variáveis de ambiente para skills, servidores MCP ou suas próprias ferramentas.",
     customConfigured: "{count} chave(s) personalizada(s) definida(s)",
     addCustomKey: "Adicionar uma chave personalizada",
     customKeyName: "Nome da variável",
     customKeyNamePlaceholder: "ex. MY_SERVICE_API_KEY",
     add: "Adicionar",
-    invalidKeyName: "Use apenas letras, números e sublinhados (deve começar com uma letra ou sublinhado).",
+    invalidKeyName:
+      "Use apenas letras, números e sublinhados (deve começar com uma letra ou sublinhado).",
   },
 
   oauth: {
     title: "Inícios de sessão de fornecedor (OAuth)",
     providerLogins: "Inícios de sessão de fornecedor (OAuth)",
-    description: "{connected} de {total} fornecedores OAuth ligados. Os fluxos de início de sessão são executados via CLI; clique em Copiar comando e cole num terminal para configurar.",
+    description:
+      "{connected} de {total} fornecedores OAuth ligados. Os fluxos de início de sessão são executados via CLI; clique em Copiar comando e cole num terminal para configurar.",
     connected: "Ligado",
     expired: "Expirado",
     notConnected: "Não ligado. Execute {command} num terminal.",
@@ -465,14 +478,18 @@ export const pt: Translations = {
     exchangingCode: "A trocar código por tokens…",
     connectedClosing: "Ligado! A fechar…",
     loginFailed: "Início de sessão falhou.",
-    sessionExpired: "Sessão expirada. Clique em Tentar novamente para iniciar um novo início de sessão.",
+    sessionExpired:
+      "Sessão expirada. Clique em Tentar novamente para iniciar um novo início de sessão.",
     reOpenAuth: "Reabrir página de autenticação",
     reOpenVerification: "Reabrir página de verificação",
     submitCode: "Submeter código",
-    pasteCode: "Cole o código de autorização (com sufixo #state também é válido)",
+    pasteCode:
+      "Cole o código de autorização (com sufixo #state também é válido)",
     waitingAuth: "À espera que autorize no browser…",
-    enterCodePrompt: "Foi aberto um novo separador. Introduza este código se for solicitado:",
-    pkceStep1: "Foi aberto um novo separador para claude.ai. Inicie sessão e clique em Authorize.",
+    enterCodePrompt:
+      "Foi aberto um novo separador. Introduza este código se for solicitado:",
+    pkceStep1:
+      "Foi aberto um novo separador para claude.ai. Inicie sessão e clique em Authorize.",
     pkceStep2: "Copie o código de autorização mostrado após autorizar.",
     pkceStep3: "Cole-o abaixo e submeta.",
     flowLabels: {
@@ -591,11 +608,10 @@ export const pt: Translations = {
       copy_button: "Copiar imagem",
       copied: "Copiado ✓",
       download_button: "Transferir PNG",
-      hint:
-        "Partilhar no X abre uma publicação pré-preenchida num novo separador. Clique primeiro em Copiar imagem se quiser anexar o distintivo 1200×630 — o X permite colá-lo diretamente no compositor da publicação. Transferir PNG guarda o ficheiro para utilização em qualquer lado.",
+      hint: "Partilhar no X abre uma publicação pré-preenchida num novo separador. Clique primeiro em Copiar imagem se quiser anexar o distintivo 1200×630 — o X permite colá-lo diretamente no compositor da publicação. Transferir PNG guarda o ficheiro para utilização em qualquer lado.",
       clipboard_unsupported:
         "A cópia de imagens para a área de transferência não é suportada neste navegador — utilize Transferir.",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
   kanban: {
@@ -695,18 +711,23 @@ export const pt: Translations = {
     noProfile: "(sem perfil)",
     showAllAttempts: "Mostrar todas as tentativas",
     sendingUpdates: "A enviar atualizações para",
-    sendNotifications: "Enviar notificações de completed / blocked / gave_up para",
+    sendNotifications:
+      "Enviar notificações de completed / blocked / gave_up para",
     archiveBoardConfirm:
       "Arquivar o quadro '{name}'? Será movido para boards/_archived/ para que possa recuperá-lo mais tarde. As tarefas deste quadro deixarão de aparecer em qualquer parte da interface.",
     archiveBoardTitle: "Arquivar este quadro",
-    boardSwitcherHint: "Os quadros permitem-lhe separar fluxos de trabalho não relacionados",
+    boardSwitcherHint:
+      "Os quadros permitem-lhe separar fluxos de trabalho não relacionados",
     taskCreatedWarning: "Tarefa criada, mas: ",
     moveFailed: "Falha ao mover: ",
     bulkFailed: "Em lote: ",
-    completionBlockedHallucination: "⚠ Conclusão bloqueada — ids de cartões fantasma",
-    suspectedHallucinatedReferences: "⚠ O texto referenciou ids de cartões fantasma",
+    completionBlockedHallucination:
+      "⚠ Conclusão bloqueada — ids de cartões fantasma",
+    suspectedHallucinatedReferences:
+      "⚠ O texto referenciou ids de cartões fantasma",
     pickProfileFirst: "Escolha primeiro um perfil.",
-    unblockedMessage: "{id} desbloqueado. A tarefa está pronta para o próximo tick.",
+    unblockedMessage:
+      "{id} desbloqueado. A tarefa está pronta para o próximo tick.",
     unblockFailed: "Falha ao desbloquear: ",
     reclaimedMessage: "{id} reivindicado. A tarefa voltou a ready.",
     reclaimFailed: "Falha ao reivindicar: ",
@@ -754,7 +775,8 @@ export const pt: Translations = {
     skillsPlaceholder:
       "competências (opcional, separadas por vírgulas): translation, github-code-review",
     noParent: "— sem pai —",
-    workspacePathDir: "caminho do espaço de trabalho (obrigatório, p. ex. ~/projects/my-app)",
+    workspacePathDir:
+      "caminho do espaço de trabalho (obrigatório, p. ex. ~/projects/my-app)",
     workspacePathOptional:
       "caminho do espaço de trabalho (opcional, derivado do responsável se vazio)",
     logTruncated: "(a mostrar os últimos 100 KB — registo completo em ",

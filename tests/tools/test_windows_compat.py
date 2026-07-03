@@ -42,7 +42,7 @@ class TestNoUnconditionalSetsid:
         for val in values:
             # A bare os.setsid would be: Attribute(value=Name(id='os'), attr='setsid')
             assert "attr='setsid'" not in val or "IfExp" in val or "None" in val, (
-                f"{relpath} has unconditional preexec_fn=os.setsid"
+                f"{relpath} has unconditional preexec_fn=os.setsid"  # windows-footgun: ok
             )
 
 
@@ -91,9 +91,9 @@ class TestKillpgGuarded:
         lines = source.splitlines()
         for i, line in enumerate(lines):
             stripped = line.strip()
-            if "os.killpg" in stripped or "os.getpgid" in stripped:
+            if "os.killpg" in stripped or "os.getpgid" in stripped:  # windows-footgun: ok
                 # Check that there's an _IS_WINDOWS guard in the surrounding context
                 context = "\n".join(lines[max(0, i - 15):i + 1])
                 assert "_IS_WINDOWS" in context or "else:" in context, (
-                    f"{relpath}:{i + 1} has unguarded os.killpg/os.getpgid call"
+                    f"{relpath}:{i + 1} has unguarded os.killpg/os.getpgid call"  # windows-footgun: ok
                 )

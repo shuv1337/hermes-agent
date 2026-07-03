@@ -118,7 +118,8 @@ export const ko: Translations = {
     runningRemote: "실행 중 (원격)",
     startFailed: "시작 실패",
     starting: "시작 중",
-    startedInBackground: "백그라운드에서 시작됨 — 진행 상황은 로그를 확인하세요",
+    startedInBackground:
+      "백그라운드에서 시작됨 — 진행 상황은 로그를 확인하세요",
     stopped: "중지됨",
     updateHermes: "Hermes 업데이트",
     updatingHermes: "Hermes 업데이트 중…",
@@ -286,7 +287,8 @@ export const ko: Translations = {
     nameRequired: "이름은 필수입니다",
     nameRule:
       "소문자, 숫자, _ 및 - 만 사용 가능합니다. 문자나 숫자로 시작해야 하며 최대 64자입니다.",
-    invalidName: "잘못된 프로필 이름입니다",    cloneFrom: "프로필에서 복제",
+    invalidName: "잘못된 프로필 이름입니다",
+    cloneFrom: "프로필에서 복제",
     cloneFromNone: "없음 (빈 상태)",
     allProfiles: "프로필",
     noProfiles: "프로필을 찾을 수 없습니다.",
@@ -324,7 +326,8 @@ export const ko: Translations = {
     inactive: "비활성",
     installBtn: "설치",
     installHeading: "GitHub / Git URL에서 설치",
-    installHint: "owner/repo 약어 또는 전체 https:// 또는 git@ 클론 URL을 사용하세요.",
+    installHint:
+      "owner/repo 약어 또는 전체 https:// 또는 git@ 클론 URL을 사용하세요.",
     memoryProviderLabel: "메모리 제공자",
     missingEnvWarn: "플러그인을 실행하기 전에 Keys에서 다음 항목을 설정하세요:",
     noDashboardTab: "대시보드 탭 없음",
@@ -337,9 +340,11 @@ export const ko: Translations = {
       "memory.provider (비어 있으면 = 내장)와 context.engine을 config.yaml에 기록합니다. 다음 세션부터 적용됩니다.",
     refreshDashboard: "대시보드 확장 재스캔",
     removeConfirm: "~/.hermes/plugins/에서 이 플러그인을 제거하시겠습니까?",
-    removeHint: "~/.hermes/plugins 아래에 사용자가 설치한 플러그인만 제거할 수 있습니다.",
+    removeHint:
+      "~/.hermes/plugins 아래에 사용자가 설치한 플러그인만 제거할 수 있습니다.",
     rescanHeading: "SPA 플러그인 레지스트리",
-    rescanHint: "디스크에 파일을 추가한 후 재스캔하여 대시보드 사이드바가 새 매니페스트를 인식하도록 합니다.",
+    rescanHint:
+      "디스크에 파일을 추가한 후 재스캔하여 대시보드 사이드바가 새 매니페스트를 인식하도록 합니다.",
     runtimeHeading: "게이트웨이 런타임 (YAML 플러그인)",
     saveProviders: "제공자 설정 저장",
     savedProviders: "제공자 설정이 저장되었습니다.",
@@ -359,7 +364,8 @@ export const ko: Translations = {
     all: "전체",
     categories: "카테고리",
     filters: "필터",
-    noSkills: "스킬을 찾을 수 없습니다. 스킬은 ~/.hermes/skills/ 에서 로드됩니다",
+    noSkills:
+      "스킬을 찾을 수 없습니다. 스킬은 ~/.hermes/skills/ 에서 로드됩니다",
     noSkillsMatch: "검색이나 필터와 일치하는 스킬이 없습니다.",
     skillCount: "{count}개 스킬",
     resultCount: "{count}개 결과",
@@ -380,12 +386,14 @@ export const ko: Translations = {
     importConfig: "JSON에서 설정 가져오기",
     resetDefaults: "기본값으로 재설정",
     resetScopeTooltip: "{scope}을(를) 기본값으로 재설정",
-    confirmResetScope: "모든 {scope} 설정을 기본값으로 재설정하시겠습니까? 이 작업은 양식만 업데이트하며, 저장을 누르기 전까지는 변경 사항이 config.yaml에 기록되지 않습니다.",
-    resetScopeToast: "{scope}이(가) 기본값으로 재설정되었습니다 — 검토 후 저장하여 적용하세요",
+    confirmResetScope:
+      "모든 {scope} 설정을 기본값으로 재설정하시겠습니까? 이 작업은 양식만 업데이트하며, 저장을 누르기 전까지는 변경 사항이 config.yaml에 기록되지 않습니다.",
+    resetScopeToast:
+      "{scope}이(가) 기본값으로 재설정되었습니다 — 검토 후 저장하여 적용하세요",
     rawYaml: "원본 YAML 설정",
     searchResults: "검색 결과",
     fields: "개 필드",
-    noFieldsMatch: '\"{query}\"와(과) 일치하는 필드가 없습니다',
+    noFieldsMatch: '"{query}"와(과) 일치하는 필드가 없습니다',
     configSaved: "설정이 저장되었습니다",
     yamlConfigSaved: "YAML 설정이 저장되었습니다",
     failedToSave: "저장에 실패했습니다",
@@ -413,7 +421,8 @@ export const ko: Translations = {
   },
 
   env: {
-    changesNote: "변경 사항은 즉시 디스크에 저장됩니다. 활성 세션은 자동으로 새 키를 가져옵니다.",
+    changesNote:
+      "변경 사항은 즉시 디스크에 저장됩니다. 활성 세션은 자동으로 새 키를 가져옵니다.",
     confirmClearMessage:
       "이 변수에 대해 저장된 값이 .env 파일에서 제거됩니다. UI에서는 이 작업을 되돌릴 수 없습니다.",
     confirmClearTitle: "이 키를 지우시겠습니까?",
@@ -433,19 +442,22 @@ export const ko: Translations = {
     showValue: "실제 값 표시",
     hideValue: "값 숨기기",
     customTitle: "사용자 지정 키",
-    customHint: "Hermes가 인식하지 못하는, .env에 저장된 임의의 환경 변수입니다. 스킬, MCP 서버 또는 자체 도구를 위한 환경 변수를 주입하는 데 사용하세요.",
+    customHint:
+      "Hermes가 인식하지 못하는, .env에 저장된 임의의 환경 변수입니다. 스킬, MCP 서버 또는 자체 도구를 위한 환경 변수를 주입하는 데 사용하세요.",
     customConfigured: "사용자 지정 키 {count}개 설정됨",
     addCustomKey: "사용자 지정 키 추가",
     customKeyName: "변수 이름",
     customKeyNamePlaceholder: "예: MY_SERVICE_API_KEY",
     add: "추가",
-    invalidKeyName: "문자, 숫자, 밑줄만 사용하세요(문자 또는 밑줄로 시작해야 합니다).",
+    invalidKeyName:
+      "문자, 숫자, 밑줄만 사용하세요(문자 또는 밑줄로 시작해야 합니다).",
   },
 
   oauth: {
     title: "제공자 로그인 (OAuth)",
     providerLogins: "제공자 로그인 (OAuth)",
-    description: "{connected}/{total} OAuth 제공자가 연결되었습니다. 로그인 흐름은 현재 CLI를 통해 실행됩니다. 명령 복사를 클릭하고 터미널에 붙여넣어 설정하세요.",
+    description:
+      "{connected}/{total} OAuth 제공자가 연결되었습니다. 로그인 흐름은 현재 CLI를 통해 실행됩니다. 명령 복사를 클릭하고 터미널에 붙여넣어 설정하세요.",
     connected: "연결됨",
     expired: "만료됨",
     notConnected: "연결되지 않음. 터미널에서 {command}을(를) 실행하세요.",
@@ -463,14 +475,17 @@ export const ko: Translations = {
     exchangingCode: "코드를 토큰으로 교환 중…",
     connectedClosing: "연결되었습니다! 닫는 중…",
     loginFailed: "로그인 실패.",
-    sessionExpired: "세션이 만료되었습니다. 다시 시도를 클릭하여 새 로그인을 시작하세요.",
+    sessionExpired:
+      "세션이 만료되었습니다. 다시 시도를 클릭하여 새 로그인을 시작하세요.",
     reOpenAuth: "인증 페이지 다시 열기",
     reOpenVerification: "확인 페이지 다시 열기",
     submitCode: "코드 제출",
     pasteCode: "인증 코드 붙여넣기 (#state 접미사 포함도 가능)",
     waitingAuth: "브라우저에서 인증을 기다리는 중…",
-    enterCodePrompt: "새 탭이 열렸습니다. 메시지가 표시되면 이 코드를 입력하세요:",
-    pkceStep1: "claude.ai로 새 탭이 열렸습니다. 로그인하고 Authorize를 클릭하세요.",
+    enterCodePrompt:
+      "새 탭이 열렸습니다. 메시지가 표시되면 이 코드를 입력하세요:",
+    pkceStep1:
+      "claude.ai로 새 탭이 열렸습니다. 로그인하고 Authorize를 클릭하세요.",
     pkceStep2: "인증 후 표시된 인증 코드를 복사하세요.",
     pkceStep3: "아래에 붙여넣고 제출하세요.",
     flowLabels: {
@@ -589,11 +604,10 @@ export const ko: Translations = {
       copy_button: "이미지 복사",
       copied: "복사됨 ✓",
       download_button: "PNG 다운로드",
-      hint:
-        "X에 공유를 누르면 새 탭에서 미리 작성된 게시물이 열립니다. 1200×630 배지를 첨부하려면 먼저 이미지 복사를 누르세요 — X 작성기에서 바로 붙여넣을 수 있습니다. PNG 다운로드는 파일을 저장하여 어디서나 사용할 수 있게 합니다.",
+      hint: "X에 공유를 누르면 새 탭에서 미리 작성된 게시물이 열립니다. 1200×630 배지를 첨부하려면 먼저 이미지 복사를 누르세요 — X 작성기에서 바로 붙여넣을 수 있습니다. PNG 다운로드는 파일을 저장하여 어디서나 사용할 수 있게 합니다.",
       clipboard_unsupported:
         "이 브라우저에서는 클립보드 이미지 복사를 지원하지 않습니다 — 대신 다운로드를 이용하세요.",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
   kanban: {
@@ -697,16 +711,19 @@ export const ko: Translations = {
     archiveBoardConfirm:
       "보드 '{name}'을(를) 보관하시겠습니까? 보드는 boards/_archived/로 이동되어 나중에 복구할 수 있습니다. 이 보드의 작업은 더 이상 UI 어디에도 나타나지 않습니다.",
     archiveBoardTitle: "이 보드 보관",
-    boardSwitcherHint: "보드를 사용하면 관련 없는 작업 흐름을 분리할 수 있습니다",
+    boardSwitcherHint:
+      "보드를 사용하면 관련 없는 작업 흐름을 분리할 수 있습니다",
     taskCreatedWarning: "작업이 생성되었지만: ",
     moveFailed: "이동 실패: ",
     bulkFailed: "일괄 처리: ",
     completionBlockedHallucination: "⚠ 완료가 차단됨 — 팬텀 카드 ID",
     suspectedHallucinatedReferences: "⚠ 본문이 팬텀 카드 ID를 참조함",
     pickProfileFirst: "먼저 프로필을 선택하십시오.",
-    unblockedMessage: "{id}의 차단을 해제했습니다. 작업이 다음 틱을 위해 준비되었습니다.",
+    unblockedMessage:
+      "{id}의 차단을 해제했습니다. 작업이 다음 틱을 위해 준비되었습니다.",
     unblockFailed: "차단 해제 실패: ",
-    reclaimedMessage: "{id}을(를) 회수했습니다. 작업이 ready 상태로 돌아갔습니다.",
+    reclaimedMessage:
+      "{id}을(를) 회수했습니다. 작업이 ready 상태로 돌아갔습니다.",
     reclaimFailed: "회수 실패: ",
     reassignedMessage: "{id}을(를) {profile}(으)로 재지정했습니다.",
     reassignFailed: "재지정 실패: ",

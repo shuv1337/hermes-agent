@@ -156,7 +156,7 @@ class TestUpdateCwdWindowsMsys:
         new_dir = tmp_path / "next"
         new_dir.mkdir()
 
-        with open(env._cwd_file, "w") as f:
+        with open(env._cwd_file, "w", encoding="utf-8") as f:
             f.write("/c/whatever/from/bash")
 
         # Translate the synthetic MSYS string to the real native dir.

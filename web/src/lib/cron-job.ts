@@ -28,8 +28,13 @@ export function splitCronList(value: unknown): string[] {
 
 /** Trim to a non-empty string, or null. Optionally strip trailing slashes
  * (base URLs). Mirrors the backend's `_cron_optional_text`. */
-function optionalText(value: string, stripTrailingSlash = false): string | null {
-  const text = stripTrailingSlash ? value.trim().replace(/\/+$/, "") : value.trim();
+function optionalText(
+  value: string,
+  stripTrailingSlash = false,
+): string | null {
+  const text = stripTrailingSlash
+    ? value.trim().replace(/\/+$/, "")
+    : value.trim();
   return text || null;
 }
 
@@ -70,7 +75,9 @@ export function cronJobHasExecutionContent(
   job: Pick<CronJobMutation, "prompt" | "skills" | "script">,
 ): boolean {
   const skills = Array.isArray(job.skills) ? job.skills.filter(Boolean) : [];
-  return Boolean(asString(job.prompt).trim() || asString(job.script).trim() || skills.length);
+  return Boolean(
+    asString(job.prompt).trim() || asString(job.script).trim() || skills.length,
+  );
 }
 
 export function cronJobFormFromJob(job: CronJob): CronJobFormState {

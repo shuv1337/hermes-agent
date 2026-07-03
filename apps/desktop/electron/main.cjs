@@ -36,11 +36,7 @@ const {
   SESSION_WINDOW_MIN_WIDTH
 } = require('./session-windows.cjs')
 const { canImportHermesCli, verifyHermesCli } = require('./backend-probes.cjs')
-const {
-  createLinkTitleWindow,
-  guardLinkTitleSession,
-  readLinkTitleWindowTitle
-} = require('./link-title-window.cjs')
+const { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } = require('./link-title-window.cjs')
 const { probeGatewayWebSocket } = require('./gateway-ws-probe.cjs')
 const { adoptServedDashboardToken } = require('./dashboard-token.cjs')
 const { waitForDashboardPortAnnouncement } = require('./backend-ready.cjs')
@@ -222,7 +218,6 @@ if (IS_WSL && !REMOTE_DISPLAY_REASON && fs.existsSync('/dev/dxg')) {
 }
 
 ipcMain.handle('hermes:get-remote-display-reason', () => REMOTE_DISPLAY_REASON)
-
 
 // Keep the renderer running at full speed while the window is in the background
 // or occluded. The chat transcript streams to screen through a
@@ -2200,7 +2195,9 @@ async function releaseBackendLock(updateRoot, tag) {
   // imports broken (the July 2026 brotlicffi/_sodium.pyd incidents). Failing
   // the update loudly and keeping the app running is strictly better than a
   // bricked install that needs manual venv surgery.
-  rememberLog(`[${tag}] venv shim still locked after 15s; aborting hand-off (something outside this app holds the venv)`)
+  rememberLog(
+    `[${tag}] venv shim still locked after 15s; aborting hand-off (something outside this app holds the venv)`
+  )
   return { unlocked: false }
 }
 
@@ -4169,8 +4166,8 @@ function restorePersistedZoomLevel(window) {
       `(() => { try { return localStorage.getItem(${JSON.stringify(ZOOM_STORAGE_KEY)}) } catch { return null } })()`
     )
     .then(stored => {
-      if (stored == null || !window || window.isDestroyed()) return
-      const level = clampZoomLevel(Number(stored))
+      if (!window || window.isDestroyed()) return
+      const level = stored == null ? DEFAULT_DESKTOP_ZOOM_LEVEL : clampZoomLevel(Number(stored))
       window.webContents.setZoomLevel(level)
     })
     .catch(error => rememberLog(`[zoom] restore failed: ${error?.message || error}`))
@@ -4198,10 +4195,6 @@ function installZoomShortcuts(window) {
       setAndPersistZoomLevel(window, window.webContents.getZoomLevel() - ZOOM_STEP)
     }
   })
-}
-
-function resetZoomLevel(window) {
-  window.webContents.setZoomLevel(DEFAULT_DESKTOP_ZOOM_LEVEL)
 }
 
 function installContextMenu(window) {

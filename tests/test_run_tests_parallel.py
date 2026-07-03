@@ -55,7 +55,7 @@ def _pid_alive(pid: int) -> bool:
         # test is skipped on Windows so the path is unreachable.
         raise RuntimeError("_pid_alive POSIX-only")
     try:
-        os.kill(pid, 0)
+        os.kill(pid, 0)  # windows-footgun: ok
     except ProcessLookupError:
         return False
     except PermissionError:

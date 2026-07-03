@@ -26,7 +26,12 @@ import { formatTokenCount } from "@/lib/format";
 import { Button } from "@nous-research/ui/ui/components/button";
 import { Spinner } from "@nous-research/ui/ui/components/spinner";
 import { Stats } from "@nous-research/ui/ui/components/stats";
-import { Card, CardContent, CardHeader, CardTitle } from "@nous-research/ui/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@nous-research/ui/ui/components/card";
 import { Badge } from "@nous-research/ui/ui/components/badge";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useModalBehavior } from "@/hooks/useModalBehavior";
@@ -51,9 +56,21 @@ const AUX_TASKS: readonly { key: string; label: string; hint: string }[] = [
   { key: "approval", label: "Approval", hint: "Smart auto-approve" },
   { key: "mcp", label: "MCP", hint: "MCP tool routing" },
   { key: "title_generation", label: "Title Gen", hint: "Session titles" },
-  { key: "triage_specifier", label: "Triage Specifier", hint: "Kanban spec fleshing" },
-  { key: "kanban_decomposer", label: "Kanban Decomposer", hint: "Task decomposition" },
-  { key: "profile_describer", label: "Profile Describer", hint: "Auto profile descriptions" },
+  {
+    key: "triage_specifier",
+    label: "Triage Specifier",
+    hint: "Kanban spec fleshing",
+  },
+  {
+    key: "kanban_decomposer",
+    label: "Kanban Decomposer",
+    hint: "Task decomposition",
+  },
+  {
+    key: "profile_describer",
+    label: "Profile Describer",
+    hint: "Auto profile descriptions",
+  },
   { key: "curator", label: "Curator", hint: "Skill-usage review" },
 ] as const;
 
@@ -380,15 +397,12 @@ function ModelCard({
   const caps = entry.capabilities;
 
   const isMain =
-    !!main &&
-    main.provider === provider &&
-    main.model === entry.model;
+    !!main && main.provider === provider && main.model === entry.model;
 
   // First aux task currently using this model (if any).
   const mainAuxTask =
-    aux.find(
-      (a) => a.provider === provider && a.model === entry.model,
-    )?.task ?? null;
+    aux.find((a) => a.provider === provider && a.model === entry.model)?.task ??
+    null;
 
   return (
     <Card
@@ -517,9 +531,7 @@ function ModelCard({
               </span>
             )}
           </div>
-          {entry.last_used_at > 0 && (
-            <span>{timeAgo(entry.last_used_at)}</span>
-          )}
+          {entry.last_used_at > 0 && <span>{timeAgo(entry.last_used_at)}</span>}
         </div>
 
         <CapabilityBadges capabilities={entry.capabilities} />
@@ -532,9 +544,7 @@ function ModelCard({
 /*  Model Settings panel (top of page)                                  */
 /* ──────────────────────────────────────────────────────────────────── */
 
-type PickerTarget =
-  | { kind: "main" }
-  | { kind: "aux"; task: string };
+type PickerTarget = { kind: "main" } | { kind: "aux"; task: string };
 
 type MoaPickerTarget =
   | { kind: "reference"; index: number }
@@ -581,7 +591,12 @@ function AuxiliaryTasksModal({
       aria-modal="true"
       aria-labelledby="aux-modal-title"
     >
-      <div className={cn(themedBody, "relative w-full max-w-2xl max-h-[80vh] border border-border bg-card shadow-2xl flex flex-col")}>
+      <div
+        className={cn(
+          themedBody,
+          "relative w-full max-w-2xl max-h-[80vh] border border-border bg-card shadow-2xl flex flex-col",
+        )}
+      >
         <Button
           ghost
           size="icon"
@@ -613,17 +628,16 @@ function AuxiliaryTasksModal({
           </div>
           <p className="text-xs text-text-secondary mt-2">
             Auxiliary tasks handle side-jobs like vision, session search, and
-            compression. <span className="font-mono">auto</span> means
-            &quot;use the main model&quot;. Override per-task when you want a
-            cheap/fast model for a specific job.
+            compression. <span className="font-mono">auto</span> means &quot;use
+            the main model&quot;. Override per-task when you want a cheap/fast
+            model for a specific job.
           </p>
         </header>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-1">
           {AUX_TASKS.map((t) => {
             const cur = aux?.tasks.find((a) => a.task === t.key);
-            const isAuto =
-              !cur || cur.provider === "auto" || !cur.provider;
+            const isAuto = !cur || cur.provider === "auto" || !cur.provider;
             return (
               <div
                 key={t.key}
@@ -632,9 +646,7 @@ function AuxiliaryTasksModal({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
                     <span className="text-xs font-medium">{t.label}</span>
-                    <span className="text-xs text-text-tertiary">
-                      {t.hint}
-                    </span>
+                    <span className="text-xs text-text-tertiary">{t.hint}</span>
                   </div>
                   <div className="text-xs font-mono text-text-secondary truncate">
                     {isAuto
@@ -661,8 +673,7 @@ function AuxiliaryTasksModal({
             loader={api.getModelOptions}
             alwaysGlobal
             title={`Set Auxiliary: ${
-              AUX_TASKS.find((t) => t.key === picker.task)?.label ??
-              picker.task
+              AUX_TASKS.find((t) => t.key === picker.task)?.label ?? picker.task
             }`}
             onApply={async ({ provider, model, confirmExpensiveModel }) => {
               const result = await api.setModelAssignment({
@@ -705,7 +716,9 @@ function MoaModelsModal({
   onSaved(next: MoaConfigResponse): void;
 }) {
   const [draft, setDraft] = useState<MoaConfigResponse>(config);
-  const [selected, setSelected] = useState(config.default_preset || Object.keys(config.presets)[0] || "default");
+  const [selected, setSelected] = useState(
+    config.default_preset || Object.keys(config.presets)[0] || "default",
+  );
   const [newName, setNewName] = useState("");
   const [picker, setPicker] = useState<MoaPickerTarget | null>(null);
   const [busy, setBusy] = useState(false);
@@ -713,9 +726,14 @@ function MoaModelsModal({
 
   const presetNames = Object.keys(draft.presets || {});
   const preset = draft.presets[selected] || draft.presets[presetNames[0]];
-  const slotLabel = (slot: MoaModelSlot) => `${slot.provider || "(provider)"} · ${slot.model || "(model)"}`;
+  const slotLabel = (slot: MoaModelSlot) =>
+    `${slot.provider || "(provider)"} · ${slot.model || "(model)"}`;
 
-  const updateSelectedPreset = (updater: (preset: MoaConfigResponse["presets"][string]) => MoaConfigResponse["presets"][string]) => {
+  const updateSelectedPreset = (
+    updater: (
+      preset: MoaConfigResponse["presets"][string],
+    ) => MoaConfigResponse["presets"][string],
+  ) => {
     setDraft((prev) => ({
       ...prev,
       presets: {
@@ -753,7 +771,10 @@ function MoaModelsModal({
     setDraft((prev) => ({
       ...prev,
       default_preset: prev.default_preset || name,
-      presets: { ...prev.presets, [name]: { ...seed, reference_models: [...seed.reference_models] } },
+      presets: {
+        ...prev.presets,
+        [name]: { ...seed, reference_models: [...seed.reference_models] },
+      },
     }));
     setSelected(name);
     setNewName("");
@@ -769,8 +790,10 @@ function MoaModelsModal({
       return {
         ...prev,
         presets: next,
-        default_preset: prev.default_preset === selected ? nextSelected : prev.default_preset,
-        active_preset: prev.active_preset === selected ? "" : prev.active_preset,
+        default_preset:
+          prev.default_preset === selected ? nextSelected : prev.default_preset,
+        active_preset:
+          prev.active_preset === selected ? "" : prev.active_preset,
       };
     });
     setSelected(nextSelected);
@@ -782,11 +805,15 @@ function MoaModelsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4">
       <Card className="max-h-[85vh] w-full max-w-2xl overflow-auto">
         <CardHeader>
-          <CardTitle className="text-sm">Configure Mixture of Agents presets</CardTitle>
+          <CardTitle className="text-sm">
+            Configure Mixture of Agents presets
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-xs text-text-secondary">
-            Presets appear as models under the Mixture of Agents provider. References produce perspectives; the aggregator is the acting model that answers and calls tools.
+            Presets appear as models under the Mixture of Agents provider.
+            References produce perspectives; the aggregator is the acting model
+            that answers and calls tools.
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -795,17 +822,43 @@ function MoaModelsModal({
               value={selected}
               onChange={(event) => setSelected(event.target.value)}
             >
-              {presetNames.map((name) => <option key={name} value={name}>{name}</option>)}
+              {presetNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
             </select>
-            <Button size="sm" outlined onClick={() => setDraft((prev) => ({ ...prev, default_preset: selected }))}>Set default</Button>
-            <Button size="sm" ghost disabled={presetNames.length <= 1} onClick={deletePreset}>Delete</Button>
+            <Button
+              size="sm"
+              outlined
+              onClick={() =>
+                setDraft((prev) => ({ ...prev, default_preset: selected }))
+              }
+            >
+              Set default
+            </Button>
+            <Button
+              size="sm"
+              ghost
+              disabled={presetNames.length <= 1}
+              onClick={deletePreset}
+            >
+              Delete
+            </Button>
             <input
               className="border border-border bg-background px-2 py-1 text-xs"
               placeholder="new preset name"
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
             />
-            <Button size="sm" outlined disabled={!newName.trim() || !!draft.presets[newName.trim()]} onClick={addPreset}>Add preset</Button>
+            <Button
+              size="sm"
+              outlined
+              disabled={!newName.trim() || !!draft.presets[newName.trim()]}
+              onClick={addPreset}
+            >
+              Add preset
+            </Button>
           </div>
 
           <div className="text-xs text-text-secondary">
@@ -813,29 +866,81 @@ function MoaModelsModal({
           </div>
 
           <div className="space-y-2">
-            <div className="text-display text-xs font-medium tracking-wider">Reference models</div>
+            <div className="text-display text-xs font-medium tracking-wider">
+              Reference models
+            </div>
             {preset.reference_models.map((slot, index) => (
-              <div key={`${selected}-${slot.provider}-${slot.model}-${index}`} className="flex items-center gap-2 border border-border/50 bg-muted/20 px-3 py-2">
-                <div className="min-w-0 flex-1 truncate font-mono text-xs text-text-secondary">{slotLabel(slot)}</div>
-                <Button size="sm" outlined onClick={() => setPicker({ kind: "reference", index })}>Change</Button>
-                <Button size="sm" ghost disabled={preset.reference_models.length <= 1} onClick={() => updateSelectedPreset((prev) => ({ ...prev, reference_models: prev.reference_models.filter((_, i) => i !== index) }))}>Remove</Button>
+              <div
+                key={`${selected}-${slot.provider}-${slot.model}-${index}`}
+                className="flex items-center gap-2 border border-border/50 bg-muted/20 px-3 py-2"
+              >
+                <div className="min-w-0 flex-1 truncate font-mono text-xs text-text-secondary">
+                  {slotLabel(slot)}
+                </div>
+                <Button
+                  size="sm"
+                  outlined
+                  onClick={() => setPicker({ kind: "reference", index })}
+                >
+                  Change
+                </Button>
+                <Button
+                  size="sm"
+                  ghost
+                  disabled={preset.reference_models.length <= 1}
+                  onClick={() =>
+                    updateSelectedPreset((prev) => ({
+                      ...prev,
+                      reference_models: prev.reference_models.filter(
+                        (_, i) => i !== index,
+                      ),
+                    }))
+                  }
+                >
+                  Remove
+                </Button>
               </div>
             ))}
-            <Button size="sm" outlined onClick={() => updateSelectedPreset((prev) => ({ ...prev, reference_models: [...prev.reference_models, prev.aggregator] }))}>Add reference model</Button>
+            <Button
+              size="sm"
+              outlined
+              onClick={() =>
+                updateSelectedPreset((prev) => ({
+                  ...prev,
+                  reference_models: [...prev.reference_models, prev.aggregator],
+                }))
+              }
+            >
+              Add reference model
+            </Button>
           </div>
 
           <div className="space-y-2">
-            <div className="text-display text-xs font-medium tracking-wider">Aggregator</div>
+            <div className="text-display text-xs font-medium tracking-wider">
+              Aggregator
+            </div>
             <div className="flex items-center gap-2 border border-border/50 bg-muted/20 px-3 py-2">
-              <div className="min-w-0 flex-1 truncate font-mono text-xs text-text-secondary">{slotLabel(preset.aggregator)}</div>
-              <Button size="sm" outlined onClick={() => setPicker({ kind: "aggregator" })}>Change</Button>
+              <div className="min-w-0 flex-1 truncate font-mono text-xs text-text-secondary">
+                {slotLabel(preset.aggregator)}
+              </div>
+              <Button
+                size="sm"
+                outlined
+                onClick={() => setPicker({ kind: "aggregator" })}
+              >
+                Change
+              </Button>
             </div>
           </div>
 
           {error && <div className="text-xs text-destructive">{error}</div>}
           <div className="flex justify-end gap-2 pt-2">
-            <Button ghost onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+            <Button ghost onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button onClick={save} disabled={busy}>
+              {busy ? "Saving…" : "Save"}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -847,15 +952,20 @@ function MoaModelsModal({
           title="Select MoA Model"
           onApply={async ({ provider, model }) => {
             if ((provider || "").toLowerCase() === "moa") {
-              setError("MoA presets can't reference or aggregate the Mixture of Agents provider (no recursive MoA).");
+              setError(
+                "MoA presets can't reference or aggregate the Mixture of Agents provider (no recursive MoA).",
+              );
               return;
             }
             setError(null);
             updateSelectedPreset((prev) => {
-              if (picker.kind === "aggregator") return { ...prev, aggregator: { provider, model } };
+              if (picker.kind === "aggregator")
+                return { ...prev, aggregator: { provider, model } };
               return {
                 ...prev,
-                reference_models: prev.reference_models.map((slot, i) => i === picker.index ? { provider, model } : slot),
+                reference_models: prev.reference_models.map((slot, i) =>
+                  i === picker.index ? { provider, model } : slot,
+                ),
               };
             });
           }}
@@ -887,7 +997,10 @@ function ModelSettingsPanel({
   const mainModel = aux?.main.model ?? "";
 
   useEffect(() => {
-    api.getMoaModels().then(setMoa).catch(() => setMoa(null));
+    api
+      .getMoaModels()
+      .then(setMoa)
+      .catch(() => setMoa(null));
   }, [refreshKey]);
 
   const applyAssignment = async ({
@@ -915,9 +1028,8 @@ function ModelSettingsPanel({
   };
 
   // Count how many aux tasks have overrides
-  const auxOverrideCount = aux?.tasks.filter(
-    (a) => a.provider && a.provider !== "auto",
-  ).length ?? 0;
+  const auxOverrideCount =
+    aux?.tasks.filter((a) => a.provider && a.provider !== "auto").length ?? 0;
 
   return (
     <Card className="min-w-0 max-w-full overflow-hidden">
@@ -1080,7 +1192,9 @@ export default function ModelsPage() {
     api
       .getConfig()
       .then((cfg) => {
-        const dash = (cfg?.dashboard ?? {}) as { show_token_analytics?: unknown };
+        const dash = (cfg?.dashboard ?? {}) as {
+          show_token_analytics?: unknown;
+        };
         setShowTokens(dash.show_token_analytics === true);
       })
       .catch(() => {
@@ -1196,57 +1310,63 @@ export default function ModelsPage() {
                 <Stats
                   className="min-w-0"
                   items={
-                  showTokens
-                    ? [
-                        {
-                          label: t.models.modelsUsed,
-                          value: String(data.totals.distinct_models),
-                        },
-                        {
-                          label: t.analytics.totalTokens,
-                          value: formatTokens(
-                            data.totals.total_input + data.totals.total_output,
-                          ),
-                        },
-                        {
-                          label: t.analytics.input,
-                          value: formatTokens(data.totals.total_input),
-                        },
-                        {
-                          label: t.analytics.output,
-                          value: formatTokens(data.totals.total_output),
-                        },
-                        {
-                          label: t.models.estimatedCost,
-                          value: formatCost(data.totals.total_estimated_cost),
-                        },
-                        {
-                          label: t.analytics.totalSessions,
-                          value: String(data.totals.total_sessions),
-                        },
-                      ]
-                    : [
-                        {
-                          label: t.models.modelsUsed,
-                          value: String(data.totals.distinct_models),
-                        },
-                        {
-                          label: t.analytics.totalSessions,
-                          value: String(data.totals.total_sessions),
-                        },
-                      ]
-                }
-              />
+                    showTokens
+                      ? [
+                          {
+                            label: t.models.modelsUsed,
+                            value: String(data.totals.distinct_models),
+                          },
+                          {
+                            label: t.analytics.totalTokens,
+                            value: formatTokens(
+                              data.totals.total_input +
+                                data.totals.total_output,
+                            ),
+                          },
+                          {
+                            label: t.analytics.input,
+                            value: formatTokens(data.totals.total_input),
+                          },
+                          {
+                            label: t.analytics.output,
+                            value: formatTokens(data.totals.total_output),
+                          },
+                          {
+                            label: t.models.estimatedCost,
+                            value: formatCost(data.totals.total_estimated_cost),
+                          },
+                          {
+                            label: t.analytics.totalSessions,
+                            value: String(data.totals.total_sessions),
+                          },
+                        ]
+                      : [
+                          {
+                            label: t.models.modelsUsed,
+                            value: String(data.totals.distinct_models),
+                          },
+                          {
+                            label: t.analytics.totalSessions,
+                            value: String(data.totals.total_sessions),
+                          },
+                        ]
+                  }
+                />
               </div>
               {!showTokens && (
                 <p className="mt-4 text-xs text-text-tertiary leading-relaxed">
                   Token & cost analytics are hidden because the local counts
-                  exclude auxiliary calls (compression, vision, web extract,
-                  …) and provider retries, so they diverge from your provider
-                  bill. Enable{" "}
-                  <span className="font-mono">dashboard.show_token_analytics</span>{" "}
-                  in <a href="/config" className="underline">Config</a> to
-                  show the local debug estimate anyway.
+                  exclude auxiliary calls (compression, vision, web extract, …)
+                  and provider retries, so they diverge from your provider bill.
+                  Enable{" "}
+                  <span className="font-mono">
+                    dashboard.show_token_analytics
+                  </span>{" "}
+                  in{" "}
+                  <a href="/config" className="underline">
+                    Config
+                  </a>{" "}
+                  to show the local debug estimate anyway.
                 </p>
               )}
             </CardContent>

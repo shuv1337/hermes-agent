@@ -1,9 +1,6 @@
 import { useMemo } from "react";
 import { Users } from "lucide-react";
-import {
-  Select,
-  SelectOption,
-} from "@nous-research/ui/ui/components/select";
+import { Select, SelectOption } from "@nous-research/ui/ui/components/select";
 import { useProfileScope } from "@/contexts/useProfileScope";
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -57,8 +54,7 @@ export function ProfileSwitcher({ collapsed }: ProfileSwitcherProps) {
           "[&_button]:font-sans [&_button]:normal-case [&_button]:tracking-normal",
           "[&_[role=listbox]>div]:font-sans [&_[role=listbox]>div]:text-xs",
           "[&_[role=listbox]>div]:normal-case [&_[role=listbox]>div]:tracking-normal",
-          isOther &&
-            "[&_button]:border-amber-500/50 [&_button]:text-amber-300",
+          isOther && "[&_button]:border-amber-500/50 [&_button]:text-amber-300",
         )}
         id="hermes-profile-switcher"
         onValueChange={setProfile}

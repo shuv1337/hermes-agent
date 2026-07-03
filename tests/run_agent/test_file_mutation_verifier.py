@@ -360,7 +360,7 @@ class TestFormatFooter:
         tmp = tempfile.mkdtemp(prefix="hermes_footer_")
         try:
             cfg = os.path.join(tmp, "config.yaml")
-            with open(cfg, "w") as fh:
+            with open(cfg, "w", encoding="utf-8") as fh:
                 fh.write("openrouter_api_key: sk-LEAK\n")
             footer = AIAgent._format_file_mutation_failure_footer(
                 {cfg: {

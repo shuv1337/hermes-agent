@@ -1479,7 +1479,7 @@ class TestContextLengthCache:
         with patch("agent.model_metadata._get_context_cache_path", return_value=cache_file):
             save_context_length("model", "http://x", 32768)
             save_context_length("model", "http://x", 32768)
-            with open(cache_file) as f:
+            with open(cache_file, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             assert len(data["context_lengths"]) == 1
 
@@ -1585,7 +1585,7 @@ class TestMoAContextLength:
     def _write_moa_config(self, home, aggregator):
         import os
         os.makedirs(home, exist_ok=True)
-        with open(os.path.join(home, "config.yaml"), "w") as f:
+        with open(os.path.join(home, "config.yaml"), "w") as f:  # windows-footgun: ok
             yaml.safe_dump(
                 {
                     "moa": {

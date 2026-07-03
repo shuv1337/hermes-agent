@@ -224,7 +224,8 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
   const sessionTitle =
     sessionTitleState.scope === titleScope ? sessionTitleState.title : null;
   const handleSessionTitleChange = useCallback(
-    (title: string | null) => setSessionTitleState({ scope: titleScope, title }),
+    (title: string | null) =>
+      setSessionTitleState({ scope: titleScope, title }),
     [titleScope],
   );
 
@@ -445,7 +446,10 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
           // Most common reason: the Clipboard API requires a user gesture.
           // This can fail when the OSC 52 response arrives outside the
           // original keydown event's activation. Log to aid debugging.
-          console.warn("[dashboard clipboard] OSC 52 write failed:", err.message);
+          console.warn(
+            "[dashboard clipboard] OSC 52 write failed:",
+            err.message,
+          );
         });
       } catch {
         console.warn("[dashboard clipboard] malformed OSC 52 payload");
@@ -475,7 +479,10 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
           // gesture — async round-trips through OSC 52 can lose activation
           // and fail with "Document is not focused".
           navigator.clipboard.writeText(sel).catch((err) => {
-            console.warn("[dashboard clipboard] direct copy failed:", err.message);
+            console.warn(
+              "[dashboard clipboard] direct copy failed:",
+              err.message,
+            );
           });
           // Clear xterm.js's highlight after copy (matches gnome-terminal).
           term.clearSelection();
@@ -580,7 +587,11 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
       // display:none hosts have clientWidth/Height = 0, which fit() turns
       // into a 1x1 terminal.  Skip entirely while hidden; the visibility
       // effect below runs another fit as soon as the tab is shown again.
-      if (!host.isConnected || host.clientWidth <= 0 || host.clientHeight <= 0) {
+      if (
+        !host.isConnected ||
+        host.clientWidth <= 0 ||
+        host.clientHeight <= 0
+      ) {
         return;
       }
       const w = terminalTierWidthPx(host);
@@ -627,7 +638,10 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
     ro.observe(host);
 
     window.addEventListener("resize", scheduleSyncTerminalMetrics);
-    window.visualViewport?.addEventListener("resize", scheduleSyncTerminalMetrics);
+    window.visualViewport?.addEventListener(
+      "resize",
+      scheduleSyncTerminalMetrics,
+    );
     scheduleHostSync();
     requestAnimationFrame(() => scheduleHostSync());
 
@@ -666,9 +680,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
       reconnectAttemptRef.current = attempt;
       const delayMs = Math.min(250 * 2 ** (attempt - 1), 3000);
       setSessionEnded(false);
-      setBanner(
-        `Chat connection interrupted (code ${code}). Reconnecting…`,
-      );
+      setBanner(`Chat connection interrupted (code ${code}). Reconnecting…`);
       reconnectTimerRef.current = setTimeout(() => {
         reconnectTimerRef.current = null;
         setReconnectNonce((n) => n + 1);
@@ -688,121 +700,119 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
-    ws.onopen = () => {
-      clearReconnectTimer();
-      reconnectAttemptRef.current = 0;
-      setBanner(null);
-      setSessionEnded(false);
-      // Send the initial RESIZE immediately so Ink has *a* size to lay
-      // out against on its first paint.  The double-rAF block above will
-      // follow up with the authoritative measurement — at worst Ink
-      // reflows once after the PTY boots, which is imperceptible.
-      ws.send(`\x1b[RESIZE:${term.cols};${term.rows}]`);
-      // One-shot: a ?learn=<text> param (set by the Skills page "Learn a
-      // skill" panel) is typed into the composer as a /learn command once the
-      // PTY is up. /learn resolves via command.dispatch → a normal agent turn,
-      // so this reuses the existing composer path — no special PTY protocol.
-      const learnSeed = searchParams.get("learn");
-      if (learnSeed) {
-        const next = new URLSearchParams(searchParams);
-        next.delete("learn");
-        setSearchParams(next, { replace: true });
-        const cmd = `/learn ${learnSeed}`.trim();
-        // Delay so Ink's composer has mounted and grabbed focus before input.
-        setTimeout(() => {
-          try {
-            wsRef.current?.send(cmd + "\r");
-          } catch {
-            /* PTY not ready / closed — user can retype */
-          }
-        }, 800);
-      }
-    };
+      ws.onopen = () => {
+        clearReconnectTimer();
+        reconnectAttemptRef.current = 0;
+        setBanner(null);
+        setSessionEnded(false);
+        // Send the initial RESIZE immediately so Ink has *a* size to lay
+        // out against on its first paint.  The double-rAF block above will
+        // follow up with the authoritative measurement — at worst Ink
+        // reflows once after the PTY boots, which is imperceptible.
+        ws.send(`\x1b[RESIZE:${term.cols};${term.rows}]`);
+        // One-shot: a ?learn=<text> param (set by the Skills page "Learn a
+        // skill" panel) is typed into the composer as a /learn command once the
+        // PTY is up. /learn resolves via command.dispatch → a normal agent turn,
+        // so this reuses the existing composer path — no special PTY protocol.
+        const learnSeed = searchParams.get("learn");
+        if (learnSeed) {
+          const next = new URLSearchParams(searchParams);
+          next.delete("learn");
+          setSearchParams(next, { replace: true });
+          const cmd = `/learn ${learnSeed}`.trim();
+          // Delay so Ink's composer has mounted and grabbed focus before input.
+          setTimeout(() => {
+            try {
+              wsRef.current?.send(cmd + "\r");
+            } catch {
+              /* PTY not ready / closed — user can retype */
+            }
+          }, 800);
+        }
+      };
 
-    ws.onmessage = (ev) => {
-      if (typeof ev.data === "string") {
-        term.write(ev.data);
-      } else {
-        term.write(new Uint8Array(ev.data as ArrayBuffer));
-      }
-    };
+      ws.onmessage = (ev) => {
+        if (typeof ev.data === "string") {
+          term.write(ev.data);
+        } else {
+          term.write(new Uint8Array(ev.data as ArrayBuffer));
+        }
+      };
 
-    ws.onclose = (ev) => {
-      wsRef.current = null;
-      if (unmounting) {
-        return;
-      }
-      // Surface the real cause to the browser console on every close so a
-      // "chat won't connect" report can be diagnosed without server access.
-      // The server sends a machine-parseable reason on every rejection (see
-      // pty_ws in web_server.py); echo it verbatim alongside the close code.
-      const why = ev.reason ? ` reason=${ev.reason}` : "";
-      console.warn(`[chat] PTY WebSocket closed code=${ev.code}${why}`);
-      if (ev.code === 4401) {
-        setBanner(
-          ev.reason
-            ? `Auth failed (${ev.reason}). Reload to refresh the session.`
-            : "Auth failed. Reload the page to refresh the session token.",
-        );
-        return;
-      }
-      if (ev.code === 4403) {
-        // Host/Origin mismatch (DNS-rebinding guard).
-        setBanner(
-          ev.reason
-            ? `Refused: ${ev.reason}.`
-            : "Refused: request host/origin doesn't match the dashboard.",
-        );
-        return;
-      }
-      if (ev.code === 4404) {
-        setBanner(
-          ev.reason
-            ? `Chat websocket unavailable: ${ev.reason}.`
-            : "Chat websocket unavailable on this server.",
-        );
-        return;
-      }
-      if (ev.code === 4408) {
-        setBanner(
-          ev.reason
-            ? `Refused: ${ev.reason}.`
-            : "Refused: your client isn't permitted (server bound to localhost only).",
-        );
-        return;
-      }
-      if (ev.code === 1011) {
-        // Server already wrote an ANSI error frame.
-        return;
-      }
-      if (!ev.wasClean || ev.code === 1001 || ev.code === 1006) {
-        scheduleReconnect(ev.code);
-        return;
-      }
-      // Normal/clean exit: the agent process ended (e.g. the user typed
-      // `/exit`, or started a new session). NS-504: surface an explicit
-      // restart affordance instead of leaving a dead terminal that only a
-      // full page refresh could recover.
-      term.write(
-        `\r\n\x1b[90m[session ended (code ${ev.code})]\x1b[0m\r\n`,
-      );
-      setSessionEnded(true);
-    };
+      ws.onclose = (ev) => {
+        wsRef.current = null;
+        if (unmounting) {
+          return;
+        }
+        // Surface the real cause to the browser console on every close so a
+        // "chat won't connect" report can be diagnosed without server access.
+        // The server sends a machine-parseable reason on every rejection (see
+        // pty_ws in web_server.py); echo it verbatim alongside the close code.
+        const why = ev.reason ? ` reason=${ev.reason}` : "";
+        console.warn(`[chat] PTY WebSocket closed code=${ev.code}${why}`);
+        if (ev.code === 4401) {
+          setBanner(
+            ev.reason
+              ? `Auth failed (${ev.reason}). Reload to refresh the session.`
+              : "Auth failed. Reload the page to refresh the session token.",
+          );
+          return;
+        }
+        if (ev.code === 4403) {
+          // Host/Origin mismatch (DNS-rebinding guard).
+          setBanner(
+            ev.reason
+              ? `Refused: ${ev.reason}.`
+              : "Refused: request host/origin doesn't match the dashboard.",
+          );
+          return;
+        }
+        if (ev.code === 4404) {
+          setBanner(
+            ev.reason
+              ? `Chat websocket unavailable: ${ev.reason}.`
+              : "Chat websocket unavailable on this server.",
+          );
+          return;
+        }
+        if (ev.code === 4408) {
+          setBanner(
+            ev.reason
+              ? `Refused: ${ev.reason}.`
+              : "Refused: your client isn't permitted (server bound to localhost only).",
+          );
+          return;
+        }
+        if (ev.code === 1011) {
+          // Server already wrote an ANSI error frame.
+          return;
+        }
+        if (!ev.wasClean || ev.code === 1001 || ev.code === 1006) {
+          scheduleReconnect(ev.code);
+          return;
+        }
+        // Normal/clean exit: the agent process ended (e.g. the user typed
+        // `/exit`, or started a new session). NS-504: surface an explicit
+        // restart affordance instead of leaving a dead terminal that only a
+        // full page refresh could recover.
+        term.write(`\r\n\x1b[90m[session ended (code ${ev.code})]\x1b[0m\r\n`);
+        setSessionEnded(true);
+      };
 
-    // Keystrokes → PTY.
-    //
-    // IMPORTANT:
-    // The embedded web chat has occasionally surfaced stray letters/digits
-    // in the input line after a turn completes. The most likely culprit is
-    // browser-side terminal control traffic being forwarded back into the
-    // PTY as if it were user text. SGR mouse tracking is the highest-risk
-    // path here: xterm.js emits raw CSI reports (`\x1b[<...`) that look like
-    // ordinary bytes to the backend.
-    //
-    // For the browser embed we prefer input stability over terminal-style
-    // mouse reporting, so we drop SGR mouse reports entirely instead of
-    // forwarding them into Hermes. Keyboard input, paste, and resize still
-    // behave normally.
+      // Keystrokes → PTY.
+      //
+      // IMPORTANT:
+      // The embedded web chat has occasionally surfaced stray letters/digits
+      // in the input line after a turn completes. The most likely culprit is
+      // browser-side terminal control traffic being forwarded back into the
+      // PTY as if it were user text. SGR mouse tracking is the highest-risk
+      // path here: xterm.js emits raw CSI reports (`\x1b[<...`) that look like
+      // ordinary bytes to the backend.
+      //
+      // For the browser embed we prefer input stability over terminal-style
+      // mouse reporting, so we drop SGR mouse reports entirely instead of
+      // forwarding them into Hermes. Keyboard input, paste, and resize still
+      // behave normally.
       // eslint-disable-next-line no-control-regex -- intentional ESC byte in xterm SGR mouse report parser
       const SGR_MOUSE_RE = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/;
       onDataDisposable = term.onData((data) => {
@@ -855,7 +865,16 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
         copyResetRef.current = null;
       }
     };
-  }, [channel, clearReconnectTimer, resumeParam, scopedProfile, reconnectNonce]);
+  }, [
+    channel,
+    clearReconnectTimer,
+    resumeParam,
+    scopedProfile,
+    reconnectNonce,
+    searchParams,
+    setSearchParams,
+    terminalTheme,
+  ]);
 
   // When the user returns to the chat tab (isActive: false → true), the
   // terminal host just transitioned from display:none to display:flex.
@@ -883,9 +902,8 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
         raf2 = 0;
         syncMetricsRef.current?.();
         const host = hostRef.current;
-        const active = typeof document !== "undefined"
-          ? document.activeElement
-          : null;
+        const active =
+          typeof document !== "undefined" ? document.activeElement : null;
         const focusIsElsewhereInChatPage =
           active !== null &&
           active !== document.body &&
@@ -936,10 +954,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
             ghost
             aria-label={t.app.closeModelTools}
             onClick={closeMobilePanel}
-            className={cn(
-              "fixed inset-0 z-[55] p-0 block",
-              "bg-black/60",
-            )}
+            className={cn("fixed inset-0 z-[55] p-0 block", "bg-black/60")}
           />
         )}
 

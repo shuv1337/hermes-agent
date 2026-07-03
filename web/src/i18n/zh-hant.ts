@@ -137,8 +137,7 @@ export const zhHant: Translations = {
     untitledSession: "未命名工作階段",
     deleteSession: "刪除工作階段",
     confirmDeleteTitle: "刪除工作階段？",
-    confirmDeleteMessage:
-      "此操作將永久移除對話及其所有訊息，無法復原。",
+    confirmDeleteMessage: "此操作將永久移除對話及其所有訊息，無法復原。",
     sessionDeleted: "工作階段已刪除",
     failedToDelete: "刪除工作階段失敗",
     deleteEmpty: "刪除空工作階段",
@@ -218,8 +217,7 @@ export const zhHant: Translations = {
   },
 
   cron: {
-    confirmDeleteMessage:
-      "將從排程移除此任務，此操作無法復原。",
+    confirmDeleteMessage: "將從排程移除此任務，此操作無法復原。",
     confirmDeleteTitle: "刪除排程任務？",
     newJob: "新增排程任務",
     nameOptional: "名稱（選填）",
@@ -286,7 +284,8 @@ export const zhHant: Translations = {
     nameRequired: "名稱為必填",
     nameRule:
       "僅允許小寫字母、數字、底線及連字號；首字必須為字母或數字；最多 64 個字元。",
-    invalidName: "設定檔名稱無效",    cloneFrom: "從設定檔複製",
+    invalidName: "設定檔名稱無效",
+    cloneFrom: "從設定檔複製",
     cloneFromNone: "無（空白）",
     allProfiles: "設定檔",
     noProfiles: "找不到設定檔。",
@@ -380,12 +379,13 @@ export const zhHant: Translations = {
     importConfig: "從 JSON 匯入設定",
     resetDefaults: "重設為預設值",
     resetScopeTooltip: "將{scope}重設為預設值",
-    confirmResetScope: "要將{scope}的所有設定重設為預設值嗎？此操作只更新表單，在按下「儲存」前不會寫入 config.yaml。",
+    confirmResetScope:
+      "要將{scope}的所有設定重設為預設值嗎？此操作只更新表單，在按下「儲存」前不會寫入 config.yaml。",
     resetScopeToast: "{scope}已重設為預設值 — 請檢視並儲存以套用",
     rawYaml: "原始 YAML 設定",
     searchResults: "搜尋結果",
     fields: "個欄位",
-    noFieldsMatch: '沒有符合「{query}」的欄位',
+    noFieldsMatch: "沒有符合「{query}」的欄位",
     configSaved: "設定已儲存",
     yamlConfigSaved: "YAML 設定已儲存",
     failedToSave: "儲存失敗",
@@ -433,7 +433,8 @@ export const zhHant: Translations = {
     showValue: "顯示實際值",
     hideValue: "隱藏值",
     customTitle: "自訂密鑰",
-    customHint: "儲存在 .env 中、Hermes 無法識別的任意環境變數。可用於為技能、MCP 伺服器或你自己的工具注入環境變數。",
+    customHint:
+      "儲存在 .env 中、Hermes 無法識別的任意環境變數。可用於為技能、MCP 伺服器或你自己的工具注入環境變數。",
     customConfigured: "已設定 {count} 個自訂密鑰",
     addCustomKey: "新增自訂密鑰",
     customKeyName: "變數名稱",
@@ -445,7 +446,8 @@ export const zhHant: Translations = {
   oauth: {
     title: "提供者登入（OAuth）",
     providerLogins: "提供者登入（OAuth）",
-    description: "已連線 {connected}/{total} 個 OAuth 提供者。登入流程目前透過 CLI 執行；請點擊「複製指令」並貼到終端機完成設定。",
+    description:
+      "已連線 {connected}/{total} 個 OAuth 提供者。登入流程目前透過 CLI 執行；請點擊「複製指令」並貼到終端機完成設定。",
     connected: "已連線",
     expired: "已過期",
     notConnected: "未連線。請在終端機執行 {command}。",
@@ -531,8 +533,7 @@ export const zhHant: Translations = {
     },
     scan: {
       building_headline: "正在建立成就檔案…",
-      building_detail:
-        "正在讀取工作階段、工具呼叫、模型中繼資料以及解鎖狀態。",
+      building_detail: "正在讀取工作階段、工具呼叫、模型中繼資料以及解鎖狀態。",
       starting_headline: "正在開始成就掃描…",
       progress_detail:
         "已掃描 {scanned} / {total} 個工作階段 · {pct}%。隨著更多歷史串入，徽章會陸續解鎖。",
@@ -589,11 +590,9 @@ export const zhHant: Translations = {
       copy_button: "複製圖片",
       copied: "已複製 ✓",
       download_button: "下載 PNG",
-      hint:
-        "「在 X 上分享」會在新分頁中開啟預先填寫的貼文。若想附上 1200×630 的徽章，請先點擊「複製圖片」—— X 允許你直接貼到推文編輯器中。「下載 PNG」會將檔案儲存下來，可在任何地方使用。",
-      clipboard_unsupported:
-        "此瀏覽器不支援剪貼簿圖片複製 —— 請改用「下載」。",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      hint: "「在 X 上分享」會在新分頁中開啟預先填寫的貼文。若想附上 1200×630 的徽章，請先點擊「複製圖片」—— X 允許你直接貼到推文編輯器中。「下載 PNG」會將檔案儲存下來，可在任何地方使用。",
+      clipboard_unsupported: "此瀏覽器不支援剪貼簿圖片複製 —— 請改用「下載」。",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
   kanban: {
@@ -650,8 +649,7 @@ export const zhHant: Translations = {
     runHistory: "執行紀錄",
     workerLog: "工作者日誌",
     loadingLog: "正在載入日誌…",
-    noWorkerLog:
-      "— 尚無工作者日誌（任務尚未啟動或日誌已被輪替）—",
+    noWorkerLog: "— 尚無工作者日誌（任務尚未啟動或日誌已被輪替）—",
     noDescription: "— 沒有描述 —",
     noComments: "— 沒有留言 —",
     edit: "編輯",
@@ -682,8 +680,7 @@ export const zhHant: Translations = {
     reassign: "重新指派",
     renderingError: "看板分頁發生繪製錯誤",
     reloadView: "重新載入檢視",
-    wsAuthFailed:
-      "WebSocket 驗證失敗 — 請重新載入頁面以更新工作階段權杖。",
+    wsAuthFailed: "WebSocket 驗證失敗 — 請重新載入頁面以更新工作階段權杖。",
     markDone: "將 {n} 個任務標記為完成？",
     markArchived: "封存 {n} 個任務？",
     warning: "警告",
@@ -736,14 +733,10 @@ export const zhHant: Translations = {
     },
     confirmDone:
       "將此任務標記為完成？工作者的領取將被釋放，下層相依任務將變為就緒。",
-    confirmArchive:
-      "封存此任務？它將從預設看板檢視中消失。",
-    confirmBlocked:
-      "將此任務標記為已封鎖？工作者的領取將被釋放。",
-    completionSummary:
-      "{label} 的完成摘要。這將作為任務結果儲存。",
-    completionSummaryRequired:
-      "在將任務標記為完成之前，必須提供完成摘要。",
+    confirmArchive: "封存此任務？它將從預設看板檢視中消失。",
+    confirmBlocked: "將此任務標記為已封鎖？工作者的領取將被釋放。",
+    completionSummary: "{label} 的完成摘要。這將作為任務結果儲存。",
+    completionSummaryRequired: "在將任務標記為完成之前，必須提供完成摘要。",
     triagePlaceholder: "粗略的想法 — AI 將完善規格…",
     taskTitlePlaceholder: "新任務標題…",
     specifier: "規格制定者",
@@ -753,8 +746,7 @@ export const zhHant: Translations = {
       "技能（選填，以逗號分隔）：translation、github-code-review",
     noParent: "— 無上層任務 —",
     workspacePathDir: "工作區路徑（必填，例如 ~/projects/my-app）",
-    workspacePathOptional:
-      "工作區路徑（選填，留空則依負責人推導）",
+    workspacePathOptional: "工作區路徑（選填，留空則依負責人推導）",
     logTruncated: "（顯示最後 100 KB — 完整日誌位於 ",
     logAt: "）",
   },

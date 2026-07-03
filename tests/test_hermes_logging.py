@@ -1015,7 +1015,7 @@ class TestExternalRotationRecovery:
             self._emit(handler, "AAAA" * 32)
             assert log_path.stat().st_size > 0
 
-            with open(log_path, "w"):
+            with open(log_path, "w", encoding="utf-8"):
                 pass  # truncate to zero
             assert log_path.stat().st_size == 0
 

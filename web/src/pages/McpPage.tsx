@@ -88,9 +88,9 @@ export default function McpPage() {
 
   // Test results keyed by server name
   const [testing, setTesting] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<
-    Record<string, McpTestResult>
-  >({});
+  const [testResults, setTestResults] = useState<Record<string, McpTestResult>>(
+    {},
+  );
 
   // Enable/disable state
   const [togglingName, setTogglingName] = useState<string | null>(null);
@@ -197,9 +197,7 @@ export default function McpPage() {
     try {
       await api.setMcpServerEnabled(server.name, next);
       setServers((prev) =>
-        prev.map((s) =>
-          s.name === server.name ? { ...s, enabled: next } : s,
-        ),
+        prev.map((s) => (s.name === server.name ? { ...s, enabled: next } : s)),
       );
       setRestartNote(
         "Enable/disable takes effect on the next gateway restart.",
@@ -425,7 +423,9 @@ export default function McpPage() {
               )}
 
               <div className="grid gap-2">
-                <Label htmlFor="mcp-env">Environment (KEY=VALUE per line)</Label>
+                <Label htmlFor="mcp-env">
+                  Environment (KEY=VALUE per line)
+                </Label>
                 <textarea
                   id="mcp-env"
                   className="flex min-h-[80px] w-full border border-border bg-background/40 px-3 py-2 text-sm font-courier shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/30 focus-visible:border-foreground/25"
@@ -456,9 +456,7 @@ export default function McpPage() {
         <div
           ref={installModalRef}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 p-4"
-          onClick={(e) =>
-            e.target === e.currentTarget && setInstallEntry(null)
-          }
+          onClick={(e) => e.target === e.currentTarget && setInstallEntry(null)}
           role="dialog"
           aria-modal="true"
           aria-labelledby="install-mcp-title"
@@ -547,9 +545,7 @@ export default function McpPage() {
           </H2>
         </div>
 
-        {restartNote && (
-          <p className="text-xs text-warning">{restartNote}</p>
-        )}
+        {restartNote && <p className="text-xs text-warning">{restartNote}</p>}
 
         {servers.length === 0 && (
           <Card>
@@ -581,9 +577,7 @@ export default function McpPage() {
                     >
                       {server.transport}
                     </Badge>
-                    {!server.enabled && (
-                      <Badge tone="outline">disabled</Badge>
-                    )}
+                    {!server.enabled && <Badge tone="outline">disabled</Badge>}
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     {server.transport === "http" ? (
@@ -631,11 +625,7 @@ export default function McpPage() {
                     onClick={() => handleToggleEnabled(server)}
                     disabled={togglingName === server.name}
                     prefix={
-                      togglingName === server.name ? (
-                        <Spinner />
-                      ) : (
-                        <Power />
-                      )
+                      togglingName === server.name ? <Spinner /> : <Power />
                     }
                     className={server.enabled ? "text-success" : undefined}
                   >
@@ -726,9 +716,7 @@ export default function McpPage() {
                         <Badge tone="outline">{entry.source}</Badge>
                       )
                     )}
-                    {entry.installed && (
-                      <Badge tone="success">Installed</Badge>
-                    )}
+                    {entry.installed && <Badge tone="success">Installed</Badge>}
                     {entry.installed && !entry.enabled && (
                       <Badge tone="outline">disabled</Badge>
                     )}
@@ -770,9 +758,7 @@ export default function McpPage() {
                       ) : (
                         <code className="font-mono">{entry.install_url}</code>
                       )}
-                      {entry.install_ref && (
-                        <span> @ {entry.install_ref}</span>
-                      )}
+                      {entry.install_ref && <span> @ {entry.install_ref}</span>}
                     </p>
                   )}
                   {entry.bootstrap.length > 0 && (
@@ -782,7 +768,10 @@ export default function McpPage() {
                       </summary>
                       <ul className="mt-1 ml-3 list-disc space-y-0.5">
                         {entry.bootstrap.map((cmd, i) => (
-                          <li key={`${entry.name}-bs-${i}`} className="break-all">
+                          <li
+                            key={`${entry.name}-bs-${i}`}
+                            className="break-all"
+                          >
                             <code className="font-mono">{cmd}</code>
                           </li>
                         ))}

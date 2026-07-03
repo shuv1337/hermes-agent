@@ -1,4 +1,4 @@
-import { getCurrentWindow, type Theme } from '@tauri-apps/api/window'
+import { getCurrentWindow, type Theme } from "@tauri-apps/api/window";
 
 /*
  * OS appearance follower.
@@ -19,33 +19,36 @@ import { getCurrentWindow, type Theme } from '@tauri-apps/api/window'
  * styles.css (:root.dark), mirroring apps/desktop's applyTheme() palette.
  */
 
-const prefersDark = (): boolean => window.matchMedia('(prefers-color-scheme: dark)').matches
+const prefersDark = (): boolean =>
+  window.matchMedia("(prefers-color-scheme: dark)").matches;
 
 function paint(theme: Theme): void {
-  const dark = theme === 'dark'
-  const root = document.documentElement
-  root.classList.toggle('dark', dark)
-  root.style.colorScheme = dark ? 'dark' : 'light'
+  const dark = theme === "dark";
+  const root = document.documentElement;
+  root.classList.toggle("dark", dark);
+  root.style.colorScheme = dark ? "dark" : "light";
 }
 
 // Best-effort synchronous first paint from the media query so the very first
 // frame is already in the right mode. Refined below by the authoritative Tauri
 // window theme once its IPC resolves.
-paint(prefersDark() ? 'dark' : 'light')
+paint(prefersDark() ? "dark" : "light");
 
 /** Adopt the Tauri window theme and keep tracking live OS appearance changes. */
 export async function watchTheme(): Promise<void> {
   try {
-    const win = getCurrentWindow()
-    const current = await win.theme()
+    const win = getCurrentWindow();
+    const current = await win.theme();
 
     if (current) {
-      paint(current)
+      paint(current);
     }
 
-    await win.onThemeChanged(({ payload }) => paint(payload))
+    await win.onThemeChanged(({ payload }) => paint(payload));
   } catch {
     // Non-Tauri context (e.g. `vite preview`): keep the media query live.
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => paint(e.matches ? 'dark' : 'light'))
+    window
+      .matchMedia("(prefers-color-scheme: dark)")
+      .addEventListener("change", (e) => paint(e.matches ? "dark" : "light"));
   }
 }

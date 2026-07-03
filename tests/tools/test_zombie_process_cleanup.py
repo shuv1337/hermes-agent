@@ -23,7 +23,7 @@ def _spawn_sleep(seconds: float = 60) -> subprocess.Popen:
 def _pid_alive(pid: int) -> bool:
     """Return True if a process with the given PID is still running."""
     try:
-        os.kill(pid, 0)
+        os.kill(pid, 0)  # windows-footgun: ok
         return True
     except (ProcessLookupError, PermissionError):
         return False
@@ -58,7 +58,7 @@ class TestZombieReproduction:
         finally:
             for pid in pids:
                 try:
-                    os.kill(pid, signal.SIGKILL)
+                    os.kill(pid, signal.SIGKILL)  # windows-footgun: ok
                 except (ProcessLookupError, PermissionError):
                     pass
 

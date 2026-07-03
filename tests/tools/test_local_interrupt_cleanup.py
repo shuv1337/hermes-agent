@@ -33,7 +33,7 @@ def _isolate_hermes_home(tmp_path, monkeypatch):
 def _pgid_still_alive(pgid: int) -> bool:
     """Return True if any process in the given process group is still alive."""
     try:
-        os.killpg(pgid, 0)  # signal 0 = existence check
+        os.killpg(pgid, 0)  # signal 0 = existence check  # windows-footgun: ok
         return True
     except ProcessLookupError:
         return False

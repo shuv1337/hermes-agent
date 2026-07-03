@@ -10,7 +10,12 @@ import { Select, SelectOption } from "@nous-research/ui/ui/components/select";
 import { Switch } from "@nous-research/ui/ui/components/switch";
 import { Spinner } from "@nous-research/ui/ui/components/spinner";
 import { CommandBlock } from "@nous-research/ui/ui/components/command-block";
-import { Card, CardContent, CardHeader, CardTitle } from "@nous-research/ui/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@nous-research/ui/ui/components/card";
 import { ConfirmDialog } from "@nous-research/ui/ui/components/confirm-dialog";
 import { Input } from "@nous-research/ui/ui/components/input";
 import { Label } from "@nous-research/ui/ui/components/label";
@@ -47,7 +52,9 @@ export default function PluginsPage() {
       .then((h) => {
         setHub(h);
         const p = h.providers;
-        setMemorySel(p.memory_provider ? p.memory_provider : MEMORY_PROVIDER_BUILTIN);
+        setMemorySel(
+          p.memory_provider ? p.memory_provider : MEMORY_PROVIDER_BUILTIN,
+        );
         setContextSel(p.context_engine || "compressor");
       })
       .catch(() => showToast(t.common.loading, "error"));
@@ -57,22 +64,6 @@ export default function PluginsPage() {
     setLoading(true);
     void loadHub().finally(() => setLoading(false));
   }, [loadHub]);
-
-  useEffect(() => {
-    setAfterTitle(
-      <Button
-        ghost
-        size="icon"
-        className="shrink-0 text-muted-foreground hover:text-foreground"
-        disabled={loading || rescanBusy}
-        onClick={() => void onRescan()}
-        aria-label={t.pluginsPage.refreshDashboard}
-      >
-        {rescanBusy ? <Spinner /> : <RefreshCw />}
-      </Button>,
-    );
-    return () => setAfterTitle(null);
-  }, [loading, rescanBusy, setAfterTitle, t.pluginsPage.refreshDashboard]);
 
   const onInstall = async () => {
     const id = installId.trim();
@@ -88,9 +79,13 @@ export default function PluginsPage() {
         enable: installEnable,
       });
       showToast(`${r.plugin_name ?? id} installed`, "success");
-      if ((r.warnings?.length ?? 0) > 0) showToast(r.warnings!.join(" "), "error");
+      if ((r.warnings?.length ?? 0) > 0)
+        showToast(r.warnings!.join(" "), "error");
       if ((r.missing_env?.length ?? 0) > 0)
-        showToast(`${t.pluginsPage.missingEnvWarn} ${r.missing_env!.join(", ")}`, "error");
+        showToast(
+          `${t.pluginsPage.missingEnvWarn} ${r.missing_env!.join(", ")}`,
+          "error",
+        );
       setInstallId("");
       await loadHub();
     } catch (e) {
@@ -100,28 +95,46 @@ export default function PluginsPage() {
     }
   };
 
-  const onRescan = async () => {
+  const onRescan = useCallback(async () => {
     setRescanBusy(true);
     try {
       const rc = await api.rescanPlugins();
-      showToast(
-        `${t.pluginsPage.refreshDashboard} (${rc.count})`,
-        "success",
-      );
+      showToast(`${t.pluginsPage.refreshDashboard} (${rc.count})`, "success");
       await loadHub();
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Rescan failed", "error");
     } finally {
       setRescanBusy(false);
     }
-  };
+  }, [loadHub, showToast, t.pluginsPage.refreshDashboard]);
+
+  useEffect(() => {
+    setAfterTitle(
+      <Button
+        ghost
+        size="icon"
+        className="shrink-0 text-muted-foreground hover:text-foreground"
+        disabled={loading || rescanBusy}
+        onClick={() => void onRescan()}
+        aria-label={t.pluginsPage.refreshDashboard}
+      >
+        {rescanBusy ? <Spinner /> : <RefreshCw />}
+      </Button>,
+    );
+    return () => setAfterTitle(null);
+  }, [
+    loading,
+    onRescan,
+    rescanBusy,
+    setAfterTitle,
+    t.pluginsPage.refreshDashboard,
+  ]);
 
   const onSaveProviders = async () => {
     setProviderBusy(true);
     try {
       await api.savePluginProviders({
-        memory_provider:
-          memorySel === MEMORY_PROVIDER_BUILTIN ? "" : memorySel,
+        memory_provider: memorySel === MEMORY_PROVIDER_BUILTIN ? "" : memorySel,
         context_engine: contextSel,
       });
       showToast(t.pluginsPage.savedProviders, "success");
@@ -133,7 +146,10 @@ export default function PluginsPage() {
     }
   };
 
-  const setRuntimeLoading = async (name: string, fn: () => Promise<unknown>) => {
+  const setRuntimeLoading = async (
+    name: string,
+    fn: () => Promise<unknown>,
+  ) => {
     setRowBusy(name);
     try {
       await fn();
@@ -153,7 +169,6 @@ export default function PluginsPage() {
       <PluginSlot name="plugins:top" />
 
       <div className={cn("flex w-full flex-col gap-8")}>
-
         {providers && (
           <Card>
             <CardHeader>
@@ -164,49 +179,52 @@ export default function PluginsPage() {
             </CardHeader>
 
             <CardContent className="flex flex-col gap-6">
-
               <div className="grid gap-6 sm:grid-cols-2 max-w-full">
-              <div className="grid gap-2 min-w-0">
-                <Label htmlFor="mem-provider">{t.pluginsPage.memoryProviderLabel}</Label>
+                <div className="grid gap-2 min-w-0">
+                  <Label htmlFor="mem-provider">
+                    {t.pluginsPage.memoryProviderLabel}
+                  </Label>
 
-                <Select
-                  id="mem-provider"
-                  className="w-full"
-                  value={memorySel}
-                  onValueChange={setMemorySel}
-                >
-                  <SelectOption value={MEMORY_PROVIDER_BUILTIN}>
-                    {`(${t.pluginsPage.providerDefaults})`}
-                  </SelectOption>
-
-                  {providers.memory_options.map((o) => (
-                    <SelectOption key={o.name} value={o.name}>
-                      {o.name}
+                  <Select
+                    id="mem-provider"
+                    className="w-full"
+                    value={memorySel}
+                    onValueChange={setMemorySel}
+                  >
+                    <SelectOption value={MEMORY_PROVIDER_BUILTIN}>
+                      {`(${t.pluginsPage.providerDefaults})`}
                     </SelectOption>
-                  ))}
-                </Select>
-              </div>
 
-              <div className="grid gap-2 min-w-0">
-                <Label htmlFor="ctx-engine">{t.pluginsPage.contextEngineLabel}</Label>
-
-                <Select
-                  id="ctx-engine"
-                  className="w-full"
-                  value={contextSel}
-                  onValueChange={setContextSel}
-                >
-                  <SelectOption value="compressor">compressor</SelectOption>
-
-                  {providers.context_options
-                    .filter((o) => o.name !== "compressor")
-                    .map((o) => (
+                    {providers.memory_options.map((o) => (
                       <SelectOption key={o.name} value={o.name}>
                         {o.name}
                       </SelectOption>
                     ))}
-                </Select>
-              </div>
+                  </Select>
+                </div>
+
+                <div className="grid gap-2 min-w-0">
+                  <Label htmlFor="ctx-engine">
+                    {t.pluginsPage.contextEngineLabel}
+                  </Label>
+
+                  <Select
+                    id="ctx-engine"
+                    className="w-full"
+                    value={contextSel}
+                    onValueChange={setContextSel}
+                  >
+                    <SelectOption value="compressor">compressor</SelectOption>
+
+                    {providers.context_options
+                      .filter((o) => o.name !== "compressor")
+                      .map((o) => (
+                        <SelectOption key={o.name} value={o.name}>
+                          {o.name}
+                        </SelectOption>
+                      ))}
+                  </Select>
+                </div>
               </div>
 
               <Button
@@ -230,12 +248,11 @@ export default function PluginsPage() {
             </p>
           </CardHeader>
 
-
           <CardContent className="flex flex-col gap-4">
-
             <div className="flex flex-col gap-2">
-
-              <Label htmlFor="install-url">{t.pluginsPage.identifierLabel}</Label>
+              <Label htmlFor="install-url">
+                {t.pluginsPage.identifierLabel}
+              </Label>
 
               <Input
                 className="font-mono-ui lowercase"
@@ -247,12 +264,12 @@ export default function PluginsPage() {
               />
             </div>
 
-
             <div className="flex flex-wrap items-center gap-8">
-
               <div className="flex items-center gap-3">
-
-                <Switch checked={installForce} onCheckedChange={setInstallForce} />
+                <Switch
+                  checked={installForce}
+                  onCheckedChange={setInstallForce}
+                />
 
                 <span className="text-xs tracking-[0.06em] text-text-secondary">
                   {t.pluginsPage.forceReinstall}
@@ -260,8 +277,10 @@ export default function PluginsPage() {
               </div>
 
               <div className="flex items-center gap-3">
-
-                <Switch checked={installEnable} onCheckedChange={setInstallEnable} />
+                <Switch
+                  checked={installEnable}
+                  onCheckedChange={setInstallEnable}
+                />
 
                 <span className="text-xs tracking-[0.06em] text-text-secondary">
                   {t.pluginsPage.enableAfterInstall}
@@ -290,34 +309,24 @@ export default function PluginsPage() {
         </Card>
 
         <div className="flex flex-col gap-3">
-
           <h3 className="font-mondwest text-display text-xs tracking-[0.12em] text-text-secondary">
             {t.pluginsPage.pluginListHeading}
           </h3>
 
           {loading ? (
-
             <div className="flex items-center gap-2 py-8 text-xs text-text-tertiary">
-
               <Spinner />
               <span>{t.common.loading}</span>
             </div>
           ) : rows.length === 0 ? (
-
             <p className="text-xs text-text-tertiary">{t.common.noResults}</p>
           ) : (
-
             <ul className="flex flex-col gap-3">
-
               {rows.map((row: HubAgentPluginRow) => (
-
                 <li key={row.name}>
-
-
                   <PluginRowCard
                     {...{ row, rowBusy, setRuntimeLoading, showToast, t }}
                   />
-
                 </li>
               ))}
             </ul>
@@ -325,30 +334,20 @@ export default function PluginsPage() {
         </div>
 
         {(hub?.orphan_dashboard_plugins?.length ?? 0) > 0 ? (
-
-
           <div className="flex flex-col gap-3 opacity-95">
-
             <h3 className="font-mondwest text-display text-xs tracking-[0.12em] text-text-secondary">
               {t.pluginsPage.orphanHeading}
             </h3>
 
             <ul className="flex flex-col gap-2 rounded border border-current/15 p-4">
-
               {hub!.orphan_dashboard_plugins.map((m) => (
-
                 <li className="text-xs text-text-secondary" key={m.name}>
-
-
                   {m.label ?? m.name} — {m.description || m.tab?.path}
-
-
                   {!m.tab?.hidden ? (
-
-
-                    <Link className="ml-3 inline-flex items-center gap-1 underline" to={m.tab.path}>
-
-
+                    <Link
+                      className="ml-3 inline-flex items-center gap-1 underline"
+                      to={m.tab.path}
+                    >
                       <ExternalLink className="h-3 w-3 opacity-65" />
 
                       {t.pluginsPage.openTab}
@@ -368,7 +367,6 @@ export default function PluginsPage() {
 }
 
 interface PluginRowCardProps {
-
   row: HubAgentPluginRow;
   rowBusy: string | null;
   setRuntimeLoading: (
@@ -381,17 +379,12 @@ interface PluginRowCardProps {
 }
 
 function PluginRowCard(props: PluginRowCardProps) {
-  const {
-    row,
-    rowBusy,
-    setRuntimeLoading,
-    showToast,
-    t,
-  } = props;
+  const { row, rowBusy, setRuntimeLoading, showToast, t } = props;
 
   const dm = row.dashboard_manifest;
 
-  const tabPath = dm?.tab && !dm.tab.hidden ? dm.tab.override ?? dm.tab.path : null;
+  const tabPath =
+    dm?.tab && !dm.tab.hidden ? (dm.tab.override ?? dm.tab.path) : null;
 
   const busy = rowBusy === row.name;
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -404,17 +397,10 @@ function PluginRowCard(props: PluginRowCardProps) {
         : "outline";
 
   return (
-
     <Card className={cn(busy ? "opacity-70" : undefined)}>
-
-
       <CardContent className="flex flex-col gap-4 px-6 py-4">
-
-
         <div className="flex flex-wrap items-start justify-between gap-4">
-
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-
             <span className="truncate font-semibold">{row.name}</span>
 
             <Badge tone="outline">
@@ -462,7 +448,6 @@ function PluginRowCard(props: PluginRowCardProps) {
             )}
 
             {tabPath ? (
-
               <Link
                 className={cn(
                   "inline-flex items-center rounded-none px-3 py-1.5",
@@ -476,7 +461,6 @@ function PluginRowCard(props: PluginRowCardProps) {
             ) : null}
 
             {row.can_update_git ? (
-
               <Button
                 disabled={busy}
                 ghost
@@ -498,7 +482,11 @@ function PluginRowCard(props: PluginRowCardProps) {
                 disabled={busy}
                 ghost
                 size="sm"
-                title={row.user_hidden ? t.pluginsPage.showInSidebar : t.pluginsPage.hideFromSidebar}
+                title={
+                  row.user_hidden
+                    ? t.pluginsPage.showInSidebar
+                    : t.pluginsPage.hideFromSidebar
+                }
                 onClick={() => {
                   void setRuntimeLoading(row.name, async () => {
                     await api.setPluginVisibility(row.name, !row.user_hidden);
@@ -510,13 +498,13 @@ function PluginRowCard(props: PluginRowCardProps) {
                 ) : (
                   <Eye className="h-3.5 w-3.5" />
                 )}
-                {row.user_hidden ? t.pluginsPage.showInSidebar : t.pluginsPage.hideFromSidebar}
+                {row.user_hidden
+                  ? t.pluginsPage.showInSidebar
+                  : t.pluginsPage.hideFromSidebar}
               </Button>
             ) : null}
 
             {row.can_remove ? (
-
-
               <Button
                 destructive
                 disabled={busy}
@@ -524,7 +512,6 @@ function PluginRowCard(props: PluginRowCardProps) {
                 size="sm"
                 onClick={() => setConfirmRemove(true)}
               >
-
                 {busy ? <Spinner /> : <Trash2 className="h-3.5 w-3.5" />}
               </Button>
             ) : null}
@@ -538,7 +525,6 @@ function PluginRowCard(props: PluginRowCardProps) {
         ) : null}
 
         {dm?.slots?.length ? (
-
           <p className="text-xs tracking-[0.05em] text-text-tertiary">
             {t.pluginsPage.dashboardSlots}: {dm.slots.join(", ")}
           </p>
@@ -552,8 +538,6 @@ function PluginRowCard(props: PluginRowCardProps) {
         ) : null}
 
         {!row.has_dashboard_manifest && !dm ? (
-
-
           <p className="text-xs italic text-text-disabled">
             {t.pluginsPage.noDashboardTab}
           </p>

@@ -118,7 +118,8 @@ export const de: Translations = {
     runningRemote: "Läuft (remote)",
     startFailed: "Start fehlgeschlagen",
     starting: "Startet",
-    startedInBackground: "Im Hintergrund gestartet — siehe Protokolle für den Fortschritt",
+    startedInBackground:
+      "Im Hintergrund gestartet — siehe Protokolle für den Fortschritt",
     stopped: "Gestoppt",
     updateHermes: "Hermes aktualisieren",
     updatingHermes: "Hermes wird aktualisiert…",
@@ -156,7 +157,8 @@ export const de: Translations = {
     deleteSelectedConfirmMessage:
       "Dies entfernt {count} ausgewählte Sitzungen und alle zugehörigen Nachrichten dauerhaft. Dies kann nicht rückgängig gemacht werden.",
     selectedSessionsDeleted: "{count} Sitzungen gelöscht",
-    failedToDeleteSelected: "Ausgewählte Sitzungen konnten nicht gelöscht werden",
+    failedToDeleteSelected:
+      "Ausgewählte Sitzungen konnten nicht gelöscht werden",
     resumeInChat: "Im Chat fortsetzen",
     newChat: "Neuer Chat",
     previousPage: "Vorherige Seite",
@@ -287,7 +289,8 @@ export const de: Translations = {
     nameRequired: "Name ist erforderlich",
     nameRule:
       "Nur Kleinbuchstaben, Ziffern, _ und -; muss mit einem Buchstaben oder einer Ziffer beginnen; maximal 64 Zeichen.",
-    invalidName: "Ungültiger Profilname",    cloneFrom: "Konfiguration klonen von",
+    invalidName: "Ungültiger Profilname",
+    cloneFrom: "Konfiguration klonen von",
     cloneFromNone: "Keine (leer)",
     allProfiles: "Profile",
     noProfiles: "Keine Profile gefunden.",
@@ -318,19 +321,23 @@ export const de: Translations = {
     disableRuntime: "Deaktivieren",
     enableAfterInstall: "Nach Installation aktivieren",
     enableRuntime: "Aktivieren",
-    forceReinstall: "Neuinstallation erzwingen (bestehenden Ordner zuerst löschen)",
+    forceReinstall:
+      "Neuinstallation erzwingen (bestehenden Ordner zuerst löschen)",
     headline:
       "Hermes-Plugins entdecken, installieren, aktivieren und aktualisieren (entspricht `hermes plugins`).",
     identifierLabel: "Git-URL oder owner/repo",
     inactive: "inaktiv",
     installBtn: "Installieren",
     installHeading: "Aus GitHub / Git-URL installieren",
-    installHint: "Verwende owner/repo-Kurzform oder eine vollständige https:// oder git@ Klon-URL.",
+    installHint:
+      "Verwende owner/repo-Kurzform oder eine vollständige https:// oder git@ Klon-URL.",
     memoryProviderLabel: "Speicheranbieter",
-    missingEnvWarn: "Setze diese unter Schlüssel, bevor das Plugin laufen kann:",
+    missingEnvWarn:
+      "Setze diese unter Schlüssel, bevor das Plugin laufen kann:",
     noDashboardTab: "Kein Dashboard-Tab",
     openTab: "Öffnen",
-    orphanHeading: "Nur-Dashboard-Erweiterungen (keine Übereinstimmung mit Agent plugin.yaml)",
+    orphanHeading:
+      "Nur-Dashboard-Erweiterungen (keine Übereinstimmung mit Agent plugin.yaml)",
     pluginListHeading: "Installierte Plugins",
     providerDefaults: "eingebaut / Standard",
     providersHeading: "Laufzeit-Anbieter-Plugins",
@@ -338,9 +345,11 @@ export const de: Translations = {
       "Schreibt memory.provider (leer = eingebaut) und context.engine in config.yaml. Wirkt sich auf die nächste Sitzung aus.",
     refreshDashboard: "Dashboard-Erweiterungen erneut scannen",
     removeConfirm: "Dieses Plugin aus ~/.hermes/plugins/ entfernen?",
-    removeHint: "Nur vom Benutzer installierte Plugins unter ~/.hermes/plugins können entfernt werden.",
+    removeHint:
+      "Nur vom Benutzer installierte Plugins unter ~/.hermes/plugins können entfernt werden.",
     rescanHeading: "SPA-Plugin-Registry",
-    rescanHint: "Nach dem Hinzufügen von Dateien auf dem Datenträger erneut scannen, damit die Sidebar neue Manifeste erkennt.",
+    rescanHint:
+      "Nach dem Hinzufügen von Dateien auf dem Datenträger erneut scannen, damit die Sidebar neue Manifeste erkennt.",
     runtimeHeading: "Gateway-Laufzeit (YAML-Plugins)",
     saveProviders: "Anbieter-Einstellungen speichern",
     savedProviders: "Anbieter-Einstellungen gespeichert.",
@@ -360,7 +369,8 @@ export const de: Translations = {
     all: "Alle",
     categories: "Kategorien",
     filters: "Filter",
-    noSkills: "Keine Skills gefunden. Skills werden aus ~/.hermes/skills/ geladen",
+    noSkills:
+      "Keine Skills gefunden. Skills werden aus ~/.hermes/skills/ geladen",
     noSkillsMatch: "Keine Skills entsprechen deiner Suche oder deinem Filter.",
     skillCount: "{count} Skill{s}",
     resultCount: "{count} Ergebnis{s}",
@@ -381,8 +391,10 @@ export const de: Translations = {
     importConfig: "Konfiguration aus JSON importieren",
     resetDefaults: "Auf Standardwerte zurücksetzen",
     resetScopeTooltip: "{scope} auf Standardwerte zurücksetzen",
-    confirmResetScope: "Alle {scope}-Einstellungen auf ihre Standardwerte zurücksetzen? Dies aktualisiert nur das Formular — Änderungen werden erst in config.yaml geschrieben, wenn du auf Speichern drückst.",
-    resetScopeToast: "{scope} auf Standardwerte zurückgesetzt — überprüfen und Speichern, um zu übernehmen",
+    confirmResetScope:
+      "Alle {scope}-Einstellungen auf ihre Standardwerte zurücksetzen? Dies aktualisiert nur das Formular — Änderungen werden erst in config.yaml geschrieben, wenn du auf Speichern drückst.",
+    resetScopeToast:
+      "{scope} auf Standardwerte zurückgesetzt — überprüfen und Speichern, um zu übernehmen",
     rawYaml: "Rohe YAML-Konfiguration",
     searchResults: "Suchergebnisse",
     fields: "Feld{s}",
@@ -414,11 +426,13 @@ export const de: Translations = {
   },
 
   env: {
-    changesNote: "Änderungen werden sofort auf der Festplatte gespeichert. Aktive Sitzungen übernehmen neue Schlüssel automatisch.",
+    changesNote:
+      "Änderungen werden sofort auf der Festplatte gespeichert. Aktive Sitzungen übernehmen neue Schlüssel automatisch.",
     confirmClearMessage:
       "Der gespeicherte Wert für diese Variable wird aus deiner .env-Datei entfernt. Dies kann über die UI nicht rückgängig gemacht werden.",
     confirmClearTitle: "Diesen Schlüssel löschen?",
-    description: "Verwalte API-Schlüssel und Geheimnisse, die hier gespeichert sind",
+    description:
+      "Verwalte API-Schlüssel und Geheimnisse, die hier gespeichert sind",
     hideAdvanced: "Erweitert ausblenden",
     showAdvanced: "Erweitert anzeigen",
     showLess: "Weniger anzeigen",
@@ -434,19 +448,22 @@ export const de: Translations = {
     showValue: "Echten Wert anzeigen",
     hideValue: "Wert ausblenden",
     customTitle: "Benutzerdefinierte Schlüssel",
-    customHint: "Beliebige Umgebungsvariablen in deiner .env, die Hermes nicht erkennt. Verwende sie, um Umgebungsvariablen für Skills, MCP-Server oder eigene Tools einzuschleusen.",
+    customHint:
+      "Beliebige Umgebungsvariablen in deiner .env, die Hermes nicht erkennt. Verwende sie, um Umgebungsvariablen für Skills, MCP-Server oder eigene Tools einzuschleusen.",
     customConfigured: "{count} benutzerdefinierte Schlüssel gesetzt",
     addCustomKey: "Benutzerdefinierten Schlüssel hinzufügen",
     customKeyName: "Variablenname",
     customKeyNamePlaceholder: "z. B. MY_SERVICE_API_KEY",
     add: "Hinzufügen",
-    invalidKeyName: "Nur Buchstaben, Zahlen und Unterstriche verwenden (muss mit einem Buchstaben oder Unterstrich beginnen).",
+    invalidKeyName:
+      "Nur Buchstaben, Zahlen und Unterstriche verwenden (muss mit einem Buchstaben oder Unterstrich beginnen).",
   },
 
   oauth: {
     title: "Anbieter-Logins (OAuth)",
     providerLogins: "Anbieter-Logins (OAuth)",
-    description: "{connected} von {total} OAuth-Anbietern verbunden. Login-Abläufe laufen derzeit über die CLI; klicke auf Befehl kopieren und füge ihn in ein Terminal ein, um einzurichten.",
+    description:
+      "{connected} von {total} OAuth-Anbietern verbunden. Login-Abläufe laufen derzeit über die CLI; klicke auf Befehl kopieren und füge ihn in ein Terminal ein, um einzurichten.",
     connected: "Verbunden",
     expired: "Abgelaufen",
     notConnected: "Nicht verbunden. Führe {command} in einem Terminal aus.",
@@ -464,15 +481,19 @@ export const de: Translations = {
     exchangingCode: "Code wird gegen Tokens getauscht…",
     connectedClosing: "Verbunden! Wird geschlossen…",
     loginFailed: "Anmeldung fehlgeschlagen.",
-    sessionExpired: "Sitzung abgelaufen. Klicke auf Erneut versuchen, um eine neue Anmeldung zu starten.",
+    sessionExpired:
+      "Sitzung abgelaufen. Klicke auf Erneut versuchen, um eine neue Anmeldung zu starten.",
     reOpenAuth: "Authentifizierungsseite erneut öffnen",
     reOpenVerification: "Verifizierungsseite erneut öffnen",
     submitCode: "Code einreichen",
     pasteCode: "Autorisierungscode einfügen (mit #state-Suffix ist okay)",
     waitingAuth: "Warte, bis du im Browser autorisierst…",
-    enterCodePrompt: "Ein neuer Tab wurde geöffnet. Gib bei Aufforderung diesen Code ein:",
-    pkceStep1: "Ein neuer Tab wurde zu claude.ai geöffnet. Melde dich an und klicke auf Autorisieren.",
-    pkceStep2: "Kopiere den Autorisierungscode, der nach der Autorisierung angezeigt wird.",
+    enterCodePrompt:
+      "Ein neuer Tab wurde geöffnet. Gib bei Aufforderung diesen Code ein:",
+    pkceStep1:
+      "Ein neuer Tab wurde zu claude.ai geöffnet. Melde dich an und klicke auf Autorisieren.",
+    pkceStep2:
+      "Kopiere den Autorisierungscode, der nach der Autorisierung angezeigt wird.",
     pkceStep3: "Füge ihn unten ein und sende ab.",
     flowLabels: {
       pkce: "Browser-Login (PKCE)",
@@ -589,11 +610,10 @@ export const de: Translations = {
       copy_button: "Bild kopieren",
       copied: "Kopiert ✓",
       download_button: "PNG herunterladen",
-      hint:
-        "Auf X teilen öffnet einen vorgefertigten Post in einem neuen Tab. Klicke zuerst auf Bild kopieren, wenn du das 1200×630-Abzeichen anhängen möchtest – X lässt dich es direkt in den Tweet-Editor einfügen. PNG herunterladen speichert die Datei zur Nutzung an beliebiger Stelle.",
+      hint: "Auf X teilen öffnet einen vorgefertigten Post in einem neuen Tab. Klicke zuerst auf Bild kopieren, wenn du das 1200×630-Abzeichen anhängen möchtest – X lässt dich es direkt in den Tweet-Editor einfügen. PNG herunterladen speichert die Datei zur Nutzung an beliebiger Stelle.",
       clipboard_unsupported:
         "Bildkopie über die Zwischenablage wird in diesem Browser nicht unterstützt – nutze stattdessen Herunterladen.",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
+      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
     },
   },
   kanban: {
@@ -693,18 +713,22 @@ export const de: Translations = {
     noProfile: "(kein Profil)",
     showAllAttempts: "Alle Versuche anzeigen",
     sendingUpdates: "Aktualisierungen werden gesendet an ",
-    sendNotifications: "Benachrichtigungen für Abgeschlossen / Blockiert / Aufgegeben senden an",
+    sendNotifications:
+      "Benachrichtigungen für Abgeschlossen / Blockiert / Aufgegeben senden an",
     archiveBoardConfirm:
       "Board „{name}“ archivieren? Es wird nach boards/_archived/ verschoben, sodass du es später wiederherstellen kannst. Aufgaben auf diesem Board erscheinen nirgendwo mehr in der UI.",
     archiveBoardTitle: "Dieses Board archivieren",
-    boardSwitcherHint: "Mit Boards kannst du voneinander unabhängige Arbeitsabläufe trennen",
+    boardSwitcherHint:
+      "Mit Boards kannst du voneinander unabhängige Arbeitsabläufe trennen",
     taskCreatedWarning: "Aufgabe erstellt, aber: ",
     moveFailed: "Verschieben fehlgeschlagen: ",
     bulkFailed: "Bulk: ",
-    completionBlockedHallucination: "⚠ Abschluss blockiert — Phantom-Karten-IDs",
+    completionBlockedHallucination:
+      "⚠ Abschluss blockiert — Phantom-Karten-IDs",
     suspectedHallucinatedReferences: "⚠ Text verweist auf Phantom-Karten-IDs",
     pickProfileFirst: "Wähle zuerst ein Profil aus.",
-    unblockedMessage: "{id} freigegeben. Aufgabe ist bereit für den nächsten Tick.",
+    unblockedMessage:
+      "{id} freigegeben. Aufgabe ist bereit für den nächsten Tick.",
     unblockFailed: "Freigeben fehlgeschlagen: ",
     reclaimedMessage: "{id} zurückgeholt. Aufgabe ist wieder auf ready.",
     reclaimFailed: "Zurückholen fehlgeschlagen: ",
@@ -727,7 +751,8 @@ export const de: Translations = {
     columnHelp: {
       triage: "Rohe Ideen — ein Specifier wird die Spezifikation ausarbeiten",
       todo: "Wartet auf Abhängigkeiten oder ist nicht zugewiesen",
-      scheduled: "Wartet auf eine bekannte Verzögerung oder eine geplante Nachverfolgung",
+      scheduled:
+        "Wartet auf eine bekannte Verzögerung oder eine geplante Nachverfolgung",
       ready: "Abhängigkeiten erfüllt; Profil zum Dispatch zuweisen",
       running: "Von einem Worker übernommen — in Bearbeitung",
       blocked: "Worker hat um menschliche Eingabe gebeten",
@@ -752,7 +777,8 @@ export const de: Translations = {
     skillsPlaceholder:
       "Fähigkeiten (optional, kommagetrennt): translation, github-code-review",
     noParent: "— keine übergeordnete Aufgabe —",
-    workspacePathDir: "Arbeitsbereichs-Pfad (erforderlich, z. B. ~/projects/my-app)",
+    workspacePathDir:
+      "Arbeitsbereichs-Pfad (erforderlich, z. B. ~/projects/my-app)",
     workspacePathOptional:
       "Arbeitsbereichs-Pfad (optional, wird aus zuständiger Person abgeleitet, wenn leer)",
     logTruncated: "(zeige die letzten 100 KB — vollständiges Log unter ",

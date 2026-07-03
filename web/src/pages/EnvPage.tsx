@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Eye,
   EyeOff,
@@ -136,9 +142,7 @@ function EnvVarRow({
     return (
       <div className="flex items-center justify-between gap-3 py-1.5 min-w-0 overflow-hidden text-text-secondary hover:text-foreground transition-colors">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-mono-ui text-xs">
-            {varKey}
-          </span>
+          <span className="font-mono-ui text-xs">{varKey}</span>
           <span className="text-xs text-text-tertiary truncate hidden sm:block">
             {info.description}
           </span>
@@ -172,9 +176,7 @@ function EnvVarRow({
     return (
       <div className="flex items-center justify-between gap-3 border border-border/50 px-4 py-2.5 min-w-0 overflow-hidden text-text-secondary hover:text-foreground transition-colors">
         <div className="flex items-center gap-3 min-w-0">
-          <Label className="font-mono-ui text-xs">
-            {varKey}
-          </Label>
+          <Label className="font-mono-ui text-xs">{varKey}</Label>
           <span className="text-xs text-text-tertiary truncate hidden sm:block">
             {info.description}
           </span>
@@ -230,11 +232,7 @@ function EnvVarRow({
       {info.tools.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {info.tools.map((tool) => (
-            <Badge
-              key={tool}
-              tone="secondary"
-              className="text-xs py-0 px-1.5"
-            >
+            <Badge key={tool} tone="secondary" className="text-xs py-0 px-1.5">
               {tool}
             </Badge>
           ))}
@@ -640,7 +638,10 @@ export default function EnvPage() {
           (info) => info.category === cat && !info.channel_managed,
         );
         if (hasEntries) {
-          items.push({ id: `section-${cat}`, label: CATEGORY_LABELS[cat] ?? cat });
+          items.push({
+            id: `section-${cat}`,
+            label: CATEGORY_LABELS[cat] ?? cat,
+          });
         }
       }
       // Custom keys section is always present (it carries the add-key form).
@@ -655,7 +656,9 @@ export default function EnvPage() {
       return;
     }
     const scrollTo = (id: string) => {
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document
+        .getElementById(id)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     };
     setAfterTitle(
       <nav
@@ -920,9 +923,7 @@ export default function EnvPage() {
           <p className="text-sm text-muted-foreground">
             {t.env.description} <code>~/.hermes/.env</code>
           </p>
-          <p className="text-xs text-text-tertiary">
-            {t.env.changesNote}
-          </p>
+          <p className="text-xs text-text-tertiary">{t.env.changesNote}</p>
         </div>
         <Button
           size="sm"

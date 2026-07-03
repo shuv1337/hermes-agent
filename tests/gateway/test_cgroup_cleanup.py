@@ -51,9 +51,9 @@ class TestReapCgroup:
         count = cgroup_cleanup.reap_cgroup(cgroup_path)
 
         assert count == 2
-        assert (own, signal.SIGKILL) not in killed_pids
-        assert (1001, signal.SIGKILL) in killed_pids
-        assert (1002, signal.SIGKILL) in killed_pids
+        assert (own, signal.SIGKILL) not in killed_pids  # windows-footgun: ok
+        assert (1001, signal.SIGKILL) in killed_pids  # windows-footgun: ok
+        assert (1002, signal.SIGKILL) in killed_pids  # windows-footgun: ok
 
     def test_tolerates_already_exited_pids(self, tmp_path, monkeypatch):
         cgroup_path = "/test.slice/hermes-gateway.service"

@@ -288,7 +288,7 @@ class TestSigkillFallback:
     def test_getattr_fallback_prefers_sigkill_when_present(self):
         """On POSIX the fallback is a no-op: real SIGKILL wins."""
         result = getattr(signal, "SIGKILL", signal.SIGTERM)
-        assert result == signal.SIGKILL
+        assert result == signal.SIGKILL  # windows-footgun: ok
 
     @pytest.mark.parametrize(
         "module_path, line_pattern",
