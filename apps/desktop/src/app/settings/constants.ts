@@ -1,5 +1,5 @@
 import {
-  AudioLines,
+  Box,
   Brain,
   type IconComponent,
   Lock,
@@ -8,14 +8,13 @@ import {
   Monitor,
   Moon,
   Palette,
-  Sparkles,
   Sun,
   Wrench
 } from '@/lib/icons'
 import type { ThemeMode } from '@/themes/context'
 
-import type { DesktopConfigSection } from './types'
 import { defineFieldCopy } from './field-copy'
+import type { DesktopConfigSection } from './types'
 
 // Provider group definitions used to fold raw env-var names like
 // ``XAI_API_KEY`` into a single "xAI" card with a friendly label, short
@@ -75,7 +74,6 @@ export const PROVIDER_GROUPS: ProviderPrefix[] = [
     priority: 4
   },
   { prefix: 'GEMINI_', name: 'Gemini', priority: 4 },
-  { prefix: 'HERMES_GEMINI_', name: 'Gemini', priority: 4 },
   {
     prefix: 'DEEPSEEK_',
     name: 'DeepSeek',
@@ -423,15 +421,6 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
     childTimeoutSeconds: 'Subagent Timeout',
     reasoningEffort: 'Subagent Reasoning Effort'
   },
-  realtime: {
-    voice: 'Realtime Voice',
-    turnDetection: 'Turn Detection',
-    semanticVadEagerness: 'Semantic VAD Eagerness',
-    maxSessionSec: 'Max Session Length',
-    idleTimeoutMs: 'Idle Timeout',
-    delegationModel: 'Delegation Model',
-    delegationProvider: 'Delegation Provider'
-  },
   updates: {
     nonInteractiveLocalChanges: 'In-App Update Local Changes'
   }
@@ -501,18 +490,6 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
       languageCode: 'Optional ISO-639-3 language code. Blank lets ElevenLabs auto-detect.'
     }
   },
-  realtime: {
-    voice: 'Spoken voice for realtime (GPT-Realtime speech-to-speech) conversations.',
-    turnDetection:
-      'How the model decides you have finished speaking. Server VAD is timing-based; Semantic VAD waits for a complete thought.',
-    semanticVadEagerness:
-      'How readily the model takes its turn (Semantic VAD only). Higher is snappier; lower waits longer.',
-    maxSessionSec: 'Hard cap on a single realtime voice session, in seconds.',
-    idleTimeoutMs: 'Auto end-of-turn prompt after this much silence, in milliseconds (Server VAD only). 0 disables.',
-    delegationModel:
-      'Run delegated voice turns on a faster model than typed chat. Blank uses the chat model (e.g. google/gemini-3.1-flash-lite).',
-    delegationProvider: 'Optional explicit provider for the delegation model (e.g. gemini, openrouter).'
-  },
   updates: {
     nonInteractiveLocalChanges:
       'When Hermes updates itself from the app (no terminal prompt), keep local source edits (stash) or throw them away (discard). Terminal updates always ask.'
@@ -524,7 +501,7 @@ export const SECTIONS: DesktopConfigSection[] = [
   {
     id: 'model',
     label: 'Model',
-    icon: Sparkles,
+    icon: Box,
     keys: ['model_context_length', 'fallback_providers']
   },
   {
@@ -622,20 +599,6 @@ export const SECTIONS: DesktopConfigSection[] = [
       'stt.elevenlabs.diarize',
       'voice.record_key',
       'voice.max_recording_seconds'
-    ]
-  },
-  {
-    id: 'realtime',
-    label: 'Realtime Voice',
-    icon: AudioLines,
-    keys: [
-      'realtime.voice',
-      'realtime.turn_detection',
-      'realtime.semantic_vad_eagerness',
-      'realtime.max_session_sec',
-      'realtime.idle_timeout_ms',
-      'realtime.delegation_model',
-      'realtime.delegation_provider'
     ]
   },
   {
