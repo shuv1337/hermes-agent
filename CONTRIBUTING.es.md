@@ -519,6 +519,8 @@ Tras el [compromiso de la cadena de suministro de litellm](https://github.com/Be
 | **GitHub Actions** | SHA completo del commit + comentario de versión | Las etiquetas de acción son refs mutables. Fija como `uses: owner/action@<sha>  # vX.Y.Z` |
 | **Instalaciones pip solo de CI** | `==exacto` | Builds de CI herméticos; el cambio es aceptable. |
 
+La única excepción permanente es `.github/workflows/reviewbot.yml` usando la acción interna `shuv1337/shuvbot@v0`: la etiqueta mutable `v0` es un mecanismo intencional de reversión para las ejecuciones asesoras de reviewbot. Todas las demás GitHub Actions deben fijarse por SHA completo del commit.
+
 **Cada nueva dependencia de PyPI en un PR debe tener un límite superior `<siguiente_mayor`.** Los PRs que añadan especificaciones `>=X.Y.Z` sin límite superior serán rechazados.
 
 ---

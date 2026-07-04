@@ -897,6 +897,8 @@ After the [litellm supply chain compromise](https://github.com/BerriAI/litellm/i
 | **GitHub Actions** | Full commit SHA + version comment | Action tags are mutable refs (e.g. tj-actions/changed-files March 2025). Pin as `uses: owner/action@<sha>  # vX.Y.Z` |
 | **CI-only pip installs** | `==exact` | Hermetic CI builds; churn is acceptable. |
 
+The only standing exception is `.github/workflows/reviewbot.yml` using the first-party `shuv1337/shuvbot@v0` action: the mutable `v0` tag is an intentional fleet-wide rollback lever for advisory reviewbot runs. All other GitHub Actions must be pinned by full commit SHA.
+
 **Every new PyPI dependency in a PR must have a `<next_major` upper bound.** PRs adding unbounded `>=X.Y.Z` specs will be rejected by reviewers. The `supply-chain-audit.yml` CI workflow also flags dependency manifest changes for manual review.
 
 **How to determine the ceiling:**
