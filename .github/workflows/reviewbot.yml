@@ -13,7 +13,8 @@ jobs:
     # Size guard: skip giant upstream-sync PRs (300+-commit merges are poor, expensive review targets).
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.commits < 50
+      github.event.pull_request.commits < 50 &&
+      !github.event.pull_request.draft
     runs-on: ubuntu-latest
     permissions:
       contents: read
