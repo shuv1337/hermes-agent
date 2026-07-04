@@ -11,6 +11,7 @@ jobs:
     name: reviewbot review
     # Public repo: only run when the PR head is in this same repo (secrets are available).
     # Size guard: skip giant upstream-sync PRs (300+-commit merges are poor, expensive review targets).
+    # Draft guard: wait until the PR is marked ready for review.
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.commits < 50 &&
