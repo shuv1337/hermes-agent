@@ -160,6 +160,29 @@ def _write_fixture(tmp_path: Path) -> Path:
     return chunk
 
 
+def test_spectrum_patch_accepts_already_patched_legacy_install(tmp_path: Path) -> None:
+    """A stale 3.x node_modules tree may already be patched under
+    `spectrum-ts/dist`. Runtime self-heal must no-op cleanly instead of failing
+    while looking only for the newer scoped package layout."""
+    dist = tmp_path / "node_modules" / "spectrum-ts" / "dist"
+    dist.mkdir(parents=True)
+    chunk = dist / "chunk-old.js"
+    chunk.write_text(
+        "// Hermes patch: Preserve mixed text + attachment iMessage payloads\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["node", str(_PATCHER), str(tmp_path)],
+        cwd=Path.cwd(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "spectrum-ts/dist/chunk-old.js" in result.stderr
+
+
 def test_spectrum_patch_rewrites_the_imessage_mapper(tmp_path: Path) -> None:
     """The dependency patch must apply to the 8.x `@spectrum-ts/imessage` chunk
     and rewrite both inbound mappers to thread text through attachment bubbles."""

@@ -115,51 +115,59 @@ function patchChildIndices(source) {
   );
 }
 
-export function patchSpectrumTs(root = scriptDir()) {
-  const dist = path.join(
-    root,
-    "node_modules",
-    "@spectrum-ts",
-    "imessage",
-    "dist"
-  );
-  if (!fs.existsSync(dist)) {
-    throw new Error(`@spectrum-ts/imessage dist not found: ${dist}`);
-  }
-  const files = fs.readdirSync(dist)
-    .filter((name) => name.endsWith(".js"))
-    .map((name) => path.join(dist, name));
+function imessageDistCandidates(root) {
+  return [
+    path.join(root, "node_modules", "@spectrum-ts", "imessage", "dist"),
+    path.join(root, "node_modules", "spectrum-ts", "dist"),
+  ];
+}
 
-  for (const file of files) {
-    const raw = fs.readFileSync(file, "utf8");
-    if (raw.includes(MARKER)) {
-      return { patched: false, file, reason: "already patched" };
-    }
-    // Normalize to LF for matching so the patch works regardless of the
-    // checkout's line-ending style (Windows git autocrlf produces CRLF,
-    // which would otherwise defeat the \n-based search strings). The
-    // original EOL style is restored on write. Indentation in the published
-    // tarball is tabs; the anchors match that directly.
-    const CR = String.fromCharCode(13);
-    const CRLF = CR + "\n";
-    const usedCRLF = raw.includes(CRLF);
-    const original = usedCRLF ? raw.split(CRLF).join("\n") : raw;
-    if (!original.includes("const toInboundMessages = async") ||
-        !original.includes("const rebuildFromAppleMessage = async")) {
-      continue;
-    }
-    let patched = original;
-    patched = patchRebuild(patched);
-    patched = patchInbound(patched);
-    patched = patchChildIndices(patched);
-    patched = `// ${MARKER}\n${patched}`;
-    if (usedCRLF) {
-      patched = patched.split("\n").join(CRLF);
-    }
-    fs.writeFileSync(file, patched, "utf8");
-    return { patched: true, file };
+export function patchSpectrumTs(root = scriptDir()) {
+  const existingDists = imessageDistCandidates(root).filter((dist) =>
+    fs.existsSync(dist)
+  );
+  if (existingDists.length === 0) {
+    throw new Error(
+      `spectrum-ts iMessage dist not found; checked: ${imessageDistCandidates(root).join(", ")}`
+    );
   }
-  throw new Error("could not find @spectrum-ts/imessage iMessage inbound chunk to patch");
+
+  for (const dist of existingDists) {
+    const files = fs.readdirSync(dist)
+      .filter((name) => name.endsWith(".js"))
+      .map((name) => path.join(dist, name));
+
+    for (const file of files) {
+      const raw = fs.readFileSync(file, "utf8");
+      if (raw.includes(MARKER)) {
+        return { patched: false, file, reason: "already patched" };
+      }
+      // Normalize to LF for matching so the patch works regardless of the
+      // checkout's line-ending style (Windows git autocrlf produces CRLF,
+      // which would otherwise defeat the \n-based search strings). The
+      // original EOL style is restored on write. Indentation in the published
+      // tarball is tabs; the anchors match that directly.
+      const CR = String.fromCharCode(13);
+      const CRLF = CR + "\n";
+      const usedCRLF = raw.includes(CRLF);
+      const original = usedCRLF ? raw.split(CRLF).join("\n") : raw;
+      if (!original.includes("const toInboundMessages = async") ||
+          !original.includes("const rebuildFromAppleMessage = async")) {
+        continue;
+      }
+      let patched = original;
+      patched = patchRebuild(patched);
+      patched = patchInbound(patched);
+      patched = patchChildIndices(patched);
+      patched = `// ${MARKER}\n${patched}`;
+      if (usedCRLF) {
+        patched = patched.split("\n").join(CRLF);
+      }
+      fs.writeFileSync(file, patched, "utf8");
+      return { patched: true, file };
+    }
+  }
+  throw new Error("could not find spectrum-ts iMessage inbound chunk to patch");
 }
 
 const _invokedDirectly =
