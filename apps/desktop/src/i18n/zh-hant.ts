@@ -25,6 +25,7 @@ export const zhHant = defineLocale({
     docs: '文件',
     done: '完成',
     error: '錯誤',
+    expand: '展開',
     failed: '失敗',
     formatJson: '格式化 JSON',
     free: '免費',
@@ -39,6 +40,7 @@ export const zhHant = defineLocale({
     set: '設定',
     skip: '略過',
     update: '更新',
+    tryHint: term => `試試「${term}」`,
     on: '開啟',
     off: '關閉'
   },
@@ -114,6 +116,7 @@ export const zhHant = defineLocale({
     copyDetailFailed: '無法複製通知詳情',
     backendOutOfDateTitle: '後端版本過舊',
     backendOutOfDateMessage: '您的 Hermes 後端早於目前的桌面版本，可能無法正常運作。請更新以保持一致。',
+    installMethodUnsupportedTitle: '不受支援的安裝方式',
     updateHermes: '更新 Hermes',
     updateReadyTitle: '有可用更新',
     updateReadyMessage: count => `有 ${count} 項新變更可用。`,
@@ -277,6 +280,9 @@ export const zhHant = defineLocale({
       colorModeDesc: '選擇固定模式，或讓 Hermes 跟隨系統設定。',
       toolViewTitle: '工具呼叫顯示',
       toolViewDesc: '產品模式會隱藏原始工具 payload；技術模式會顯示完整輸入/輸出。',
+      uiScaleTitle: '介面縮放',
+      uiScaleDesc: (percent: number) =>
+        `縮放整個應用程式的文字與介面。也可使用 Cmd/Ctrl 加 +、- 或 0 調整。目前：${percent}%`,
       translucencyTitle: '視窗透明',
       translucencyDesc: '讓整個視窗透出桌面。僅支援 macOS 與 Windows。',
       embedsTitle: '內嵌預覽',
@@ -704,7 +710,22 @@ export const zhHant = defineLocale({
       name: '名稱',
       serverJson: '伺服器 JSON',
       remove: '移除',
-      saveServer: '儲存伺服器'
+      saveServer: '儲存伺服器',
+      capabilitySummary: (tools, prompts, resources) =>
+        `已啟用 ${[`${tools} 個工具`, ...(prompts ? [`${prompts} 個提示`] : []), ...(resources ? [`${resources} 個資源`] : [])].join('、')}`,
+      statusConnecting: '連線中…',
+      statusNeedsAuth: '需要驗證',
+      statusError: '錯誤',
+      statusOff: '關閉',
+      allServers: '所有伺服器',
+      authenticatedTitle: '已驗證',
+      authenticatedMessage: (server, count) => `${server}：${count} 個工具`,
+      waitingForBrowser: '等待瀏覽器…',
+      authenticate: '驗證',
+      unsavedConnect: '未儲存 — 儲存 mcp.json 以連線。',
+      enableTool: tool => `啟用 ${tool}`,
+      disableTool: tool => `停用 ${tool}`,
+      noOutput: '尚無輸出。'
     },
     model: {
       loading: '正在載入模型設定...',
@@ -836,11 +857,28 @@ export const zhHant = defineLocale({
     failedToUpdate: name => `更新 ${name} 失敗`,
     sortMostUsed: '最常用',
     sortAlpha: 'A–Z',
+    sortMostUsedDesc: '↓ 最常用',
+    sortLeastUsedAsc: '↑ 最少用',
     enableAll: '全部啟用',
     disableAll: '全部停用',
+    disableUnused: '停用未使用',
     bulkUpdated: count => `已為新工作階段更新 ${count} 項。`,
     bulkNoChange: '沒有需要變更的內容。',
-    usageCount: count => `已使用 ${count} 次`
+    usageCount: count => `已使用 ${count} 次`,
+    provenance: {
+      agent: '已學習',
+      bundled: '內建',
+      hub: '技能中心'
+    },
+    emptyNoneFound: noun => `找不到${noun}`,
+    emptyNothingMatches: query => `沒有符合「${query}」的內容。`,
+    emptyNoneAvailable: noun => `尚無可用的${noun}。`,
+    changesApplyNewSessions: '變更將套用至新工作階段。',
+    skillUpdated: '技能已更新',
+    edit: '編輯',
+    archive: '封存',
+    skillArchivedTitle: '技能已封存',
+    skillArchivedMessage: '可透過 hermes curator restore 還原。'
   },
 
   starmap: {

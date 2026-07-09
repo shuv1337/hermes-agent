@@ -70,6 +70,7 @@ export interface Translations {
     docs: string
     done: string
     error: string
+    expand: string
     failed: string
     formatJson: string
     free: string
@@ -84,6 +85,7 @@ export interface Translations {
     set: string
     skip: string
     update: string
+    tryHint: (term: string) => string
     on: string
     off: string
   }
@@ -159,6 +161,7 @@ export interface Translations {
     copyDetailFailed: string
     backendOutOfDateTitle: string
     backendOutOfDateMessage: string
+    installMethodUnsupportedTitle: string
     updateHermes: string
     updateReadyTitle: string
     updateReadyMessage: (count: number) => string
@@ -300,6 +303,8 @@ export interface Translations {
       colorModeDesc: string
       toolViewTitle: string
       toolViewDesc: string
+      uiScaleTitle: string
+      uiScaleDesc: (percent: number) => string
       translucencyTitle: string
       translucencyDesc: string
       embedsTitle: string
@@ -541,6 +546,20 @@ export interface Translations {
       catalogInstallFailed: (name: string) => string
       catalogEnvPrompt: (name: string) => string
       catalogEnvRequired: string
+      capabilitySummary: (tools: number, prompts: number, resources: number) => string
+      statusConnecting: string
+      statusNeedsAuth: string
+      statusError: string
+      statusOff: string
+      allServers: string
+      authenticatedTitle: string
+      authenticatedMessage: (server: string, count: number) => string
+      waitingForBrowser: string
+      authenticate: string
+      unsavedConnect: string
+      enableTool: (tool: string) => string
+      disableTool: (tool: string) => string
+      noOutput: string
     }
     model: {
       loading: string
@@ -682,11 +701,24 @@ export interface Translations {
     failedToUpdate: (name: string) => string
     sortMostUsed: string
     sortAlpha: string
+    sortMostUsedDesc: string
+    sortLeastUsedAsc: string
     enableAll: string
     disableAll: string
+    disableUnused: string
     bulkUpdated: (count: number) => string
     bulkNoChange: string
     usageCount: (count: number | string) => string
+    provenance: Record<'agent' | 'bundled' | 'hub', string>
+    emptyNoneFound: (noun: string) => string
+    emptyNothingMatches: (query: string) => string
+    emptyNoneAvailable: (noun: string) => string
+    changesApplyNewSessions: string
+    skillUpdated: string
+    edit: string
+    archive: string
+    skillArchivedTitle: string
+    skillArchivedMessage: string
     hub: {
       searchPlaceholder: string
       search: string

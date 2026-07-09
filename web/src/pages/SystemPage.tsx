@@ -48,6 +48,7 @@ import { api } from "@/lib/api";
 import type {
   StatusResponse,
   MemoryStatus,
+  MemoryProviderInfo,
   CredentialPoolProvider,
   CheckpointsResponse,
   HooksResponse,
@@ -171,6 +172,23 @@ const HOOK_EVENTS_FALLBACK = [
   "on_session_end",
 ];
 
+const MEMORY_STATUS_LABEL: Record<MemoryProviderInfo["status"], string> = {
+  ready: "ready",
+  needs_config: "needs setup",
+  unavailable: "unavailable",
+  missing: "missing",
+};
+
+const MEMORY_STATUS_TONE: Record<
+  MemoryProviderInfo["status"],
+  "success" | "warning" | "destructive" | "secondary"
+> = {
+  ready: "success",
+  needs_config: "warning",
+  unavailable: "destructive",
+  missing: "destructive",
+};
+
 export default function SystemPage() {
   const { toast, showToast } = useToast();
 
@@ -195,9 +213,9 @@ export default function SystemPage() {
   const [credLabel, setCredLabel] = useState("");
   const [addingCred, setAddingCred] = useState(false);
 
-  const [pendingBackupArchive, setPendingBackupArchive] = useState<
-    string | null
-  >(null);
+  const [pendingBackupArchive, setPendingBackupArchive] = useState<string | null>(
+    null,
+  );
   const [downloadableBackupArchive, setDownloadableBackupArchive] = useState<
     string | null
   >(null);
@@ -291,10 +309,7 @@ export default function SystemPage() {
     if (!curator) return;
     try {
       await api.setCuratorPaused(!curator.paused);
-      showToast(
-        curator.paused ? "Curator resumed" : "Curator paused",
-        "success",
-      );
+      showToast(curator.paused ? "Curator resumed" : "Curator paused", "success");
       loadAll();
     } catch (e) {
       showToast(`Curator toggle failed: ${e}`, "error");
@@ -493,6 +508,7 @@ export default function SystemPage() {
     }
   }, [shareRedact, showToast]);
 
+
   // ── Update check / apply ───────────────────────────────────────────
   const checkForUpdate = useCallback(
     async (force = false) => {
@@ -539,7 +555,8 @@ export default function SystemPage() {
       const resp = await api.updateHermes();
       if (!resp.ok) {
         showToast(
-          resp.message ?? "Updates don't apply from this dashboard.",
+          resp.message ??
+            "Updates don't apply from this dashboard.",
           "success",
         );
         return;
@@ -621,6 +638,9 @@ export default function SystemPage() {
 
   const gatewayRunning = status?.gateway_running;
   const canUpdateHermes = status?.can_update_hermes !== false;
+  const activeMemoryProvider = memory?.active
+    ? memory.providers.find((provider) => provider.name === memory.active)
+    : null;
   const validEvents = hooks?.valid_events?.length
     ? hooks.valid_events
     : HOOK_EVENTS_FALLBACK;
@@ -693,18 +713,11 @@ export default function SystemPage() {
         <div
           ref={hookModalRef}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 p-4"
-          onClick={(e) =>
-            e.target === e.currentTarget && setHookModalOpen(false)
-          }
+          onClick={(e) => e.target === e.currentTarget && setHookModalOpen(false)}
           role="dialog"
           aria-modal="true"
         >
-          <div
-            className={cn(
-              themedBody,
-              "relative w-full max-w-lg border border-border bg-card shadow-2xl flex flex-col",
-            )}
-          >
+          <div className={cn(themedBody, "relative w-full max-w-lg border border-border bg-card shadow-2xl flex flex-col")}>
             <Button
               ghost
               size="icon"
@@ -768,9 +781,7 @@ export default function SystemPage() {
                 <Checkbox
                   checked={hookApprove}
                   id="hook-approve"
-                  onCheckedChange={(checked) =>
-                    setHookApprove(checked === true)
-                  }
+                  onCheckedChange={(checked) => setHookApprove(checked === true)}
                 />
 
                 <Label
@@ -782,9 +793,8 @@ export default function SystemPage() {
                 </Label>
               </div>
               <p className="text-xs text-warning">
-                Shell hooks run arbitrary commands on this host. Only add
-                scripts you trust. Takes effect on the next gateway/session
-                restart.
+                Shell hooks run arbitrary commands on this host. Only add scripts
+                you trust. Takes effect on the next gateway/session restart.
               </p>
               <div className="flex justify-end">
                 <Button
@@ -813,47 +823,30 @@ export default function SystemPage() {
 
       {/* ── Host / system stats ───────────────────────────────────── */}
       <section className="flex flex-col gap-3">
-        <H2
-          variant="sm"
-          className="flex items-center gap-2 text-muted-foreground"
-        >
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
           <Server className="h-4 w-4" /> Host
         </H2>
         <Card>
           <CardContent className="py-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-6 text-sm">
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                  OS
-                </div>
-                <div>
-                  {stats?.os} {stats?.os_release}
-                </div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">OS</div>
+                <div>{stats?.os} {stats?.os_release}</div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Arch
-                </div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Arch</div>
                 <div>{stats?.arch}</div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Host
-                </div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Host</div>
                 <div className="truncate">{stats?.hostname}</div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Python
-                </div>
-                <div>
-                  {stats?.python_impl} {stats?.python_version}
-                </div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Python</div>
+                <div>{stats?.python_impl} {stats?.python_version}</div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Hermes
-                </div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Hermes</div>
                 <div className="flex items-center gap-2">
                   <span>v{stats?.hermes_version}</span>
                   {canUpdateHermes &&
@@ -882,12 +875,9 @@ export default function SystemPage() {
               </div>
               {stats?.memory && (
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Memory
-                  </div>
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground">Memory</div>
                   <div>
-                    {formatBytes(stats.memory.used)} /{" "}
-                    {formatBytes(stats.memory.total)} ({stats.memory.percent}%)
+                    {formatBytes(stats.memory.used)} / {formatBytes(stats.memory.total)} ({stats.memory.percent}%)
                   </div>
                 </div>
               )}
@@ -897,27 +887,20 @@ export default function SystemPage() {
                     <HardDrive className="h-3 w-3" /> Disk
                   </div>
                   <div>
-                    {formatBytes(stats.disk.used)} /{" "}
-                    {formatBytes(stats.disk.total)} ({stats.disk.percent}%)
+                    {formatBytes(stats.disk.used)} / {formatBytes(stats.disk.total)} ({stats.disk.percent}%)
                   </div>
                 </div>
               )}
               {typeof stats?.uptime_seconds === "number" && (
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Uptime
-                  </div>
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground">Uptime</div>
                   <div>{formatDuration(stats.uptime_seconds)}</div>
                 </div>
               )}
               {stats?.load_avg && stats.load_avg.length >= 3 && (
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Load avg
-                  </div>
-                  <div>
-                    {stats.load_avg.map((n) => n.toFixed(2)).join(" / ")}
-                  </div>
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground">Load avg</div>
+                  <div>{stats.load_avg.map((n) => n.toFixed(2)).join(" / ")}</div>
                 </div>
               )}
             </div>
@@ -958,9 +941,7 @@ export default function SystemPage() {
                   updateInfo.update_available && (
                     <span className="text-xs text-muted-foreground">
                       Update with{" "}
-                      <span className="font-mono">
-                        {updateInfo.update_command}
-                      </span>
+                      <span className="font-mono">{updateInfo.update_command}</span>
                     </span>
                   )}
                 {updateInfo?.message && !updateInfo.update_available && (
@@ -976,10 +957,7 @@ export default function SystemPage() {
 
       {/* ── Portal ────────────────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
-        <H2
-          variant="sm"
-          className="flex items-center gap-2 text-muted-foreground"
-        >
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
           <Globe className="h-4 w-4" /> Nous Portal
         </H2>
         <Card>
@@ -994,10 +972,7 @@ export default function SystemPage() {
                 </span>
               )}
               <a
-                href={
-                  portal?.subscription_url ||
-                  "https://portal.nousresearch.com/manage-subscription"
-                }
+                href={portal?.subscription_url || "https://portal.nousresearch.com/manage-subscription"}
                 target="_blank"
                 rel="noreferrer"
                 className="ml-auto text-xs text-primary underline"
@@ -1011,10 +986,7 @@ export default function SystemPage() {
                   Tool Gateway routing
                 </span>
                 {portal.features.map((f) => (
-                  <div
-                    key={f.label}
-                    className="flex items-center justify-between text-sm"
-                  >
+                  <div key={f.label} className="flex items-center justify-between text-sm">
                     <span>{f.label}</span>
                     <span className="text-muted-foreground">{f.state}</span>
                   </div>
@@ -1032,37 +1004,18 @@ export default function SystemPage() {
 
       {/* ── Curator ───────────────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
-        <H2
-          variant="sm"
-          className="flex items-center gap-2 text-muted-foreground"
-        >
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
           <Sparkles className="h-4 w-4" /> Skill curator
         </H2>
         <Card>
           <CardContent className="flex items-center justify-between py-4">
             <div className="flex items-center gap-3">
-              <Badge
-                tone={
-                  curator?.paused
-                    ? "warning"
-                    : curator?.enabled
-                      ? "success"
-                      : "secondary"
-                }
-              >
-                {curator?.paused
-                  ? "paused"
-                  : curator?.enabled
-                    ? "active"
-                    : "disabled"}
+              <Badge tone={curator?.paused ? "warning" : curator?.enabled ? "success" : "secondary"}>
+                {curator?.paused ? "paused" : curator?.enabled ? "active" : "disabled"}
               </Badge>
               <span className="text-sm text-muted-foreground">
-                {curator?.interval_hours
-                  ? `every ${curator.interval_hours}h`
-                  : ""}
-                {curator?.last_run_at
-                  ? ` · last run ${new Date(curator.last_run_at).toLocaleString()}`
-                  : " · never run"}
+                {curator?.interval_hours ? `every ${curator.interval_hours}h` : ""}
+                {curator?.last_run_at ? ` · last run ${new Date(curator.last_run_at).toLocaleString()}` : " · never run"}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -1084,10 +1037,7 @@ export default function SystemPage() {
 
       {/* ── Gateway ───────────────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
-        <H2
-          variant="sm"
-          className="flex items-center gap-2 text-muted-foreground"
-        >
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
           <Power className="h-4 w-4" /> Gateway
         </H2>
         <Card>
@@ -1136,10 +1086,7 @@ export default function SystemPage() {
 
       {/* ── Memory ────────────────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
-        <H2
-          variant="sm"
-          className="flex items-center gap-2 text-muted-foreground"
-        >
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
           <Brain className="h-4 w-4" /> Memory
         </H2>
         <Card>
@@ -1151,14 +1098,28 @@ export default function SystemPage() {
                   {memory?.active || "built-in only"}
                 </span>
               </span>
+              {activeMemoryProvider && (
+                <Badge tone={MEMORY_STATUS_TONE[activeMemoryProvider.status]}>
+                  {MEMORY_STATUS_LABEL[activeMemoryProvider.status]}
+                </Badge>
+              )}
               <Link to="/plugins" className="underline">
                 Change in Plugins →
               </Link>
               <span className="ml-auto">
-                New credentials:{" "}
-                <span className="font-mono">hermes memory setup</span>
+                Provider setup:{" "}
+                <Link to="/plugins" className="underline">
+                  configure in Plugins
+                </Link>
               </span>
             </div>
+
+            {activeMemoryProvider?.status === "missing" && (
+              <p className="border border-destructive/50 px-3 py-2 text-xs text-destructive">
+                The configured provider is no longer installed. Switch to built-in memory or configure another provider in Plugins.
+              </p>
+            )}
+
             <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
               <span className="text-xs text-muted-foreground">
                 Built-in files — MEMORY.md:{" "}
@@ -1166,28 +1127,13 @@ export default function SystemPage() {
                 {formatBytes(memory?.builtin_files.user ?? 0)}
               </span>
               <div className="flex items-center gap-2 ml-auto">
-                <Button
-                  size="sm"
-                  ghost
-                  className="text-destructive"
-                  onClick={() => memoryReset.requestDelete("memory")}
-                >
+                <Button size="sm" ghost className="text-destructive" onClick={() => memoryReset.requestDelete("memory")}>
                   Reset MEMORY.md
                 </Button>
-                <Button
-                  size="sm"
-                  ghost
-                  className="text-destructive"
-                  onClick={() => memoryReset.requestDelete("user")}
-                >
+                <Button size="sm" ghost className="text-destructive" onClick={() => memoryReset.requestDelete("user")}>
                   Reset USER.md
                 </Button>
-                <Button
-                  size="sm"
-                  ghost
-                  className="text-destructive"
-                  onClick={() => memoryReset.requestDelete("all")}
-                >
+                <Button size="sm" ghost className="text-destructive" onClick={() => memoryReset.requestDelete("all")}>
                   Reset all
                 </Button>
               </div>
@@ -1198,10 +1144,7 @@ export default function SystemPage() {
 
       {/* ── Credential pool ───────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
-        <H2
-          variant="sm"
-          className="flex items-center gap-2 text-muted-foreground"
-        >
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
           <KeyRound className="h-4 w-4" /> Credential pool
         </H2>
         <Card>
@@ -1209,41 +1152,19 @@ export default function SystemPage() {
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
               <div className="grid gap-2">
                 <Label htmlFor="cred-provider">Provider</Label>
-                <Input
-                  id="cred-provider"
-                  value={credProvider}
-                  onChange={(e) => setCredProvider(e.target.value)}
-                  placeholder="openrouter"
-                />
+                <Input id="cred-provider" value={credProvider} onChange={(e) => setCredProvider(e.target.value)} placeholder="openrouter" />
               </div>
               <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor="cred-key">API key</Label>
-                <Input
-                  id="cred-key"
-                  type="password"
-                  value={credKey}
-                  onChange={(e) => setCredKey(e.target.value)}
-                  placeholder="sk-…"
-                />
+                <Input id="cred-key" type="password" value={credKey} onChange={(e) => setCredKey(e.target.value)} placeholder="sk-…" />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="cred-label">Label</Label>
-                <Input
-                  id="cred-label"
-                  value={credLabel}
-                  onChange={(e) => setCredLabel(e.target.value)}
-                  placeholder="optional"
-                />
+                <Input id="cred-label" value={credLabel} onChange={(e) => setCredLabel(e.target.value)} placeholder="optional" />
               </div>
             </div>
             <div className="flex justify-end">
-              <Button
-                size="sm"
-                className="uppercase"
-                onClick={addCredential}
-                disabled={addingCred}
-                prefix={addingCred ? <Spinner /> : undefined}
-              >
+              <Button size="sm" className="uppercase" onClick={addCredential} disabled={addingCred} prefix={addingCred ? <Spinner /> : undefined}>
                 Add key
               </Button>
             </div>
@@ -1258,29 +1179,12 @@ export default function SystemPage() {
                   {prov.provider}
                 </span>
                 {prov.entries.map((entry) => (
-                  <div
-                    key={`${prov.provider}-${entry.index}`}
-                    className="flex items-center gap-3 border border-border bg-background/40 px-3 py-2"
-                  >
+                  <div key={`${prov.provider}-${entry.index}`} className="flex items-center gap-3 border border-border bg-background/40 px-3 py-2">
                     <span className="text-sm font-medium">{entry.label}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {entry.token_preview}
-                    </span>
+                    <span className="font-mono text-xs text-muted-foreground">{entry.token_preview}</span>
                     <Badge tone="outline">{entry.auth_type}</Badge>
-                    {entry.last_status && (
-                      <Badge tone="secondary">{entry.last_status}</Badge>
-                    )}
-                    <Button
-                      ghost
-                      size="icon"
-                      className="ml-auto text-destructive"
-                      aria-label="Remove credential"
-                      onClick={() =>
-                        credDelete.requestDelete(
-                          `${prov.provider}|${entry.index}`,
-                        )
-                      }
-                    >
+                    {entry.last_status && <Badge tone="secondary">{entry.last_status}</Badge>}
+                    <Button ghost size="icon" className="ml-auto text-destructive" aria-label="Remove credential" onClick={() => credDelete.requestDelete(`${prov.provider}|${entry.index}`)}>
                       <Trash2 />
                     </Button>
                   </div>
@@ -1293,68 +1197,30 @@ export default function SystemPage() {
 
       {/* ── Operations ────────────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
-        <H2
-          variant="sm"
-          className="flex items-center gap-2 text-muted-foreground"
-        >
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
           <Activity className="h-4 w-4" /> Operations
         </H2>
         <Card>
           <CardContent className="flex flex-wrap gap-2 py-4">
-            <Button
-              size="sm"
-              ghost
-              prefix={<Terminal className="h-3.5 w-3.5" />}
-              onClick={() => setConsoleOpen(true)}
-            >
+            <Button size="sm" ghost prefix={<Terminal className="h-3.5 w-3.5" />} onClick={() => setConsoleOpen(true)}>
               Open console
             </Button>
-            <Button
-              size="sm"
-              ghost
-              prefix={<Stethoscope className="h-3.5 w-3.5" />}
-              onClick={() => runOp(api.runDoctor, "Doctor")}
-            >
+            <Button size="sm" ghost prefix={<Stethoscope className="h-3.5 w-3.5" />} onClick={() => runOp(api.runDoctor, "Doctor")}>
               Run doctor
             </Button>
-            <Button
-              size="sm"
-              ghost
-              prefix={<ShieldCheck className="h-3.5 w-3.5" />}
-              onClick={() => runOp(api.runSecurityAudit, "Security audit")}
-            >
+            <Button size="sm" ghost prefix={<ShieldCheck className="h-3.5 w-3.5" />} onClick={() => runOp(api.runSecurityAudit, "Security audit")}>
               Security audit
             </Button>
-            <Button
-              size="sm"
-              ghost
-              prefix={<RotateCw className="h-3.5 w-3.5" />}
-              onClick={() => runOp(api.updateSkillsFromHub, "Skills update")}
-            >
+            <Button size="sm" ghost prefix={<RotateCw className="h-3.5 w-3.5" />} onClick={() => runOp(api.updateSkillsFromHub, "Skills update")}>
               Update skills
             </Button>
-            <Button
-              size="sm"
-              ghost
-              prefix={<Activity className="h-3.5 w-3.5" />}
-              onClick={() => runOp(api.runPromptSize, "Prompt size")}
-            >
+            <Button size="sm" ghost prefix={<Activity className="h-3.5 w-3.5" />} onClick={() => runOp(api.runPromptSize, "Prompt size")}>
               Prompt size
             </Button>
-            <Button
-              size="sm"
-              ghost
-              prefix={<Database className="h-3.5 w-3.5" />}
-              onClick={() => runOp(api.runDump, "Support dump")}
-            >
+            <Button size="sm" ghost prefix={<Database className="h-3.5 w-3.5" />} onClick={() => runOp(api.runDump, "Support dump")}>
               Support dump
             </Button>
-            <Button
-              size="sm"
-              ghost
-              prefix={<RotateCw className="h-3.5 w-3.5" />}
-              onClick={() => runOp(api.runConfigMigrate, "Config migrate")}
-            >
+            <Button size="sm" ghost prefix={<RotateCw className="h-3.5 w-3.5" />} onClick={() => runOp(api.runConfigMigrate, "Config migrate")}>
               Migrate config
             </Button>
           </CardContent>
@@ -1485,9 +1351,7 @@ export default function SystemPage() {
               <div className="flex items-start gap-2">
                 <Share2 className="h-4 w-4 mt-0.5 text-muted-foreground" />
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">
-                    Share debug report
-                  </span>
+                  <span className="text-sm font-medium">Share debug report</span>
                   <span className="text-xs text-muted-foreground max-w-prose">
                     Uploads system info + logs to a public paste service and
                     returns links to send the Hermes team. Pastes auto-delete
@@ -1598,8 +1462,7 @@ export default function SystemPage() {
 
                 {shareResult.failures.length > 0 && (
                   <span className="text-xs text-destructive">
-                    Some logs failed to upload:{" "}
-                    {shareResult.failures.join("; ")}
+                    Some logs failed to upload: {shareResult.failures.join("; ")}
                   </span>
                 )}
               </div>
@@ -1610,10 +1473,7 @@ export default function SystemPage() {
 
       {/* ── Checkpoints ───────────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
-        <H2
-          variant="sm"
-          className="flex items-center gap-2 text-muted-foreground"
-        >
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
           <Database className="h-4 w-4" /> Checkpoints
         </H2>
         <Card>
@@ -1622,14 +1482,7 @@ export default function SystemPage() {
               {checkpoints?.sessions.length ?? 0} session(s) ·{" "}
               {formatBytes(checkpoints?.total_bytes ?? 0)}
             </span>
-            <Button
-              size="sm"
-              ghost
-              className="text-destructive"
-              disabled={!checkpoints?.sessions.length}
-              prefix={<Trash2 className="h-3.5 w-3.5" />}
-              onClick={() => checkpointsPrune.requestDelete("all")}
-            >
+            <Button size="sm" ghost className="text-destructive" disabled={!checkpoints?.sessions.length} prefix={<Trash2 className="h-3.5 w-3.5" />} onClick={() => checkpointsPrune.requestDelete("all")}>
               Prune
             </Button>
           </CardContent>
@@ -1639,18 +1492,10 @@ export default function SystemPage() {
       {/* ── Shell hooks ───────────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <H2
-            variant="sm"
-            className="flex items-center gap-2 text-muted-foreground"
-          >
+          <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
             <Terminal className="h-4 w-4" /> Shell hooks
           </H2>
-          <Button
-            size="sm"
-            className="uppercase"
-            prefix={<Plus className="h-3.5 w-3.5" />}
-            onClick={() => setHookModalOpen(true)}
-          >
+          <Button size="sm" className="uppercase" prefix={<Plus className="h-3.5 w-3.5" />} onClick={() => setHookModalOpen(true)}>
             New hook
           </Button>
         </div>
@@ -1666,13 +1511,9 @@ export default function SystemPage() {
             <CardContent className="flex items-center gap-3 py-3">
               <Badge tone="outline">{h.event}</Badge>
               {h.matcher && (
-                <span className="text-xs text-muted-foreground">
-                  matcher: {h.matcher}
-                </span>
+                <span className="text-xs text-muted-foreground">matcher: {h.matcher}</span>
               )}
-              <span className="font-mono text-xs truncate flex-1">
-                {h.command}
-              </span>
+              <span className="font-mono text-xs truncate flex-1">{h.command}</span>
               {h.executable === false && (
                 <Badge tone="destructive">not executable</Badge>
               )}
