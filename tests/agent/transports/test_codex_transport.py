@@ -54,6 +54,20 @@ class TestCodexBuildKwargs:
         assert "input" in kw
         assert kw["store"] is False
 
+    @pytest.mark.parametrize("model", [
+        "gpt-5.6-luna",
+        "gpt-5.6-terra",
+        "gpt-5.6-sol",
+    ])
+    def test_gpt56_variant_slug_reaches_request_unchanged(self, transport, model):
+        kw = transport.build_kwargs(
+            model=model,
+            messages=[{"role": "user", "content": "Hello"}],
+            tools=[],
+            is_codex_backend=True,
+        )
+        assert kw["model"] == model
+
     def test_system_extracted_from_messages(self, transport):
         messages = [
             {"role": "system", "content": "Custom system prompt"},

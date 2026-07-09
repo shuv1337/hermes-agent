@@ -141,9 +141,14 @@ class TestCopilotModelNormalization:
         """Copilot ACP shares the same API expectations as HTTP Copilot."""
         assert normalize_model_for_provider(model, "copilot-acp") == expected
 
-    def test_openai_codex_still_strips_openai_prefix(self):
+    @pytest.mark.parametrize("model", [
+        "gpt-5.6-luna",
+        "gpt-5.6-terra",
+        "gpt-5.6-sol",
+    ])
+    def test_openai_codex_still_strips_openai_prefix(self, model):
         """Regression: openai-codex must still strip the openai/ prefix."""
-        assert normalize_model_for_provider("openai/gpt-5.4", "openai-codex") == "gpt-5.4"
+        assert normalize_model_for_provider(f"openai/{model}", "openai-codex") == model
 
 
 # ── Aggregator providers (regression) ──────────────────────────────────
