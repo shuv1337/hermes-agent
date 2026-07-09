@@ -12,14 +12,15 @@ import os
 logger = logging.getLogger(__name__)
 
 DEFAULT_CODEX_MODELS: List[str] = [
-    "gpt-5.5",
-    # GPT-5.6 Codex variants (launched 2026-07-09). Keep the order aligned
-    # with the live Codex backend after the still-priority-0 GPT-5.5: Sol
-    # (frontier), Terra (balanced), then Luna (fast/affordable). The public
-    # aggregator IDs are openai/gpt-5.6-*, but this provider sends bare slugs.
+    # GPT-5.6 series (Sol/Terra/Luna + -pro high-effort modes) — GA 2026-07-09
+    # (previewed 2026-06-26).
     "gpt-5.6-sol",
+    "gpt-5.6-sol-pro",
     "gpt-5.6-terra",
+    "gpt-5.6-terra-pro",
     "gpt-5.6-luna",
+    "gpt-5.6-luna-pro",
+    "gpt-5.5",
     "gpt-5.4-mini",
     "gpt-5.4",
     "gpt-5.3-codex",
@@ -51,12 +52,13 @@ DEFAULT_CODEX_MODELS: List[str] = [
 ]
 
 _FORWARD_COMPAT_TEMPLATE_MODELS: List[tuple[str, tuple[str, ...]]] = [
+    ("gpt-5.6-sol", ("gpt-5.5", "gpt-5.4")),
+    ("gpt-5.6-sol-pro", ("gpt-5.5", "gpt-5.4")),
+    ("gpt-5.6-terra", ("gpt-5.5", "gpt-5.4")),
+    ("gpt-5.6-terra-pro", ("gpt-5.5", "gpt-5.4")),
+    ("gpt-5.6-luna", ("gpt-5.5", "gpt-5.4")),
+    ("gpt-5.6-luna-pro", ("gpt-5.5", "gpt-5.4")),
     ("gpt-5.5", ("gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex")),
-    # Surface all GPT-5.6 variants when an account's live model listing lags
-    # the rollout. The backend remains authoritative at inference time.
-    ("gpt-5.6-sol", ("gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex")),
-    ("gpt-5.6-terra", ("gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex")),
-    ("gpt-5.6-luna", ("gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex")),
     ("gpt-5.4-mini", ("gpt-5.3-codex",)),
     ("gpt-5.4", ("gpt-5.3-codex",)),
     # Surface Spark whenever any compatible Codex template is present so

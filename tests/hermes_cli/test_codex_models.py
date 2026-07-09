@@ -53,11 +53,14 @@ def test_get_codex_model_ids_falls_back_to_curated_defaults(tmp_path, monkeypatc
     models = get_codex_model_ids()
 
     assert models[: len(DEFAULT_CODEX_MODELS)] == DEFAULT_CODEX_MODELS
-    assert models[:4] == [
-        "gpt-5.5",
+    assert models[:7] == [
         "gpt-5.6-sol",
+        "gpt-5.6-sol-pro",
         "gpt-5.6-terra",
+        "gpt-5.6-terra-pro",
         "gpt-5.6-luna",
+        "gpt-5.6-luna-pro",
+        "gpt-5.5",
     ]
     assert "gpt-5.4" in models
     assert "gpt-5.3-codex-spark" in models
@@ -66,23 +69,21 @@ def test_get_codex_model_ids_falls_back_to_curated_defaults(tmp_path, monkeypatc
 def test_get_codex_model_ids_adds_forward_compat_models_from_templates(monkeypatch):
     monkeypatch.setattr(
         "hermes_cli.codex_models._fetch_models_from_api",
-        lambda access_token: ["gpt-5.3-codex"],
+        lambda access_token: ["gpt-5.5"],
     )
 
     models = get_codex_model_ids(access_token="codex-access-token")
 
-    # When live discovery only returns gpt-5.3-codex, forward-compat synthesis
-    # should surface all GPT-5.6 variants plus the older forward-compatible
-    # models (each is templated off gpt-5.3-codex).
+    # When live discovery only returns gpt-5.5, forward-compat synthesis
+    # should surface the complete GPT-5.6 base + pro family.
     assert models == [
-        "gpt-5.3-codex",
         "gpt-5.5",
         "gpt-5.6-sol",
+        "gpt-5.6-sol-pro",
         "gpt-5.6-terra",
+        "gpt-5.6-terra-pro",
         "gpt-5.6-luna",
-        "gpt-5.4-mini",
-        "gpt-5.4",
-        "gpt-5.3-codex-spark",
+        "gpt-5.6-luna-pro",
     ]
 
 

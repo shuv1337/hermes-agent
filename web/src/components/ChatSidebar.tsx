@@ -383,7 +383,7 @@ export function ChatSidebar({
                 onClick={reconnect}
                 prefix={<RefreshCw />}
               >
-                reconnect
+                reconnect tools feed
               </Button>
             )}
           </div>

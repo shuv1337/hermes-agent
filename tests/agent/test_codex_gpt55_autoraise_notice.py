@@ -27,6 +27,7 @@ from hermes_state import SessionDB
 from run_agent import AIAgent
 
 from agent.agent_init import (
+    _build_codex_gpt5_autoraise_notice,
     _codex_gpt55_autoraise_notice_marker,
     _codex_gpt55_autoraise_notice_seen,
     _codex_gpt55_autoraise_notice_state,
@@ -35,6 +36,14 @@ from agent.agent_init import (
 
 # The dict agent_init stashes when the Codex gpt-5.5 override fires.
 AUTORAISE = {"model": "gpt-5.5", "from": 0.50, "to": 0.85}
+
+
+def test_gpt56_notice_reports_live_codex_window():
+    notice = _build_codex_gpt5_autoraise_notice(
+        {"model": "gpt-5.6-sol", "from": 0.50, "to": 0.85}
+    )
+
+    assert "372K" in notice
 
 
 def _config(*, show_notice: bool) -> dict:
