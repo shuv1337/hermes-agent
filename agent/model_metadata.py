@@ -217,10 +217,14 @@ DEFAULT_CONTEXT_LENGTHS = {
     "claude": 200000,
     # OpenAI — GPT-5 family (most have 400k; specific overrides first)
     # Source: https://developers.openai.com/api/docs/models
-    # GPT-5.5 (launched Apr 23 2026) is 1.05M on the direct OpenAI API and
-    # ChatGPT Codex OAuth caps it at 272K; both paths resolve via their own
-    # provider-aware branches (_resolve_codex_oauth_context_length + models.dev).
-    # This hardcoded value is only reached when every probe misses.
+    # GPT-5.6 Luna/Sol/Terra (launched Jul 9 2026) and GPT-5.5 are 1.05M on
+    # the direct OpenAI/OpenRouter path. ChatGPT Codex OAuth caps GPT-5.6 at
+    # 372K and GPT-5.5 at 272K; that route resolves through the provider-aware
+    # _resolve_codex_oauth_context_length branch below. These hardcoded values
+    # are only reached when every provider probe misses.
+    "gpt-5.6-luna": 1050000,
+    "gpt-5.6-terra": 1050000,
+    "gpt-5.6-sol": 1050000,
     "gpt-5.5": 1050000,
     "gpt-5.4-nano": 400000,           # 400k (not 1.05M like full 5.4)
     "gpt-5.4-mini": 400000,           # 400k (not 1.05M like full 5.4)
@@ -1704,7 +1708,7 @@ def _query_anthropic_context_length(model: str, base_url: str, api_key: str) -> 
 
 
 # Known ChatGPT Codex OAuth context windows (observed via live
-# chatgpt.com/backend-api/codex/models probe, Apr 2026). These are the
+# chatgpt.com/backend-api/codex/models probes, updated Jul 2026). These are the
 # `context_window` values, which are what Codex actually enforces — the
 # direct OpenAI API has larger limits for the same slugs, but Codex OAuth
 # caps lower (e.g. gpt-5.5 is 1.05M on the API, 272K on Codex).
@@ -1712,6 +1716,12 @@ def _query_anthropic_context_length(model: str, base_url: str, api_key: str) -> 
 # Used as a fallback when the live probe fails (no token, network error).
 # Longest keys first so substring match picks the most specific entry.
 _CODEX_OAUTH_CONTEXT_FALLBACK: Dict[str, int] = {
+    # Verified live against chatgpt.com/backend-api/codex/models on the
+    # 2026-07-09 launch date. All three GPT-5.6 variants expose 372K here,
+    # despite the direct OpenAI/OpenRouter catalog advertising 1.05M.
+    "gpt-5.6-terra": 372_000,
+    "gpt-5.6-luna": 372_000,
+    "gpt-5.6-sol": 372_000,
     "gpt-5.1-codex-max": 272_000,
     "gpt-5.1-codex-mini": 272_000,
     "gpt-5.3-codex": 272_000,
@@ -1986,15 +1996,24 @@ def get_model_context_length(
     if base_url and not _skip_persistent_context_cache(base_url, provider):
         cached = get_cached_context_length(model, base_url)
         if cached is not None:
-            # Invalidate stale Codex OAuth cache entries: pre-PR #14935 builds
-            # resolved gpt-5.x to the direct-API value (e.g. 1.05M) via
-            # models.dev and persisted it. Codex OAuth caps at 272K for every
-            # slug, so any cached Codex entry at or above 400K is a leftover
-            # from the old resolution path. Drop it and fall through to the
-            # live /models probe in step 5 below.
-            if provider == "openai-codex" and cached >= 400_000:
+            # Invalidate stale Codex OAuth cache entries. Pre-PR #14935 builds
+            # persisted direct-API values (e.g. 1.05M), while pre-GPT-5.6
+            # builds could persist the generic GPT-5 Codex fallback (272K) for
+            # a newly typed 5.6 slug. GPT-5.6 actually exposes 372K on this
+            # route. Drop either known-stale shape and fall through to the live
+            # /models probe in step 5 below.
+            _bare_model_lower = model.strip().lower()
+            _known_codex_ctx = _CODEX_OAUTH_CONTEXT_FALLBACK.get(_bare_model_lower)
+            _stale_codex_gpt56 = (
+                _bare_model_lower.startswith("gpt-5.6-")
+                and _known_codex_ctx == 372_000
+                and cached != _known_codex_ctx
+            )
+            if provider == "openai-codex" and (
+                cached >= 400_000 or _stale_codex_gpt56
+            ):
                 logger.info(
-                    "Dropping stale Codex cache entry %s@%s -> %s (pre-fix value); "
+                    "Dropping stale Codex cache entry %s@%s -> %s (outdated value); "
                     "re-resolving via live /models probe",
                     model, base_url, f"{cached:,}",
                 )

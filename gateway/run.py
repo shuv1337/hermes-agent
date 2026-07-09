@@ -8617,6 +8617,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
         # Record served profiles in runtime status for `hermes status`.
         try:
+            from gateway.pairing import PairingStore
             from gateway.status import write_runtime_status
             served = [active] + sorted(self._profile_adapters.keys())
             # Per-profile PairingStores so authz_mixin can route pairing
@@ -21208,7 +21209,35 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
         # the finish script's `[ "$1" = "78" ]` check never matches, and
         # s6 crash-loops the gateway anyway (#51228).
         if runner.exit_code is not None:
-            raise SystemExit(runner.exit_code)
+            # Fatal startup can happen after default-profile adapters have
+            # already connected (for example, a secondary multiplex profile
+            # enables a port-binding platform). Raising SystemExit directly
+            # leaves asyncio.run() to cancel those adapter tasks implicitly;
+            # several platform clients keep reconnecting during cancellation,
+            # so the process can remain half-alive for minutes while systemd
+            # reports it as running. Tear the runner down explicitly before
+            # propagating the process exit code.
+            exit_code = runner.exit_code
+            exit_reason = runner.exit_reason
+            try:
+                await runner.stop()
+            except Exception:
+                logger.exception("Gateway fatal-startup teardown failed")
+
+            # stop() normally records a terminal "stopped" state. Preserve
+            # the more actionable startup failure so status/dashboard surfaces
+            # continue to explain why the gateway did not come up.
+            if exit_code == GATEWAY_FATAL_CONFIG_EXIT_CODE:
+                try:
+                    from gateway.status import write_runtime_status
+
+                    write_runtime_status(
+                        gateway_state="startup_failed",
+                        exit_reason=exit_reason,
+                    )
+                except Exception:
+                    pass
+            raise SystemExit(exit_code)
         return True
     if not runner._running:
         # Startup was intentionally aborted by restart/shutdown before entering

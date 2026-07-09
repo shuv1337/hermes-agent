@@ -340,6 +340,9 @@ class TestCodexOAuthContextLength:
         from agent.model_metadata import get_model_context_length
 
         expected = {
+            "gpt-5.6-sol": 372_000,
+            "gpt-5.6-terra": 372_000,
+            "gpt-5.6-luna": 372_000,
             "gpt-5.5": 272_000,
             "gpt-5.4": 272_000,
             "gpt-5.4-mini": 272_000,
@@ -373,6 +376,7 @@ class TestCodexOAuthContextLength:
         fake_response.status_code = 200
         fake_response.json.return_value = {
             "models": [
+                {"slug": "gpt-5.6-sol", "context_window": 372_000},
                 {"slug": "gpt-5.5", "context_window": 300_000},
                 {"slug": "gpt-5.4", "context_window": 400_000},
             ]
@@ -387,6 +391,12 @@ class TestCodexOAuthContextLength:
                 api_key="fake-token",
                 provider="openai-codex",
             )
+            ctx_56 = get_model_context_length(
+                model="gpt-5.6-sol",
+                base_url="https://chatgpt.com/backend-api/codex",
+                api_key="fake-token",
+                provider="openai-codex",
+            )
             ctx_54 = get_model_context_length(
                 model="gpt-5.4",
                 base_url="https://chatgpt.com/backend-api/codex",
@@ -394,6 +404,7 @@ class TestCodexOAuthContextLength:
                 provider="openai-codex",
             )
         assert ctx_55 == 300_000
+        assert ctx_56 == 372_000
         assert ctx_54 == 400_000
 
     def test_probe_failure_falls_back_to_hardcoded(self):
@@ -510,6 +521,40 @@ class TestCodexOAuthContextLength:
             )
         assert ctx == 272_000
         mock_get.assert_not_called()
+
+    def test_stale_pre_release_gpt56_cache_is_invalidated(self, tmp_path, monkeypatch):
+        """The old generic GPT-5 fallback could persist 272K for a 5.6 slug."""
+        from agent import model_metadata as mm
+
+        cache_file = tmp_path / "context_length_cache.yaml"
+        monkeypatch.setattr(mm, "_get_context_cache_path", lambda: cache_file)
+
+        base_url = "https://chatgpt.com/backend-api/codex/"
+        import yaml as _yaml
+        stale_key = f"gpt-5.6-luna@{base_url}"
+        cache_file.write_text(_yaml.dump({"context_lengths": {
+            stale_key: 272_000,
+        }}))
+
+        fake_response = MagicMock()
+        fake_response.status_code = 200
+        fake_response.json.return_value = {
+            "models": [{"slug": "gpt-5.6-luna", "context_window": 372_000}]
+        }
+
+        with patch("agent.model_metadata.requests.get", return_value=fake_response), \
+             patch("agent.model_metadata.save_context_length") as mock_save:
+            ctx = mm.get_model_context_length(
+                model="gpt-5.6-luna",
+                base_url=base_url,
+                api_key="fake-token",
+                provider="openai-codex",
+            )
+
+        assert ctx == 372_000
+        mock_save.assert_called_with("gpt-5.6-luna", base_url, 372_000)
+        remaining = _yaml.safe_load(cache_file.read_text()).get("context_lengths", {})
+        assert stale_key not in remaining
 
     def test_stale_invalidation_scoped_to_codex_provider(self, tmp_path, monkeypatch):
         """A cached 1M entry for a non-Codex provider (e.g. Anthropic opus on

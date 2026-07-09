@@ -522,6 +522,8 @@ async def test_start_gateway_propagates_fatal_config_exit_code(monkeypatch, tmp_
     and s6 crash-looped anyway (#51228)."""
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
 
+    stopped = []
+
     class _FatalConfigRunner:
         def __init__(self, config):
             self.config = config
@@ -531,10 +533,19 @@ async def test_start_gateway_propagates_fatal_config_exit_code(monkeypatch, tmp_
             self.adapters = {}
 
         async def start(self):
+            from gateway.status import write_runtime_status
+
+            write_runtime_status(
+                gateway_state="startup_failed",
+                exit_reason=self.exit_reason,
+            )
             return True
 
         async def stop(self):
-            return None
+            from gateway.status import write_runtime_status
+
+            stopped.append(True)
+            write_runtime_status(gateway_state="stopped", exit_reason=self.exit_reason)
 
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: None)
     monkeypatch.setattr("tools.skills_sync.sync_skills", lambda quiet=True: None)
@@ -548,6 +559,12 @@ async def test_start_gateway_propagates_fatal_config_exit_code(monkeypatch, tmp_
         await start_gateway(config=GatewayConfig(), replace=False, verbosity=0)
 
     assert exc_info.value.code == GATEWAY_FATAL_CONFIG_EXIT_CODE
+    assert stopped == [True], (
+        "fatal startup must tear down adapters/tasks before propagating exit 78"
+    )
+    state = read_runtime_status()
+    assert state["gateway_state"] == "startup_failed"
+    assert state["exit_reason"] == "discord: Discord bot token already in use"
 
 
 def test_runner_warns_when_docker_gateway_lacks_explicit_output_mount(monkeypatch, tmp_path, caplog):

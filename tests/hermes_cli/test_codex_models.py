@@ -53,6 +53,12 @@ def test_get_codex_model_ids_falls_back_to_curated_defaults(tmp_path, monkeypatc
     models = get_codex_model_ids()
 
     assert models[: len(DEFAULT_CODEX_MODELS)] == DEFAULT_CODEX_MODELS
+    assert models[:4] == [
+        "gpt-5.5",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    ]
     assert "gpt-5.4" in models
     assert "gpt-5.3-codex-spark" in models
 
@@ -66,11 +72,14 @@ def test_get_codex_model_ids_adds_forward_compat_models_from_templates(monkeypat
     models = get_codex_model_ids(access_token="codex-access-token")
 
     # When live discovery only returns gpt-5.3-codex, forward-compat synthesis
-    # should surface gpt-5.5, gpt-5.4, gpt-5.4-mini, and gpt-5.3-codex-spark
-    # (each is templated off gpt-5.3-codex).
+    # should surface all GPT-5.6 variants plus the older forward-compatible
+    # models (each is templated off gpt-5.3-codex).
     assert models == [
         "gpt-5.3-codex",
         "gpt-5.5",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
         "gpt-5.4-mini",
         "gpt-5.4",
         "gpt-5.3-codex-spark",
@@ -111,6 +120,37 @@ def test_fetch_from_api_keeps_supported_in_api_false_models(monkeypatch):
     assert "gpt-5.5" in models
     assert "gpt-5.3-codex-spark" in models
     assert "gpt-5-internal" not in models
+
+
+def test_fetch_from_api_preserves_gpt56_backend_priority(monkeypatch):
+    """The live Codex endpoint, not lexical slug order, defines picker order."""
+    import sys
+    from hermes_cli import codex_models
+
+    class _FakeResp:
+        status_code = 200
+
+        def json(self):
+            return {
+                "models": [
+                    {"slug": "gpt-5.6-luna", "priority": 3, "visibility": "list"},
+                    {"slug": "gpt-5.6-sol", "priority": 1, "visibility": "list"},
+                    {"slug": "gpt-5.6-terra", "priority": 2, "visibility": "list"},
+                ]
+            }
+
+    class _FakeHttpx:
+        @staticmethod
+        def get(url, headers=None, timeout=None):
+            return _FakeResp()
+
+    monkeypatch.setitem(sys.modules, "httpx", _FakeHttpx)
+
+    assert codex_models._fetch_models_from_api("tok")[:3] == [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    ]
 
 
 def test_model_command_uses_runtime_access_token_for_codex_list(monkeypatch):

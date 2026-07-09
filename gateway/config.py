@@ -1700,13 +1700,11 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
     # Home Assistant
     hass_token = getenv("HASS_TOKEN")
     if hass_token:
-        if Platform.HOMEASSISTANT not in config.platforms:
-            config.platforms[Platform.HOMEASSISTANT] = PlatformConfig()
-        config.platforms[Platform.HOMEASSISTANT].enabled = True
-        config.platforms[Platform.HOMEASSISTANT].token = hass_token
+        hass_config = _enable_from_env(Platform.HOMEASSISTANT)
+        hass_config.token = hass_token
         hass_url = getenv("HASS_URL")
         if hass_url:
-            config.platforms[Platform.HOMEASSISTANT].extra["url"] = hass_url
+            hass_config.extra["url"] = hass_url
 
     # Email
     email_addr = getenv("EMAIL_ADDRESS")
@@ -1754,25 +1752,33 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
     api_server_port = getenv("API_SERVER_PORT")
     api_server_host = getenv("API_SERVER_HOST")
     if api_server_enabled or api_server_key:
-        if Platform.API_SERVER not in config.platforms:
-            config.platforms[Platform.API_SERVER] = PlatformConfig()
-        config.platforms[Platform.API_SERVER].enabled = True
+        api_server_config = config.platforms.get(Platform.API_SERVER)
+        api_server_explicitly_disabled = bool(
+            api_server_config is not None
+            and not api_server_config.enabled
+            and api_server_config.extra.get("_enabled_explicit", False)
+        )
+        if api_server_config is None:
+            api_server_config = PlatformConfig()
+            config.platforms[Platform.API_SERVER] = api_server_config
+        if not api_server_explicitly_disabled:
+            api_server_config.enabled = True
         if api_server_key:
-            config.platforms[Platform.API_SERVER].extra["key"] = api_server_key
+            api_server_config.extra["key"] = api_server_key
         if api_server_cors_origins:
             origins = [origin.strip() for origin in api_server_cors_origins.split(",") if origin.strip()]
             if origins:
-                config.platforms[Platform.API_SERVER].extra["cors_origins"] = origins
+                api_server_config.extra["cors_origins"] = origins
         if api_server_port:
             try:
-                config.platforms[Platform.API_SERVER].extra["port"] = int(api_server_port)
+                api_server_config.extra["port"] = int(api_server_port)
             except ValueError:
                 pass
         if api_server_host:
-            config.platforms[Platform.API_SERVER].extra["host"] = api_server_host
+            api_server_config.extra["host"] = api_server_host
         api_server_model_name = getenv("API_SERVER_MODEL_NAME", "")
         if api_server_model_name:
-            config.platforms[Platform.API_SERVER].extra["model_name"] = api_server_model_name
+            api_server_config.extra["model_name"] = api_server_model_name
 
     # Webhook platform
     webhook_enabled = is_truthy_value(getenv("WEBHOOK_ENABLED", ""))
@@ -2152,6 +2158,28 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
                 existing_cfg is not None
                 and not existing_cfg.enabled
                 and bool((existing_cfg.extra or {}).get("_enabled_explicit", False))
+            ):
+                continue
+            # A multiplexed secondary profile has an authoritative, isolated
+            # secret scope.  Plugin callbacks are older extension points and
+            # many of them still probe credentials with ``os.getenv``; calling
+            # those probes when the scoped profile lacks their required vars
+            # would see the default profile's process environment and
+            # spuriously enable its adapters for every secondary profile.
+            #
+            # Platforms already enabled from scoped config/env above remain
+            # eligible.  For plugin-only auto-enablement, require the plugin's
+            # declared credential set to be present in the active scope before
+            # invoking any legacy callback that may read ``os.environ``.
+            active_scope = current_secret_scope()
+            if (
+                active_scope is not None
+                and (existing_cfg is None or not existing_cfg.enabled)
+                and entry.required_env
+                and not all(
+                    str(active_scope.get(name) or "").strip()
+                    for name in entry.required_env
+                )
             ):
                 continue
             # Seed candidate extras from ``env_enablement_fn`` so plugins
