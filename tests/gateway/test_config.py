@@ -702,6 +702,51 @@ class TestLoadGatewayConfig:
         assert config.platforms[Platform.API_SERVER].enabled is False
         assert Platform.API_SERVER not in config.get_connected_platforms()
 
+    def test_explicit_api_server_disable_wins_over_present_key(self, tmp_path, monkeypatch):
+        """A profile may retain its API key while the shared mux owns the listener."""
+        hermes_home = tmp_path / ".hermes"
+        hermes_home.mkdir()
+        (hermes_home / "config.yaml").write_text(
+            "platforms:\n"
+            "  api_server:\n"
+            "    enabled: false\n",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        monkeypatch.setenv("API_SERVER_KEY", "retained-profile-key")
+
+        config = load_gateway_config()
+
+        assert config.platforms[Platform.API_SERVER].enabled is False
+        assert config.platforms[Platform.API_SERVER].extra["key"] == "retained-profile-key"
+        assert Platform.API_SERVER not in config.get_connected_platforms()
+
+    def test_explicit_homeassistant_disable_wins_over_present_token(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A retained HA credential must not reactivate a disabled adapter."""
+        hermes_home = tmp_path / ".hermes"
+        hermes_home.mkdir()
+        (hermes_home / "config.yaml").write_text(
+            "platforms:\n"
+            "  homeassistant:\n"
+            "    enabled: false\n",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        monkeypatch.setenv("HASS_TOKEN", "retained-profile-token")
+        monkeypatch.setenv("HASS_URL", "http://homeassistant.example")
+
+        config = load_gateway_config()
+
+        assert config.platforms[Platform.HOMEASSISTANT].enabled is False
+        assert config.platforms[Platform.HOMEASSISTANT].token == "retained-profile-token"
+        assert Platform.HOMEASSISTANT not in config.get_connected_platforms()
+
     def test_bridges_nested_gateway_platforms_from_config_yaml(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
@@ -1234,6 +1279,36 @@ class TestLoadGatewayConfig:
         assert config.multiplex_profiles is True
         assert config.platforms[Platform.DISCORD].token == "worker-token"
         assert Platform.API_SERVER not in config.platforms
+
+    def test_empty_profile_scope_does_not_enable_plugins_from_process_env(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Plugin probes must not inherit the default profile's credentials.
+
+        Several migrated platform plugins still implement ``is_connected``
+        with ``os.getenv``.  In a multiplexed process that environment belongs
+        to the default profile, so an empty secondary scope must stop those
+        probes before they can spuriously enable Telegram/Discord/etc.
+        """
+        secondary_home = tmp_path / "secondary-home"
+        secondary_home.mkdir()
+        (secondary_home / "config.yaml").write_text(
+            "multiplex_profiles: true\n",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setenv("HERMES_HOME", str(secondary_home))
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "default-profile-token")
+
+        secret_token = set_secret_scope({})
+        try:
+            config = load_gateway_config()
+        finally:
+            reset_secret_scope(secret_token)
+
+        assert Platform.DISCORD not in config.platforms
 
 
 class TestHomeChannelEnvOverrides:

@@ -193,3 +193,58 @@ class TestPortBindingHardError:
         for p in ("webhook", "api_server", "msgraph_webhook", "feishu",
                   "wecom_callback", "bluebubbles", "sms"):
             assert p in _PORT_BINDING_PLATFORM_VALUES
+
+
+class TestServedProfileStatus:
+    @pytest.mark.asyncio
+    async def test_secondary_start_records_served_profiles_and_pairing_stores(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A zero-adapter profile is still served by the shared HTTP listener."""
+        from gateway.config import GatewayConfig
+
+        runner = GatewayRunner.__new__(GatewayRunner)
+        runner.config = GatewayConfig(multiplex_profiles=True)
+        runner.adapters = {}
+        runner._profile_adapters = {}
+        runner.pairing_stores = {}
+
+        homes = [
+            ("default", tmp_path / "default"),
+            ("coder", tmp_path / "coder"),
+        ]
+        for _, home in homes:
+            home.mkdir()
+
+        monkeypatch.setattr(
+            "hermes_cli.profiles.profiles_to_serve",
+            lambda multiplex: homes,
+        )
+        monkeypatch.setattr(
+            "hermes_cli.profiles.get_active_profile_name",
+            lambda: "default",
+        )
+
+        async def _start_profile(name, home, claimed):
+            runner._profile_adapters[name] = {}
+            return 0
+
+        monkeypatch.setattr(runner, "_start_one_profile_adapters", _start_profile)
+
+        written = {}
+        monkeypatch.setattr(
+            "gateway.status.write_runtime_status",
+            lambda **kwargs: written.update(kwargs),
+        )
+        monkeypatch.setattr(
+            "gateway.pairing.PairingStore",
+            lambda profile=None: {"profile": profile},
+        )
+
+        connected = await runner._start_secondary_profile_adapters()
+
+        assert connected == 0
+        assert written["served_profiles"] == ["default", "coder"]
+        assert set(runner.pairing_stores) == {"default", "coder"}
