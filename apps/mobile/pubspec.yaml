@@ -1,0 +1,49 @@
+name: hermes_mobile
+description: "Hermes Go — Go further. Stay connected. Mobile gateway connector."
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  flutter_riverpod: ^3.0.1
+  dio: ^5.9.0
+  flutter_secure_storage: ^9.2.4
+  flutter_local_notifications: ^19.4.0
+  intl: ^0.20.2
+  timeago: ^3.7.1
+  uuid: ^4.5.1
+  http: ^1.5.0
+  path_provider: ^2.1.6
+  drift: ^2.34.1
+  path: ^1.9.1
+  workmanager: ^0.9.0+3
+  web_socket_channel: ^3.0.3
+  cookie_jar: ^4.0.9
+  dio_cookie_manager: ^3.4.0
+  flutter_markdown_plus: ^1.0.11
+  markdown: ^7.3.1
+  image_picker: ^1.2.3
+  speech_to_text: ^7.4.0
+  flutter_tts: ^4.2.5
+  audioplayers: ^6.8.1
+  share_plus: ^12.0.2
+  connectivity_plus: ^7.2.0
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.34.0
+  build_runner: ^2.15.1
+
+flutter:
+  generate: true
+  uses-material-design: true

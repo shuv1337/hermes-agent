@@ -1,0 +1,394 @@
+{
+  "@@locale": "es",
+  "appTitle": "Hermes Go",
+  "tagline": "Ve más lejos. Mantente conectado.",
+  "aboutBody": "Hermes Go v0.1\nVe más lejos. Mantente conectado.\nConector de gateway — sesiones, chat, modelos, trabajos.",
+  "failedToLoadConnection": "No se pudo cargar la conexión: {error}",
+  "@failedToLoadConnection": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "navChat": "Chat",
+  "navChatLive": "Chat · en vivo",
+  "navJobs": "Trabajos",
+  "navSettings": "Ajustes",
+  "settingsTitle": "Ajustes",
+  "checkConnection": "Comprobar conexión",
+  "liveChatReady": "En vivo — chat listo",
+  "notLiveSeeStatus": "Sin conexión en vivo — ver estado",
+  "wsConnectedChatReady": "WebSocket conectado — chat listo",
+  "stillOffline": "Sigue sin conexión",
+  "apiToken": "Token de API",
+  "refreshSignIn": "Volver a iniciar sesión",
+  "refreshSignInSubtitle": "Vuelve a introducir la contraseña (p. ej. tras un cierre en el host). No es automático.",
+  "disconnect": "Desconectar",
+  "disconnectSubtitle": "Quitar este gateway del teléfono",
+  "disconnectConfirmTitle": "¿Desconectar?",
+  "disconnectConfirmBody": "Elimina el gateway guardado de este teléfono. Los agentes del host no se ven afectados.",
+  "cancel": "Cancelar",
+  "theme": "Tema",
+  "appearance": "Apariencia",
+  "appearanceSubtitle": "Mismos temas integrados que Desktop (Nous, Midnight, Ember, …).",
+  "hapticsSounds": "Háptica y sonidos",
+  "hapticsOff": "Desactivado — sin toques ni sonido",
+  "hapticsOn": "Activado — toques, envío/parada y chime de respuesta",
+  "previewHaptics": "Probar háptica y sonido",
+  "syncNow": "Sincronizar ahora",
+  "syncNowSubtitle": "Sesiones, trabajos, modelos, skills",
+  "syncedWithSummary": "Sincronizado ({summary})",
+  "@syncedWithSummary": {
+    "placeholders": {
+      "summary": {
+        "type": "String"
+      }
+    }
+  },
+  "about": "Acerca de",
+  "couldNotOpenBrowser": "No se pudo abrir el navegador — enlace copiado",
+  "language": "Idioma",
+  "languageSystem": "Predeterminado del sistema",
+  "languageSubtitle": "Idioma de la interfaz. El contenido del chat lo define el agente.",
+  "connectedChatReady": "Conectado · chat listo",
+  "connectedChatReadyBody": "WebSocket en vivo con el gateway. Mensajes y comandos slash funcionan.",
+  "signedInChatOffline": "Sesión iniciada · chat sin conexión",
+  "signedInReconnecting": "Sesión iniciada · reconectando",
+  "autoReconnectGaveUp": "La reconexión automática se detuvo. Toca Reconectar (o revisa VPN / host).",
+  "signedInChatOfflineBody": "HTTPS/cookies pueden listar datos, pero el WebSocket en vivo está caído. Reintento con backoff; o toca Reconectar.",
+  "sessionExpired": "Sesión caducada",
+  "sessionExpiredBody": "Inicia sesión de nuevo. Puede ser intencional (cierre en el host).",
+  "gaveUpReconnecting": "Se abandonó la reconexión",
+  "connectionProblem": "Problema de conexión",
+  "cannotReachGateway": "No se puede alcanzar el gateway. Revisa VPN/Tailscale y que el host esté encendido.",
+  "notConnected": "Sin conexión",
+  "noGatewaySaved": "No hay gateway guardado en este teléfono. Inicia sesión en Conectar.",
+  "webSocket": "WebSocket",
+  "live": "En vivo",
+  "httpsRest": "HTTPS / REST",
+  "checking": "Comprobando…",
+  "ok": "OK",
+  "fail": "Error",
+  "unknown": "Desconocido",
+  "host": "Host",
+  "user": "Usuario",
+  "reconnect": "Reconectar",
+  "reconnectNow": "Reconectar ahora",
+  "checkNow": "Comprobar ahora",
+  "signIn": "Iniciar sesión",
+  "signInAndReconnect": "Iniciar sesión y reconectar",
+  "gaveUpTapReconnect": "Abandonado — toca Reconectar",
+  "connecting": "Conectando…",
+  "error": "Error",
+  "closed": "Cerrado",
+  "idle": "Inactivo",
+  "offline": "Sin conexión",
+  "themeLight": "Claro",
+  "themeDark": "Oscuro",
+  "themeSystem": "Sistema",
+  "required": "Obligatorio",
+  "signedInWsLive": "Sesión iniciada — WebSocket en vivo",
+  "signedInWsOffline": "Sesión iniciada; WebSocket: {status}",
+  "@signedInWsOffline": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reenterPasswordFor": "Vuelve a introducir la contraseña de {user} en {host}.\nNunca reconectamos en silencio tras caducidad (los kicks se mantienen).",
+  "@reenterPasswordFor": {
+    "placeholders": {
+      "user": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "connectTitle": "Hermes Go",
+  "signInAgain": "Volver a iniciar sesión",
+  "sessionExpiredBanner": "Tu sesión del gateway caducó (o se cerró).\nVuelve a introducir la contraseña — no reconectamos automáticamente tras caducidad.",
+  "connectIntro": "Conéctate a tu gateway Hermes — igual que Desktop: URL base, luego usuario y contraseña. Sin API key.",
+  "gatewayBaseUrl": "URL base del gateway",
+  "urlRequired": "URL obligatoria",
+  "provider": "Proveedor",
+  "username": "Usuario",
+  "password": "Contraseña",
+  "continueAction": "Continuar",
+  "changeUrl": "Cambiar URL",
+  "gatewayOpenHint": "El gateway está abierto (sin contraseña). Puedes conectar sin credenciales.",
+  "signInPasswordHint": "Inicia sesión con usuario y contraseña (igual que Desktop remoto).",
+  "oauthOnlyError": "Este gateway solo admite OAuth. Activa un proveedor con contraseña en el host, o usa Desktop para OAuth.",
+  "connectedOpenGateway": "Conectado (gateway abierto).",
+  "noPasswordProvider": "Ningún proveedor de contraseña seleccionado.",
+  "usernamePasswordRequired": "Usuario y contraseña obligatorios.",
+  "signedInAs": "Sesión iniciada como {username}",
+  "@signedInAs": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewayNotReachable": "Gateway no alcanzable.",
+  "chats": "Chats",
+  "newChat": "Chat nuevo",
+  "noChatsYet": "Aún no hay chats",
+  "startNewChatHint": "Empieza un chat nuevo o ábrelo desde el menú.",
+  "pinned": "Fijados",
+  "recents": "Recientes",
+  "renameChat": "Renombrar chat",
+  "title": "Título",
+  "save": "Guardar",
+  "renameFailed": "Error al renombrar: {error}",
+  "@renameFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteChatTitle": "¿Eliminar chat?",
+  "delete": "Eliminar",
+  "sessionIdCopied": "ID de sesión copiado",
+  "sessionActions": "Acciones de sesión",
+  "pin": "Fijar",
+  "unpin": "Desfijar",
+  "copyId": "Copiar ID",
+  "export": "Exportar",
+  "rename": "Renombrar",
+  "archive": "Archivar",
+  "exportFailed": "Error al exportar: {error}",
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "couldNotStartChat": "No se pudo iniciar el chat: {error}",
+  "@couldNotStartChat": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionNotFound": "Sesión no encontrada: {id}",
+  "@sessionNotFound": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "selectModel": "Elegir modelo",
+  "imageChat": "Chat con imagen",
+  "greetingMorning": "Buenos días",
+  "greetingAfternoon": "Buenas tardes",
+  "greetingEvening": "Buenas noches",
+  "messageHint": "Mensaje a Hermes Go…",
+  "messageHintShort": "Mensaje…",
+  "sendAMessageToContinue": "Envía un mensaje para continuar.",
+  "sync": "Sincronizar",
+  "stop": "Detener",
+  "dictate": "Dictar",
+  "stopDictation": "Detener dictado",
+  "listening": "Escuchando…",
+  "readAloudOn": "Leer en voz alta: sí",
+  "readAloudOff": "Leer en voz alta: no",
+  "readAloud": "Leer en voz alta",
+  "addContext": "Añadir contexto",
+  "photoLibrary": "Fototeca",
+  "camera": "Cámara",
+  "pasteImageFromClipboard": "Pegar imagen del portapapeles",
+  "noImageOnClipboard": "No hay imagen en el portapapeles — usa Fototeca o Cámara",
+  "couldNotPickImage": "No se pudo elegir imagen: {error}",
+  "@couldNotPickImage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pasteFailed": "Error al pegar: {error}",
+  "@pasteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "speechUnavailable": "Reconocimiento de voz no disponible en este dispositivo",
+  "micPermissionDenied": "Permiso de micrófono/voz denegado — actívalo en Ajustes",
+  "couldNotStartDictation": "No se pudo iniciar el dictado — revisa micrófono y permisos",
+  "dictationFailed": "Error de dictado: {error}",
+  "@dictationFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "uploadingImage": "Subiendo imagen…",
+  "thinking": "Pensando…",
+  "writing": "Escribiendo…",
+  "runningTool": "Ejecutando {name}…",
+  "@runningTool": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "imageAttachFailed": "Error al adjuntar imagen: {error}",
+  "@imageAttachFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "savedWaitingWs": "Guardado en el teléfono — esperando WebSocket en vivo (Ajustes puede mostrar solo HTTPS).",
+  "queuedForSync": "En cola para sincronizar con el gateway…",
+  "stopFailed": "Error al detener: {error}",
+  "@stopFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "editMessage": "Editar mensaje",
+  "saveAndResend": "Guardar y reenviar",
+  "editAndResend": "Editar y reenviar",
+  "rewindAndRun": "Volver a este mensaje y ejecutar de nuevo",
+  "regenerate": "Regenerar",
+  "resend": "Resend",
+  "noResponseYet": "No reply yet — resend or edit this message",
+  "messageActions": "Message actions",
+  "resubmitMessage": "Reenviar este mensaje",
+  "retryFromPrevious": "Reintentar desde el mensaje de usuario anterior",
+  "copied": "Copiado",
+  "copy": "Copiar",
+  "codeCopied": "Código copiado",
+  "copiedLink": "Enlace copiado: {href}",
+  "@copiedLink": {
+    "placeholders": {
+      "href": {
+        "type": "String"
+      }
+    }
+  },
+  "stopRequested": "Detención solicitada.",
+  "slashFailed": "Error de slash: {error}",
+  "@slashFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "modelSavedLocal": "Modelo guardado en el teléfono; gateway: {error}",
+  "@modelSavedLocal": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pleaseLookAtImage": "Por favor mira la imagen adjunta.",
+  "pleaseLookAtImages": "Por favor mira las imágenes adjuntas.",
+  "nImages": "{count} imagen(es)",
+  "@nImages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "jobsTitle": "Trabajos",
+  "retry": "Reintentar",
+  "runNow": "Ejecutar ahora",
+  "pause": "Pausar",
+  "resume": "Reanudar",
+  "modelPickerTitle": "Modelo",
+  "modelPickerSubtitle": "Mismo catálogo que Desktop",
+  "reasoningOptions": "Options",
+  "thinking": "Thinking",
+  "thinkingOnHint": "Model may use reasoning tokens",
+  "thinkingOffHint": "Reasoning disabled for this session",
+  "effort": "Effort",
+  "applyEffort": "Apply effort to session",
+  "confirmModel": "Use this model",
+  "modelPickerConfirmHint": "Select a model, set its options, then confirm.",
+  "modelNoOptions": "This model has no Thinking or Fast options.",
+  "modelCapsLoading": "Loading per-model options…",
+  "fastMode": "Fast",
+  "fastModeHint": "Priority / lower-latency when the model supports it",
+
+  "contextUsageTitle": "Context Usage",
+  "contextUsageTokenSummary": "~{used} / {max} Tokens",
+  "@contextUsageTokenSummary": {
+    "placeholders": {
+      "used": {"type": "String"},
+      "max": {"type": "String"}
+    }
+  },
+  "contextUsagePercentFull": "{percent}% Full",
+  "@contextUsagePercentFull": {
+    "placeholders": {
+      "percent": {"type": "int"}
+    }
+  },
+  "contextUsageLoading": "Loading breakdown…",
+  "contextUsageEmpty": "No context data yet — send a message first.",
+  "contextUsageOpen": "Context usage",
+  "contextCatSystemPrompt": "System prompt",
+  "contextCatToolDefinitions": "Tool definitions",
+  "contextCatRules": "Rules",
+  "contextCatSkills": "Skills",
+  "contextCatMcp": "MCP",
+  "contextCatSubagents": "Subagent definitions",
+  "contextCatMemory": "Memory",
+  "contextCatConversation": "Conversation",
+
+  "refreshModels": "Actualizar modelos",
+  "skillsTitle": "Skills instaladas en tu gateway",
+  "filterSkills": "Filtrar skills…",
+  "reloadSkills": "Recargar skills en el gateway",
+  "reloadFailed": "Error al recargar: {error}",
+  "@reloadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "skillsSection": "Skills",
+  "commandsSection": "Comandos",
+  "optionsSection": "Opciones",
+  "privacyAndData": "Privacidad y datos",
+  "privacyAndDataSubtitle": "Cómo se gestionan el contenido del gateway y los datos del dispositivo",
+  "privacyDataFlow": "Hermes Go envía las conversaciones y los archivos adjuntos directamente al gateway que elijas. Ese gateway puede enviarlos a los proveedores de modelos y servicios configurados por su propietario.",
+  "privacyOnDevice": "La app guarda en este dispositivo metadatos de conexión, cookies de sesión cifradas, preferencias y una caché local de conversaciones. Desconectar elimina las conexiones guardadas y los datos de autenticación.",
+  "privacyNoAnalytics": "Esta versión no contiene SDK de publicidad ni de analítica.",
+  "privacyPolicyMissing": "Acción requerida del editor: configura una URL HTTPS pública para la política de privacidad antes de enviar la app a la tienda.",
+  "openPrivacyPolicy": "Abrir política de privacidad",
+  "couldNotOpenLink": "No se pudo abrir el enlace.",
+  "unofficialDisclaimer": "No oficial · Creada por la comunidad · No afiliada a Nous Research",
+  "noCachedJobs": "Aún no hay trabajos en caché.\nCorrige la conexión y vuelve a intentarlo.",
+  "noCronJobs": "No hay trabajos cron en este gateway.\nCréelos en el host (`hermes cron` o Desktop).\nCuando terminen, esta pestaña se sincronizará y podrá avisarte.",
+  "skillsPickerSubtitle": "Instaladas en tu gateway (hub, incluidas y propias).\nSe guardan en este teléfono si falla la red.\nToca para invocarlas como un comando slash.",
+  "noSkillsCached": "Aún no hay skills en caché.\nRecarga cuando el gateway esté disponible o escribe /skills-name cuando funcione el autocompletado.",
+  "noSkillsMatch": "Ninguna skill coincide con «{query}».",
+  "@noSkillsMatch": {"placeholders": {"query": {"type": "String"}}},
+  "modelPickerDetails": "Mismo catálogo que Desktop (/api/model/options · model.options).\nSe aplica a la sesión abierta en el gateway.",
+  "couldNotLoadModels": "No se pudieron cargar los modelos:\n{detail}",
+  "@couldNotLoadModels": {"placeholders": {"detail": {"type": "String"}}},
+  "noModelsFromGateway": "No hay modelos de este gateway.\nDesktop usa GET /api/model/options (cookies de sesión). Configura proveedores en el host si la lista está realmente vacía.",
+  "notificationsTitle": "Notificaciones"
+}

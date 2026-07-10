@@ -1,0 +1,394 @@
+{
+  "@@locale": "fr",
+  "appTitle": "Hermes Go",
+  "tagline": "Allez plus loin. Restez connecté.",
+  "aboutBody": "Hermes Go v0.1\nGo further. Stay connected.\nGateway connector — sessions, chat, models, jobs.",
+  "failedToLoadConnection": "Failed to load connection: {error}",
+  "@failedToLoadConnection": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "navChat": "Chat",
+  "navChatLive": "Chat · en direct",
+  "navJobs": "Tâches",
+  "navSettings": "Réglages",
+  "settingsTitle": "Réglages",
+  "checkConnection": "Check connection",
+  "liveChatReady": "Live — chat ready",
+  "notLiveSeeStatus": "Not live — see Connection status",
+  "wsConnectedChatReady": "WebSocket connected — chat ready",
+  "stillOffline": "Still offline",
+  "apiToken": "API token",
+  "refreshSignIn": "Refresh sign-in",
+  "refreshSignInSubtitle": "Re-enter password (e.g. after a host kick). Not automatic.",
+  "disconnect": "Déconnecter",
+  "disconnectSubtitle": "Remove this gateway from the phone",
+  "disconnectConfirmTitle": "Disconnect?",
+  "disconnectConfirmBody": "Removes the saved gateway from this phone. Host agents are not affected.",
+  "cancel": "Annuler",
+  "theme": "Theme",
+  "appearance": "Appearance",
+  "appearanceSubtitle": "Same built-in skins as Desktop (Nous, Midnight, Ember, …).",
+  "hapticsSounds": "Haptics & sounds",
+  "hapticsOff": "Off — no taps, no completion chime",
+  "hapticsOn": "On — taps, send/stop feedback, reply chime",
+  "previewHaptics": "Preview haptics & chime",
+  "syncNow": "Sync now",
+  "syncNowSubtitle": "Sessions, jobs, models, skills",
+  "syncedWithSummary": "Synced ({summary})",
+  "@syncedWithSummary": {
+    "placeholders": {
+      "summary": {
+        "type": "String"
+      }
+    }
+  },
+  "about": "À propos",
+  "couldNotOpenBrowser": "Could not open browser — link copied",
+  "language": "Langue",
+  "languageSystem": "Langue du système",
+  "languageSubtitle": "App UI language. Chat content follows your agent.",
+  "connectedChatReady": "Connected · chat ready",
+  "connectedChatReadyBody": "Live WebSocket to the gateway. Messages and slash commands work.",
+  "signedInChatOffline": "Signed in · chat offline",
+  "signedInReconnecting": "Signed in · reconnecting",
+  "autoReconnectGaveUp": "Auto-reconnect gave up. Tap Reconnect (or check VPN / host).",
+  "signedInChatOfflineBody": "HTTPS/cookies may work for lists, but the live WebSocket is down. Auto-retry runs with backoff; or tap Reconnect.",
+  "sessionExpired": "Session expirée",
+  "sessionExpiredBody": "Sign in again. Expiry may be intentional (signed out on host).",
+  "gaveUpReconnecting": "Gave up reconnecting",
+  "connectionProblem": "Connection problem",
+  "cannotReachGateway": "Cannot reach the gateway. Check VPN/Tailscale and host power.",
+  "notConnected": "Non connecté",
+  "noGatewaySaved": "No gateway saved on this phone. Sign in from Connect.",
+  "webSocket": "WebSocket",
+  "live": "En direct",
+  "httpsRest": "HTTPS / REST",
+  "checking": "Checking…",
+  "ok": "OK",
+  "fail": "Fail",
+  "unknown": "Unknown",
+  "host": "Host",
+  "user": "User",
+  "reconnect": "Reconnecter",
+  "reconnectNow": "Reconnect now",
+  "checkNow": "Check now",
+  "signIn": "Connexion",
+  "signInAndReconnect": "Sign in & reconnect",
+  "gaveUpTapReconnect": "Gave up — tap Reconnect",
+  "connecting": "Connecting…",
+  "error": "Error",
+  "closed": "Closed",
+  "idle": "Idle",
+  "offline": "Offline",
+  "themeLight": "Clair",
+  "themeDark": "Sombre",
+  "themeSystem": "Système",
+  "required": "Obligatoire",
+  "signedInWsLive": "Signed in — WebSocket live",
+  "signedInWsOffline": "Signed in; WebSocket: {status}",
+  "@signedInWsOffline": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reenterPasswordFor": "Re-enter the password for {user} on {host}.\nWe never auto-reconnect after expiry (kicks stay kicked).",
+  "@reenterPasswordFor": {
+    "placeholders": {
+      "user": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "connectTitle": "Hermes Go",
+  "signInAgain": "Sign in again",
+  "sessionExpiredBanner": "Votre session de passerelle a expiré ou a été fermée.\nSaisissez à nouveau votre mot de passe — aucune reconnexion automatique après expiration.",
+  "connectIntro": "Connectez-vous à votre gateway Hermes — comme Desktop : URL, puis identifiant et mot de passe. Pas de clé API.",
+  "gatewayBaseUrl": "URL de base du gateway",
+  "urlRequired": "URL required",
+  "provider": "Provider",
+  "username": "Identifiant",
+  "password": "Mot de passe",
+  "continueAction": "Continuer",
+  "changeUrl": "Change URL",
+  "gatewayOpenHint": "Gateway is open (no password gate). You can connect without credentials.",
+  "signInPasswordHint": "Sign in with username and password (same as Desktop remote gateway).",
+  "oauthOnlyError": "This gateway uses OAuth sign-in only. Password login is not enabled. Enable a supports_password provider on the host, or use Desktop for OAuth.",
+  "connectedOpenGateway": "Connected (open gateway).",
+  "noPasswordProvider": "No password provider selected.",
+  "usernamePasswordRequired": "Nom d’utilisateur et mot de passe obligatoires.",
+  "signedInAs": "Connecté en tant que {username}",
+  "@signedInAs": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewayNotReachable": "Gateway not reachable.",
+  "chats": "Chats",
+  "newChat": "Nouveau chat",
+  "noChatsYet": "No chats yet",
+  "startNewChatHint": "Start a new chat, or open one from the menu.",
+  "pinned": "Pinned",
+  "recents": "Recents",
+  "renameChat": "Rename chat",
+  "title": "Title",
+  "save": "Enregistrer",
+  "renameFailed": "Rename failed: {error}",
+  "@renameFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteChatTitle": "Delete chat?",
+  "delete": "Supprimer",
+  "sessionIdCopied": "Session ID copied",
+  "sessionActions": "Session actions",
+  "pin": "Épingler",
+  "unpin": "Désépingler",
+  "copyId": "Copy ID",
+  "export": "Exporter",
+  "rename": "Renommer",
+  "archive": "Archive",
+  "exportFailed": "Export failed: {error}",
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "couldNotStartChat": "Could not start chat: {error}",
+  "@couldNotStartChat": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionNotFound": "Session not found: {id}",
+  "@sessionNotFound": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "selectModel": "Select model",
+  "imageChat": "Image chat",
+  "greetingMorning": "Bonjour",
+  "greetingAfternoon": "Bon après-midi",
+  "greetingEvening": "Bonsoir",
+  "messageHint": "Message à Hermes Go…",
+  "messageHintShort": "Message…",
+  "sendAMessageToContinue": "Send a message to continue.",
+  "sync": "Sync",
+  "stop": "Arrêter",
+  "dictate": "Dicter",
+  "stopDictation": "Stop dictation",
+  "listening": "Écoute…",
+  "readAloudOn": "Read aloud: on",
+  "readAloudOff": "Read aloud: off",
+  "readAloud": "Read aloud",
+  "addContext": "Add context",
+  "photoLibrary": "Photothèque",
+  "camera": "Appareil photo",
+  "pasteImageFromClipboard": "Paste image from clipboard",
+  "noImageOnClipboard": "No image on clipboard — use Photo library or Camera",
+  "couldNotPickImage": "Could not pick image: {error}",
+  "@couldNotPickImage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pasteFailed": "Paste failed: {error}",
+  "@pasteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "speechUnavailable": "Speech recognition unavailable on this device",
+  "micPermissionDenied": "Microphone / speech permission denied — enable in Settings",
+  "couldNotStartDictation": "Could not start dictation — check mic & speech permissions",
+  "dictationFailed": "Dictation failed: {error}",
+  "@dictationFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "uploadingImage": "Uploading image…",
+  "thinking": "Réflexion…",
+  "writing": "Rédaction…",
+  "runningTool": "Running {name}…",
+  "@runningTool": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "imageAttachFailed": "Image attach failed: {error}",
+  "@imageAttachFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "savedWaitingWs": "Saved on phone — waiting for live WebSocket (Settings may show HTTPS only).",
+  "queuedForSync": "Queued for sync to gateway…",
+  "stopFailed": "Stop failed: {error}",
+  "@stopFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "editMessage": "Edit message",
+  "saveAndResend": "Save & resend",
+  "editAndResend": "Edit & resend",
+  "rewindAndRun": "Rewind to this prompt and run again",
+  "regenerate": "Regenerate",
+  "resend": "Resend",
+  "noResponseYet": "No reply yet — resend or edit this message",
+  "messageActions": "Message actions",
+  "resubmitMessage": "Resubmit this message",
+  "retryFromPrevious": "Retry from the previous user message",
+  "copied": "Copied",
+  "copy": "Copy",
+  "codeCopied": "Code copied",
+  "copiedLink": "Copied link: {href}",
+  "@copiedLink": {
+    "placeholders": {
+      "href": {
+        "type": "String"
+      }
+    }
+  },
+  "stopRequested": "Stop requested.",
+  "slashFailed": "Slash failed: {error}",
+  "@slashFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "modelSavedLocal": "Model saved on phone; gateway: {error}",
+  "@modelSavedLocal": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pleaseLookAtImage": "Please look at the attached image.",
+  "pleaseLookAtImages": "Please look at the attached images.",
+  "nImages": "{count} image(s)",
+  "@nImages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "jobsTitle": "Jobs",
+  "retry": "Retry",
+  "runNow": "Run now",
+  "pause": "Pause",
+  "resume": "Resume",
+  "modelPickerTitle": "Model",
+  "modelPickerSubtitle": "Same catalog as Desktop",
+  "reasoningOptions": "Options",
+  "thinking": "Thinking",
+  "thinkingOnHint": "Model may use reasoning tokens",
+  "thinkingOffHint": "Reasoning disabled for this session",
+  "effort": "Effort",
+  "applyEffort": "Apply effort to session",
+  "confirmModel": "Use this model",
+  "modelPickerConfirmHint": "Select a model, set its options, then confirm.",
+  "modelNoOptions": "This model has no Thinking or Fast options.",
+  "modelCapsLoading": "Loading per-model options…",
+  "fastMode": "Fast",
+  "fastModeHint": "Priority / lower-latency when the model supports it",
+
+  "contextUsageTitle": "Context Usage",
+  "contextUsageTokenSummary": "~{used} / {max} Tokens",
+  "@contextUsageTokenSummary": {
+    "placeholders": {
+      "used": {"type": "String"},
+      "max": {"type": "String"}
+    }
+  },
+  "contextUsagePercentFull": "{percent}% Full",
+  "@contextUsagePercentFull": {
+    "placeholders": {
+      "percent": {"type": "int"}
+    }
+  },
+  "contextUsageLoading": "Loading breakdown…",
+  "contextUsageEmpty": "No context data yet — send a message first.",
+  "contextUsageOpen": "Context usage",
+  "contextCatSystemPrompt": "System prompt",
+  "contextCatToolDefinitions": "Tool definitions",
+  "contextCatRules": "Rules",
+  "contextCatSkills": "Skills",
+  "contextCatMcp": "MCP",
+  "contextCatSubagents": "Subagent definitions",
+  "contextCatMemory": "Memory",
+  "contextCatConversation": "Conversation",
+
+  "refreshModels": "Refresh models",
+  "skillsTitle": "Installed skills on your gateway",
+  "filterSkills": "Filter skills…",
+  "reloadSkills": "Reload skills on gateway",
+  "reloadFailed": "Reload failed: {error}",
+  "@reloadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "skillsSection": "Skills",
+  "commandsSection": "Commands",
+  "optionsSection": "Options",
+  "privacyAndData": "Confidentialité et données",
+  "privacyAndDataSubtitle": "Gestion du contenu de la passerelle et des données sur l’appareil",
+  "privacyDataFlow": "Hermes Go envoie les conversations et les pièces jointes directement à la passerelle choisie. Cette passerelle peut les transmettre aux fournisseurs de modèles et aux services configurés par son propriétaire.",
+  "privacyOnDevice": "L’app conserve sur cet appareil les métadonnées de connexion, les cookies de session chiffrés, les préférences et un cache local des conversations. La déconnexion supprime les connexions enregistrées et les données d’authentification.",
+  "privacyNoAnalytics": "Cette version ne contient aucun SDK publicitaire ou analytique.",
+  "privacyPolicyMissing": "Action requise de l’éditeur : configurez une URL HTTPS publique de politique de confidentialité avant la soumission au store.",
+  "openPrivacyPolicy": "Ouvrir la politique de confidentialité",
+  "couldNotOpenLink": "Impossible d’ouvrir le lien.",
+  "unofficialDisclaimer": "Non officielle · Créée par la communauté · Sans affiliation avec Nous Research",
+  "noCachedJobs": "Aucun travail en cache pour l’instant.\nRéparez la connexion et réessayez.",
+  "noCronJobs": "Aucun travail cron sur cette passerelle.\nCréez-les sur l’hôte (`hermes cron` ou Desktop).\nÀ leur fin, cet onglet se synchronisera et pourra vous avertir.",
+  "skillsPickerSubtitle": "Installées sur votre passerelle (hub, intégrées ou personnelles).\nMises en cache sur cet appareil en cas de coupure réseau.\nTouchez pour les invoquer comme commandes slash.",
+  "noSkillsCached": "Aucune skill en cache pour l’instant.\nRechargez quand la passerelle est accessible, ou saisissez /skills-name lorsque l’autocomplétion fonctionne.",
+  "noSkillsMatch": "Aucune skill ne correspond à « {query} ».",
+  "@noSkillsMatch": {"placeholders": {"query": {"type": "String"}}},
+  "modelPickerDetails": "Même catalogue que Desktop (/api/model/options · model.options).\nAppliqué à la session ouverte sur la passerelle.",
+  "couldNotLoadModels": "Impossible de charger les modèles :\n{detail}",
+  "@couldNotLoadModels": {"placeholders": {"detail": {"type": "String"}}},
+  "noModelsFromGateway": "Aucun modèle sur cette passerelle.\nDesktop utilise GET /api/model/options (cookies de session). Configurez les fournisseurs sur l’hôte si la liste est vraiment vide.",
+  "notificationsTitle": "Notifications"
+}

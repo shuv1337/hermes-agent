@@ -1,0 +1,34 @@
+PODS:
+  - Flutter (1.0.0)
+  - flutter_secure_storage (6.0.0):
+    - Flutter
+  - flutter_tts (0.0.1):
+    - Flutter
+  - workmanager_apple (0.0.1):
+    - Flutter
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - flutter_secure_storage (from `.symlinks/plugins/flutter_secure_storage/ios`)
+  - flutter_tts (from `.symlinks/plugins/flutter_tts/ios`)
+  - workmanager_apple (from `.symlinks/plugins/workmanager_apple/ios`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  flutter_secure_storage:
+    :path: ".symlinks/plugins/flutter_secure_storage/ios"
+  flutter_tts:
+    :path: ".symlinks/plugins/flutter_tts/ios"
+  workmanager_apple:
+    :path: ".symlinks/plugins/workmanager_apple/ios"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_secure_storage: 1ed9476fba7e7a782b22888f956cce43e2c62f13
+  flutter_tts: 35ac3c7d42412733e795ea96ad2d7e05d0a75113
+  workmanager_apple: 904529ae31e97fc5be632cf628507652294a0778
+
+PODFILE CHECKSUM: 0fbc95ef003b05011cf6a398c9bc93f4d27cabd7
+
+COCOAPODS: 1.17.0
