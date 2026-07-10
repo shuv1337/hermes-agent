@@ -25,7 +25,19 @@ class MessageMarkdown extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final fg = color ?? theme.colorScheme.onSurface;
-    final codeBg = theme.brightness == Brightness.dark
+    // NOTE: keyed off the *actual* rendered surface color, not
+    // `theme.brightness`. Several built-in skins (midnight/ember/mono/
+    // cyberpunk/slate — see hermes_skins.dart) have no `darkColors` and
+    // reuse the same dark-looking palette for both the light- and
+    // dark-theme slots, so `theme.brightness` can read Brightness.light
+    // while the page is actually dark. That mismatch made code blocks
+    // render a light card with light (onSurface) text on top of it —
+    // unreadable. `estimateBrightnessForColor` reflects what's really on
+    // screen, matching `HermesSkin.prefersDark`'s approach.
+    final surfaceIsDark =
+        ThemeData.estimateBrightnessForColor(theme.scaffoldBackgroundColor) ==
+        Brightness.dark;
+    final codeBg = surfaceIsDark
         ? const Color(0xFF12151A)
         : const Color(0xFFF0F2F5);
     final codeBorder = theme.colorScheme.outline.withValues(alpha: 0.35);
