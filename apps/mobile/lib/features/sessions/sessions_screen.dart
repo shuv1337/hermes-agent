@@ -203,20 +203,23 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
     final model = ref.watch(resolvedModelLabelProvider);
     final active = _active;
 
-    // One-shot seed: existing history shouldn't all show unread dots.
-    // While a chat is open, advance its read token whenever activity changes
-    // so the bullet clears and new gateway turns don't re-light while viewing.
+    // One-shot seed + mark open chat read. Defer provider writes to the next
+    // frame so we never invalidate/read-map during this build (Riverpod 3
+    // schedules ProviderScope setState via vsync.scheduleRefresh).
     ref.listen(sessionsProvider, (prev, next) {
       next.whenData((list) {
-        unawaited(
-          ref.read(sessionReadMapProvider.notifier).seedExistingAsRead(list),
-        );
-        final open = _active;
-        if (open == null) return;
-        final live = list.where((s) => s.id == open.id).firstOrNull;
-        if (live != null) {
-          unawaited(ref.read(sessionReadMapProvider.notifier).markRead(live));
-        }
+        final openId = _active?.id;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          unawaited(
+            ref.read(sessionReadMapProvider.notifier).seedExistingAsRead(list),
+          );
+          if (openId == null) return;
+          final live = list.where((s) => s.id == openId).firstOrNull;
+          if (live != null) {
+            unawaited(ref.read(sessionReadMapProvider.notifier).markRead(live));
+          }
+        });
       });
     });
 

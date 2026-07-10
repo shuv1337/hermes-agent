@@ -109,6 +109,13 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
 
   @override
   Widget build(BuildContext context) {
+    // Warm the gateway graph before tab children watch it. Otherwise the first
+    // SessionsScreen frame can flush sessionsProvider while sessionSync is
+    // still mounting (null → repo), which invalidates mid-build and trips
+    // Riverpod's "setState() during build" assert on ProviderScope.
+    ref.watch(sessionSyncProvider);
+    ref.watch(gatewayRealtimeProvider);
+
     final l10n = context.l10n;
     final pages = const [SessionsScreen(), JobsScreen(), SettingsScreen()];
     final textScale = MediaQuery.textScalerOf(context).scale(1);
