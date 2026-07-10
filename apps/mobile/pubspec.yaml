@@ -45,5 +45,7 @@ dev_dependencies:
   build_runner: ^2.15.1
 
 flutter:
+  config:
+    enable-swift-package-manager: false
   generate: true
   uses-material-design: true
