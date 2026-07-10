@@ -46,6 +46,9 @@ dev_dependencies:
 
 flutter:
   config:
+    # Xcode 26+/iOS 27 wireless LLDB attachment can stall for 60+ seconds
+    # before Dart starts. Fall back to Flutter's Xcode-based debug launcher.
+    enable-lldb-debugging: false
     enable-swift-package-manager: false
   generate: true
   uses-material-design: true

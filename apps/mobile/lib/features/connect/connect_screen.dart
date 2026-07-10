@@ -297,11 +297,6 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       controller: _urlCtrl,
                       keyboardType: TextInputType.url,
                       autocorrect: false,
-                      // iOS 27 beta can deadlock UIPasteboard.hasStrings while
-                      // EditableText refreshes its automatic Paste menu. Keep
-                      // startup and typing independent of the pasteboard
-                      // daemon; users can still type/autofill the URL.
-                      enableInteractiveSelection: false,
                       enabled: !_busy,
                       decoration: InputDecoration(
                         labelText: context.l10n.gatewayBaseUrl,

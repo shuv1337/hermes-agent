@@ -126,25 +126,6 @@ class _RootGateState extends ConsumerState<_RootGate>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _bootGuardUntil = DateTime.now().add(const Duration(seconds: 2));
-    // TEMP DIAG: name whatever is on screen 8s after boot.
-    Timer(const Duration(seconds: 8), () {
-      final buf = StringBuffer();
-      void walk(Element e, int depth) {
-        if (depth > 2000) return;
-        final w = e.widget.runtimeType.toString();
-        if (w.contains('Screen') ||
-            w.contains('Shell') ||
-            w.contains('Progress') ||
-            w.contains('Scaffold') ||
-            w.contains('Navigator')) {
-          buf.writeln('${'  ' * (depth ~/ 4)}$w');
-        }
-        e.visitChildren((c) => walk(c, depth + 1));
-      }
-      final root = WidgetsBinding.instance.rootElement;
-      if (root != null) walk(root, 0);
-      debugPrint('TREE-DUMP:\n$buf');
-    });
   }
 
   @override
