@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -72,12 +73,34 @@ class _ThemedApp extends ConsumerWidget {
         // Preserve the platform's accessibility text size. Screens that can
         // grow use scrolling/list layouts; do not silently cap user settings.
         final mq = MediaQuery.of(context);
-        return MediaQuery(
-          data: mq,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-            child: child,
+        // Default status/nav-bar icon style for the whole app, keyed off the
+        // *effective* theme brightness (now reliable post-buildThemeData
+        // fix). AppBar screens get correct icons automatically from
+        // AppBarTheme/ColorScheme; this covers the AppBar-less screens
+        // (GatewayShell, ConnectScreen) which would otherwise keep whatever
+        // main.dart's launch-time hardcode set. Screens with an AppBar
+        // still win locally — Flutter nests their own AnnotatedRegion
+        // closer to the leaf.
+        final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
+        final overlayStyle =
+            (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+                .copyWith(
+                  statusBarColor: Colors.transparent,
+                  systemNavigationBarColor: theme.scaffoldBackgroundColor,
+                  systemNavigationBarIconBrightness: isDark
+                      ? Brightness.light
+                      : Brightness.dark,
+                );
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: overlayStyle,
+          child: MediaQuery(
+            data: mq,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              child: child,
+            ),
           ),
         );
       },

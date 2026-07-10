@@ -305,10 +305,24 @@ HermesSkin skinById(String? id) {
 }
 
 /// Build Flutter [ThemeData] from a desktop skin palette.
+///
+/// [brightness] is the *requested slot* (light vs dark theme) and is used
+/// only to pick which palette [HermesSkin.paletteFor] hands back — dual-mode
+/// skins (e.g. Nous) have distinct light/dark palettes, but single-palette
+/// skins (midnight/ember/mono/cyberpunk/slate) reuse the same dark-looking
+/// palette for both slots. Everything brightness-sensitive below must
+/// instead key off the palette that was actually resolved, or Material
+/// internals that trust `ThemeData.brightness` (SnackBar inverseSurface,
+/// elevation overlays, AppBar status-bar icon color, text selection
+/// defaults, ...) end up disagreeing with what's actually on screen. See
+/// [HermesSkin.prefersDark] for the same background-color estimation.
 ThemeData buildThemeData(HermesSkin skin, Brightness brightness) {
   final p = skin.paletteFor(brightness);
+  final effectiveBrightness = ThemeData.estimateBrightnessForColor(
+    p.background,
+  );
   final scheme = ColorScheme(
-    brightness: brightness,
+    brightness: effectiveBrightness,
     primary: p.primary,
     onPrimary: p.primaryForeground,
     secondary: p.ring,
@@ -325,7 +339,7 @@ ThemeData buildThemeData(HermesSkin skin, Brightness brightness) {
 
   final base = ThemeData(
     useMaterial3: true,
-    brightness: brightness,
+    brightness: effectiveBrightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: p.background,
     appBarTheme: AppBarTheme(
@@ -353,7 +367,7 @@ ThemeData buildThemeData(HermesSkin skin, Brightness brightness) {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: p.input.withValues(
-        alpha: brightness == Brightness.dark ? 0.35 : 0.15,
+        alpha: effectiveBrightness == Brightness.dark ? 0.35 : 0.15,
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
