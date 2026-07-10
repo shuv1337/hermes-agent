@@ -43,8 +43,13 @@ final gatewayBookProvider =
 
 class GatewayBookNotifier extends AsyncNotifier<GatewayBook> {
   @override
-  Future<GatewayBook> build() {
-    return ref.read(connectionStoreProvider).readBook();
+  Future<GatewayBook> build() async {
+    final elapsed = Stopwatch()..start();
+    final book = await ref.read(connectionStoreProvider).readBook();
+    debugPrint(
+      'Startup: gateway profile ready in ${elapsed.elapsedMilliseconds}ms',
+    );
+    return book;
   }
 
   Future<void> reload() async {

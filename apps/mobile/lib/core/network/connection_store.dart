@@ -172,7 +172,11 @@ class ConnectionStore {
 
   Future<GatewayBook> readBook() async {
     // 1) Durable keychain / prefs
+    final secureRead = Stopwatch()..start();
     final fromSecure = await _parseBook(await _read(_bookKey));
+    debugPrint(
+      'Startup: secure gateway read took ${secureRead.elapsedMilliseconds}ms',
+    );
     if (fromSecure != null && fromSecure.isNotEmpty) {
       // Keep mirror warm after successful secure read.
       await _writeMirror(fromSecure);
