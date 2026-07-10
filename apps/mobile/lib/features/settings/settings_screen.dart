@@ -734,20 +734,28 @@ Future<void> _showThemePicker(BuildContext context, WidgetRef ref) async {
                     Expanded(
                       child: ListView(
                         children: [
-                          for (final skin in kBuiltinSkins)
-                            ListTile(
+                          const _SkinSectionLabel('Desktop'),
+                          for (final skin in kBuiltinSkins.take(
+                            kDesktopParitySkinCount,
+                          ))
+                            _SkinPickerTile(
+                              skin: skin,
                               selected: skin.id == currentSkin,
-                              leading: CircleAvatar(
-                                backgroundColor: skin
-                                    .paletteFor(Theme.of(ctx).brightness)
-                                    .primary,
-                                radius: 12,
-                              ),
-                              title: Text(skin.label),
-                              subtitle: Text(skin.id),
-                              trailing: skin.id == currentSkin
-                                  ? const Icon(Icons.check)
-                                  : null,
+                              brightness: Theme.of(ctx).brightness,
+                              onTap: () {
+                                ref
+                                    .read(appSkinIdProvider.notifier)
+                                    .select(skin.id);
+                              },
+                            ),
+                          const _SkinSectionLabel('Mobile'),
+                          for (final skin in kBuiltinSkins.skip(
+                            kDesktopParitySkinCount,
+                          ))
+                            _SkinPickerTile(
+                              skin: skin,
+                              selected: skin.id == currentSkin,
+                              brightness: Theme.of(ctx).brightness,
                               onTap: () {
                                 ref
                                     .read(appSkinIdProvider.notifier)
@@ -766,6 +774,56 @@ Future<void> _showThemePicker(BuildContext context, WidgetRef ref) async {
       );
     },
   );
+}
+
+class _SkinSectionLabel extends StatelessWidget {
+  const _SkinSectionLabel(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        label,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _SkinPickerTile extends StatelessWidget {
+  const _SkinPickerTile({
+    required this.skin,
+    required this.selected,
+    required this.brightness,
+    required this.onTap,
+  });
+
+  final HermesSkin skin;
+  final bool selected;
+  final Brightness brightness;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      selected: selected,
+      leading: SkinSwatchRow(skin: skin, brightness: brightness),
+      title: Text(skin.label),
+      subtitle: Text(
+        skin.description,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: selected ? const Icon(Icons.check) : null,
+      onTap: onTap,
+    );
+  }
 }
 
 Future<void> _showReloginSheet(BuildContext context, WidgetRef ref) async {
