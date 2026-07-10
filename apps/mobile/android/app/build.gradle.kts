@@ -50,6 +50,10 @@ android {
             // Never ship a release signed with the debug key. Without
             // android/key.properties this intentionally builds unsigned.
             signingConfig = signingConfigs.findByName("release")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
