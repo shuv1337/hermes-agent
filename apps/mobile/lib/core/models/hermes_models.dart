@@ -466,6 +466,64 @@ class HermesSkill {
   }
 }
 
+/// A slash command from `GET /api/commands`.
+///
+/// Invoked as a slash command: `/{name}` (or `/{name} <args>`).
+class SlashCommand {
+  const SlashCommand({
+    required this.name,
+    required this.description,
+    required this.category,
+    this.aliases = const [],
+    this.argsHint = '',
+    this.cliOnly = false,
+    this.gatewayOnly = false,
+    this.configGated = false,
+  });
+
+  final String name;
+  final String description;
+  final String category;
+  final List<String> aliases;
+  final String argsHint;
+  final bool cliOnly;
+  final bool gatewayOnly;
+  final bool configGated;
+
+  /// Slash form including leading `/`.
+  String get slashCommand {
+    final n = name.trim();
+    if (n.isEmpty) return '/';
+    return n.startsWith('/') ? n : '/$n';
+  }
+
+  factory SlashCommand.fromJson(Map<String, dynamic> json) {
+    final name = '${json['name'] ?? json['slug'] ?? json['id'] ?? ''}'.trim();
+    final aliasesRaw = json['aliases'];
+    final aliases = aliasesRaw is List
+        ? aliasesRaw.map((a) => '$a').where((a) => a.isNotEmpty).toList()
+        : const <String>[];
+    bool asBool(dynamic raw) {
+      if (raw is bool) return raw;
+      if (raw == null) return false;
+      return '$raw' == 'true' || '$raw' == '1';
+    }
+
+    return SlashCommand(
+      name: name,
+      description:
+          (json['description'] ?? json['desc'] ?? json['summary'] ?? '')
+              .toString(),
+      category: (json['category'] ?? json['group'] ?? '').toString(),
+      aliases: aliases,
+      argsHint: (json['args_hint'] ?? json['argsHint'] ?? '').toString(),
+      cliOnly: asBool(json['cli_only'] ?? json['cliOnly']),
+      gatewayOnly: asBool(json['gateway_only'] ?? json['gatewayOnly']),
+      configGated: asBool(json['config_gated'] ?? json['configGated']),
+    );
+  }
+}
+
 class HermesJob {
   const HermesJob({
     required this.id,

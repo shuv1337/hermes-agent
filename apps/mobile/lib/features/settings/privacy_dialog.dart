@@ -24,13 +24,6 @@ Future<void> showPrivacyDialog(BuildContext context) async {
             Text(context.l10n.privacyOnDevice),
             const SizedBox(height: 12),
             Text(context.l10n.privacyNoAnalytics),
-            if (policyUri == null) ...[
-              const SizedBox(height: 12),
-              Text(
-                context.l10n.privacyPolicyMissing,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
           ],
         ),
       ),

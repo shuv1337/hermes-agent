@@ -243,6 +243,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeSystem => 'System';
 
   @override
+  String get skinSectionDesktop => 'Desktop';
+
+  @override
+  String get skinSectionMobile => 'Mobile';
+
+  @override
   String get required => 'Required';
 
   @override
@@ -774,6 +780,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String noSkillsMatch(String query) {
     return 'No skills match “$query”.';
   }
+
+  @override
+  String get commandCheatSheetTitle => 'Slash commands';
+
+  @override
+  String get commandCheatSheetSubtitle =>
+      'Browse every /command Hermes supports';
+
+  @override
+  String get filterCommands => 'Filter commands…';
+
+  @override
+  String noCommandsMatch(String query) {
+    return 'No commands match “$query”.';
+  }
+
+  @override
+  String get commandBadgeCli => 'CLI';
+
+  @override
+  String get commandBadgeConfigGated => 'config';
+
+  @override
+  String get commandsLoadError =>
+      'Couldn\'t load commands. Check your connection and try again.';
 
   @override
   String get modelPickerDetails =>

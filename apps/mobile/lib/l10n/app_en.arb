@@ -86,6 +86,8 @@
   "themeLight": "Light",
   "themeDark": "Dark",
   "themeSystem": "System",
+  "skinSectionDesktop": "Desktop",
+  "skinSectionMobile": "Mobile",
   "required": "Required",
   "signedInWsLive": "Signed in — WebSocket live",
   "signedInWsOffline": "Signed in; WebSocket: {status}",
@@ -355,6 +357,16 @@
   "@noSkillsMatch": {
     "placeholders": {"query": {"type": "String"}}
   },
+  "commandCheatSheetTitle": "Slash commands",
+  "commandCheatSheetSubtitle": "Browse every /command Hermes supports",
+  "filterCommands": "Filter commands…",
+  "noCommandsMatch": "No commands match “{query}”.",
+  "@noCommandsMatch": {
+    "placeholders": {"query": {"type": "String"}}
+  },
+  "commandBadgeCli": "CLI",
+  "commandBadgeConfigGated": "config",
+  "commandsLoadError": "Couldn't load commands. Check your connection and try again.",
   "modelPickerDetails": "Same catalog as Desktop (/api/model/options · model.options).\nApplied to the open session on the gateway.",
   "couldNotLoadModels": "Could not load models:\n{detail}",
   "@couldNotLoadModels": {

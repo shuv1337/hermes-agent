@@ -550,6 +550,18 @@ abstract class AppLocalizations {
   /// **'System'**
   String get themeSystem;
 
+  /// No description provided for @skinSectionDesktop.
+  ///
+  /// In en, this message translates to:
+  /// **'Desktop'**
+  String get skinSectionDesktop;
+
+  /// No description provided for @skinSectionMobile.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobile'**
+  String get skinSectionMobile;
+
   /// No description provided for @required.
   ///
   /// In en, this message translates to:
@@ -1485,6 +1497,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No skills match “{query}”.'**
   String noSkillsMatch(String query);
+
+  /// No description provided for @commandCheatSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Slash commands'**
+  String get commandCheatSheetTitle;
+
+  /// No description provided for @commandCheatSheetSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse every /command Hermes supports'**
+  String get commandCheatSheetSubtitle;
+
+  /// No description provided for @filterCommands.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter commands…'**
+  String get filterCommands;
+
+  /// No description provided for @noCommandsMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No commands match “{query}”.'**
+  String noCommandsMatch(String query);
+
+  /// No description provided for @commandBadgeCli.
+  ///
+  /// In en, this message translates to:
+  /// **'CLI'**
+  String get commandBadgeCli;
+
+  /// No description provided for @commandBadgeConfigGated.
+  ///
+  /// In en, this message translates to:
+  /// **'config'**
+  String get commandBadgeConfigGated;
+
+  /// No description provided for @commandsLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load commands. Check your connection and try again.'**
+  String get commandsLoadError;
 
   /// No description provided for @modelPickerDetails.
   ///

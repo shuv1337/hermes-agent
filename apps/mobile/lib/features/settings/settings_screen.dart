@@ -9,6 +9,7 @@ import 'package:hermes_mobile/core/services/feedback.dart';
 import 'package:hermes_mobile/core/services/result_notifier.dart';
 import 'package:hermes_mobile/core/sync/background_sync.dart';
 import 'package:hermes_mobile/core/theme/hermes_skins.dart';
+import 'package:hermes_mobile/features/settings/command_cheat_sheet_screen.dart';
 import 'package:hermes_mobile/features/settings/privacy_dialog.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
@@ -272,6 +273,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             },
           ),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.terminal),
+            title: Text(context.l10n.commandCheatSheetTitle),
+            subtitle: Text(context.l10n.commandCheatSheetSubtitle),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CommandCheatSheetScreen()),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined),
             title: Text(context.l10n.privacyAndData),
@@ -745,7 +755,7 @@ Future<void> _showThemePicker(BuildContext context, WidgetRef ref) async {
                     Expanded(
                       child: ListView(
                         children: [
-                          const _SkinSectionLabel('Desktop'),
+                          _SkinSectionLabel(ctx.l10n.skinSectionDesktop),
                           for (final skin in kBuiltinSkins.take(
                             kDesktopParitySkinCount,
                           ))
@@ -759,7 +769,7 @@ Future<void> _showThemePicker(BuildContext context, WidgetRef ref) async {
                                     .select(skin.id);
                               },
                             ),
-                          const _SkinSectionLabel('Mobile'),
+                          _SkinSectionLabel(ctx.l10n.skinSectionMobile),
                           for (final skin in kBuiltinSkins.skip(
                             kDesktopParitySkinCount,
                           ))

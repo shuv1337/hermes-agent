@@ -274,6 +274,43 @@ class DashboardClient {
     return list;
   }
 
+  /// Slash-command cheat sheet — `GET /api/commands`.
+  ///
+  /// Returns the full registry of slash commands the gateway/CLI supports,
+  /// with category, aliases, and gating metadata for client-side display.
+  Future<List<SlashCommand>> listCommands() async {
+    lastError = null;
+    final dio = await _ensureDio();
+    final res = await dio.get<dynamic>('/api/commands');
+    _throwIfAuth(res);
+    if (res.statusCode != 200) {
+      lastError = 'listCommands HTTP ${res.statusCode}: ${res.data}';
+      throw DioException(
+        requestOptions: res.requestOptions,
+        response: res,
+        message: lastError,
+      );
+    }
+    final body = res.data;
+    List? raw;
+    if (body is Map) {
+      final commands = body['commands'];
+      raw = commands is List ? commands : null;
+    }
+    if (raw == null) {
+      lastError = 'listCommands: unexpected body ${body.runtimeType}';
+      debugPrint(lastError);
+      return const [];
+    }
+    final list = raw
+        .whereType<Map>()
+        .map((m) => SlashCommand.fromJson(m.cast<String, dynamic>()))
+        .where((c) => c.name.isNotEmpty)
+        .toList();
+    debugPrint('DashboardClient.listCommands → ${list.length} commands');
+    return list;
+  }
+
   /// Desktop `getCronJobs` — hermes.ts L750-755 (returns CronJob[]).
   ///
   /// Dashboard returns a **JSON array** (not `{jobs:[]}`). Profile scope

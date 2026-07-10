@@ -1154,6 +1154,41 @@ class SkillsNotifier extends AsyncNotifier<List<HermesSkill>> {
   }
 }
 
+/// Slash-command cheat sheet registry — `GET /api/commands`.
+///
+/// Lightweight, server-driven, no local cache: unlike [SkillsNotifier] /
+/// [ModelOptionsNotifier] this doesn't need offline-first or realtime sync.
+/// On error, state becomes [AsyncError] so the screen can show a retry —
+/// never silently falls back to an empty or hardcoded list.
+final commandsProvider =
+    AsyncNotifierProvider<CommandsNotifier, List<SlashCommand>>(
+      CommandsNotifier.new,
+    );
+
+class CommandsNotifier extends AsyncNotifier<List<SlashCommand>> {
+  @override
+  Future<List<SlashCommand>> build() => _load();
+
+  Future<List<SlashCommand>> _load() async {
+    final dash = ref.read(dashboardClientProvider);
+    if (dash == null) return const [];
+    return dash.listCommands();
+  }
+
+  Future<void> refresh() async {
+    final dash = ref.read(dashboardClientProvider);
+    if (dash == null) {
+      state = const AsyncData([]);
+      return;
+    }
+    final had = state.asData?.value;
+    if (had == null || had.isEmpty) {
+      state = const AsyncLoading();
+    }
+    state = await AsyncValue.guard(() => dash.listCommands());
+  }
+}
+
 final modelOptionsProvider =
     AsyncNotifierProvider<ModelOptionsNotifier, ModelOptionsResult>(
       ModelOptionsNotifier.new,

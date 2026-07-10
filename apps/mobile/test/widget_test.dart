@@ -38,7 +38,9 @@ void main() {
       find.textContaining('sends conversations and attachments'),
       findsOneWidget,
     );
-    expect(find.textContaining('Publisher action required'), findsOneWidget);
+    // Publisher nag removed from the dialog; the policy link renders only
+    // when the HERMES_PRIVACY_POLICY_URL define is set.
+    expect(find.textContaining('Publisher action required'), findsNothing);
   });
 
   testWidgets('Connect screen remains scrollable at very large text', (
