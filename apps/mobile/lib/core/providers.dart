@@ -214,16 +214,56 @@ Future<void> _maybeForceReauth(Ref ref, Object e) async {
       );
 }
 
+/// Holds one [DashboardClient] per gateway so Dio/cookie setup is stable.
+class _DashboardClientHolder {
+  DashboardClient? client;
+  String? gatewayId;
+  String? baseUrl;
+}
+
+final _dashboardClientHolderProvider = Provider<_DashboardClientHolder>((ref) {
+  return _DashboardClientHolder();
+});
+
 /// Cookie-auth dashboard client (Desktop HTTP surface).
-/// Stable per gateway id so we don't thrash Dio/cookie setup.
+///
+/// Stable per gateway id + baseUrl. A fresh [DashboardClient] on every
+/// [connectionProfileProvider] tick was thrashing [sessionSyncProvider] and
+/// causing Riverpod `invalidateSelf` → `setState` during [SessionsScreen] build.
 final dashboardClientProvider = Provider<DashboardClient?>((ref) {
-  final profile = ref.watch(connectionProfileProvider).value;
+  // Rebuild only when identity/URL changes — not on every book object rewrite.
+  final key = ref.watch(
+    connectionProfileProvider.select((av) {
+      final p = av.value;
+      if (p == null) return null;
+      return '${p.id}\u0000${p.baseUrl}';
+    }),
+  );
+  if (key == null) return null;
+  final profile = ref.read(connectionProfileProvider).value;
   if (profile == null) return null;
-  return DashboardClient(profile: profile);
+
+  final holder = ref.watch(_dashboardClientHolderProvider);
+  if (holder.client == null ||
+      holder.gatewayId != profile.id ||
+      holder.baseUrl != profile.baseUrl) {
+    holder.client = DashboardClient(profile: profile);
+    holder.gatewayId = profile.id;
+    holder.baseUrl = profile.baseUrl;
+  }
+  return holder.client;
 });
 
 final hermesApiProvider = Provider<HermesApi?>((ref) {
-  final profile = ref.watch(connectionProfileProvider).value;
+  final key = ref.watch(
+    connectionProfileProvider.select((av) {
+      final p = av.value;
+      if (p == null) return null;
+      return '${p.id}\u0000${p.baseUrl}\u0000${p.apiKey}';
+    }),
+  );
+  if (key == null) return null;
+  final profile = ref.read(connectionProfileProvider).value;
   if (profile == null) return null;
   // Legacy API-server bearer only when a static key is stored.
   if (!profile.hasLegacyToken) return null;
@@ -242,9 +282,18 @@ final _sessionSyncHolderProvider = Provider<_SessionSyncHolder>((ref) {
 });
 
 /// Local-first session sync for the active gateway (null if not connected).
+///
+/// Only [ref.watch]es the gateway id. Dashboard / API / realtime clients are
+/// rebound via [ref.listen] so their identity churn does not rebuild this
+/// provider (and cascade-invalidate [sessionsProvider] mid-widget-build).
 final sessionSyncProvider = Provider<SessionSyncRepository?>((ref) {
-  final profile = ref.watch(connectionProfileProvider).value;
+  final gatewayId = ref.watch(
+    connectionProfileProvider.select((av) => av.value?.id),
+  );
+  if (gatewayId == null) return null;
+  final profile = ref.read(connectionProfileProvider).value;
   if (profile == null) return null;
+
   final db = ref.watch(appDatabaseProvider);
   final holder = ref.watch(_sessionSyncHolderProvider);
 
@@ -258,16 +307,23 @@ final sessionSyncProvider = Provider<SessionSyncRepository?>((ref) {
     holder.gatewayId = profile.id;
   }
   final repo = holder.repo!;
-  // Rebind clients every read — do not recreate the repository.
-  repo.bindDashboard(ref.watch(dashboardClientProvider));
-  repo.bindApi(ref.watch(hermesApiProvider));
-  // Watch realtime so reconnects re-attach the same repo instance.
-  final rt = ref.watch(gatewayRealtimeProvider);
-  repo.bindRealtime(rt);
-  rt?.bindSessionSync(repo);
-  rt?.bindKeepIds(
-    () => ref.read(pinnedSessionsProvider).value ?? const <String>[],
-  );
+
+  void rebindClients() {
+    repo.bindDashboard(ref.read(dashboardClientProvider));
+    repo.bindApi(ref.read(hermesApiProvider));
+    final rt = ref.read(gatewayRealtimeProvider);
+    repo.bindRealtime(rt);
+    rt?.bindSessionSync(repo);
+    rt?.bindKeepIds(
+      () => ref.read(pinnedSessionsProvider).value ?? const <String>[],
+    );
+  }
+
+  rebindClients();
+  ref.listen(dashboardClientProvider, (previous, next) => rebindClients());
+  ref.listen(hermesApiProvider, (previous, next) => rebindClients());
+  ref.listen(gatewayRealtimeProvider, (previous, next) => rebindClients());
+
   return repo;
 });
 
