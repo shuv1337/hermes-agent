@@ -12954,6 +12954,27 @@ async def get_skills(profile: Optional[str] = None):
     return skills
 
 
+@app.get("/api/commands")
+def get_commands():
+    """Return the canonical slash-command registry for client-side cheat sheets."""
+    from hermes_cli.commands import COMMAND_REGISTRY
+
+    commands = [
+        {
+            "name": c.name,
+            "description": c.description,
+            "category": c.category,
+            "aliases": list(c.aliases),
+            "args_hint": c.args_hint,
+            "cli_only": c.cli_only,
+            "gateway_only": c.gateway_only,
+            "config_gated": c.gateway_config_gate is not None,
+        }
+        for c in COMMAND_REGISTRY
+    ]
+    return {"commands": commands, "total": len(COMMAND_REGISTRY)}
+
+
 @app.put("/api/skills/toggle")
 async def toggle_skill(body: SkillToggle, profile: Optional[str] = None):
     from hermes_cli.skills_config import get_disabled_skills, save_disabled_skills
