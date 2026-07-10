@@ -25,6 +25,14 @@
 > ./scripts/deploy_ios.sh
 > ```
 > Full instructions, host security notes, and the gateway API surface: [`apps/mobile/README.md`](apps/mobile/README.md). Fork-specific backend changes are documented in [`MOBILE.md`](MOBILE.md). Everything below is the upstream Hermes Agent README.
+>
+> **Known issues on stock upstream gateways** (each has an upstream PR pending; this fork already carries the fixes where noted):
+>
+> | Issue | Upstream PR | Status on this fork |
+> | --- | --- | --- |
+> | Context gauge wrong for per-session model picks: the global `model.context_length` override (written for the config default model) leaks onto every session, so a new chat on e.g. a Codex model reports the local model's window | [NousResearch#62153](https://github.com/NousResearch/hermes-agent/pull/62153) | Fixed on `mobile-gateway` (`6e81c1460`) |
+> | Session-scoped model switches persist globally: picking a model for one session can overwrite the host's global default; one TUI picker path still leaks after review | [NousResearch#61192](https://github.com/NousResearch/hermes-agent/pull/61192) | Not yet included; cherry-pick if the phone's model picks are clobbering your host default |
+> | Bare custom endpoints (config `model.base_url` with no named provider) disappear from the model picker when not the active provider | [NousResearch#59808](https://github.com/NousResearch/hermes-agent/pull/59808) | Cherry-pick branch [`fix/bare-custom-endpoint-picker-59702`](https://github.com/TheTom/hermes-go/tree/fix/bare-custom-endpoint-picker-59702) |
 
 <p align="center">
   <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a> | <a href="https://hermes-agent.nousresearch.com/">Hermes Desktop</a>
