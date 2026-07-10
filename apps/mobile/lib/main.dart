@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:hermes_mobile/app.dart';
+import 'package:hermes_mobile/core/network/connection_store.dart';
 import 'package:hermes_mobile/core/sync/background_sync.dart';
 
 Future<void> main() async {
@@ -35,6 +36,16 @@ Future<void> main() async {
 }
 
 Future<void> _initBackgroundServices(Stopwatch startup) async {
+  // Wait for the first gateway-book read to settle before spawning
+  // Workmanager's headless engine: doing both concurrently can wedge the
+  // secure-storage platform channel and hang boot on the root spinner
+  // forever. The timeout keeps background services alive even if no
+  // readBook ever runs on some future boot path.
+  try {
+    await ConnectionStore.firstReadSettled.timeout(
+      const Duration(seconds: 10),
+    );
+  } catch (_) {}
   // Background flush/pull + local notifications for agent/job results.
   // Failures here must not block the app (e.g. tests / missing plugins).
   try {

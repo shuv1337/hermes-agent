@@ -96,11 +96,10 @@ class _ThemedApp extends ConsumerWidget {
           value: overlayStyle,
           child: MediaQuery(
             data: mq,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-              child: child,
-            ),
+            // Do not wrap the entire app in a tap recognizer. On iOS, taps on
+            // the system edit menu (Paste/Select All) can reach an ancestor
+            // recognizer and unfocus the TextField before the edit completes.
+            child: child ?? const SizedBox.shrink(),
           ),
         );
       },

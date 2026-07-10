@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -170,7 +171,25 @@ class ConnectionStore {
 
   // ── Gateway book ───────────────────────────────────────────────────
 
+  /// Completes after the first [readBook] finishes (success or failure).
+  ///
+  /// Boot gate for deferred plugin init: spawning Workmanager's headless
+  /// engine while the first keychain read is in flight can wedge the
+  /// secure-storage platform channel permanently (observed on iOS
+  /// simulator: root spinner forever, readBook never returns). main.dart
+  /// awaits this before initializing background services.
+  static final Completer<void> _firstReadDone = Completer<void>();
+  static Future<void> get firstReadSettled => _firstReadDone.future;
+
   Future<GatewayBook> readBook() async {
+    try {
+      return await _readBookImpl();
+    } finally {
+      if (!_firstReadDone.isCompleted) _firstReadDone.complete();
+    }
+  }
+
+  Future<GatewayBook> _readBookImpl() async {
     // 1) Durable keychain / prefs
     final secureRead = Stopwatch()..start();
     final fromSecure = await _parseBook(await _read(_bookKey));

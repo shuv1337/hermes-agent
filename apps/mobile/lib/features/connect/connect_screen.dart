@@ -61,10 +61,6 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     _providerName = existing?.provider;
     if (widget.reauth) {
       _error = widget.reauthMessage ?? L10n.current.sessionExpiredBody;
-      // Auto-probe so the password form is ready immediately.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_probeUrl());
-      });
     }
   }
 
@@ -301,7 +297,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       controller: _urlCtrl,
                       keyboardType: TextInputType.url,
                       autocorrect: false,
-                      enabled: !_busy && !widget.reauth,
+                      enabled: !_busy,
                       decoration: InputDecoration(
                         labelText: context.l10n.gatewayBaseUrl,
                         hintText: 'https://gateway.example.com',
@@ -319,15 +315,15 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                         return GatewayAuthClient.validateBaseUrl(t);
                       },
                       onChanged: (_) {
-                        // Also forces a rebuild so the non-blocking HTTP
-                        // helper text above updates as the user types.
+                        // A normal edit (including Paste) does not need to
+                        // rebuild the whole form. Only discard stale probe
+                        // results after a previously-probed URL changes.
+                        if (!_probed) return;
                         setState(() {
-                          if (_probed) {
-                            _probed = false;
-                            _probe = null;
-                            _hint = null;
-                            _error = null;
-                          }
+                          _probed = false;
+                          _probe = null;
+                          _hint = null;
+                          _error = null;
                         });
                       },
                     ),
