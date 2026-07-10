@@ -19,6 +19,12 @@ as Hermes Desktop:
 The mobile app does not run Hermes locally and is not a replacement for host
 setup or the full Desktop administration experience.
 
+> **Requirement:** you need a standalone Hermes install (Desktop or headless
+> gateway) already running somewhere — a home machine, VPS, or server — with
+> dashboard authentication configured. Hermes Go connects to it; without a
+> reachable, authenticated gateway there is nothing for the app to talk to.
+> See [Host setup](#host-setup).
+
 ## Included in v1
 
 | Area | Mobile app | Hermes host |
@@ -50,6 +56,30 @@ URLs because they would expose credentials and agent traffic. Loopback HTTP is
 accepted for simulator/emulator development.
 
 Do not expose an unauthenticated Hermes gateway to the public internet.
+
+### Recommended: reach your host over a VPN
+
+The simplest safe setup is putting your phone and your Hermes host on the same
+private network with a mesh VPN, instead of port-forwarding the gateway:
+
+- **[Tailscale](https://tailscale.com)** (recommended) — install on the host
+  and phone, sign into the same tailnet, done. `tailscale serve` can front the
+  dashboard with automatic HTTPS certificates, which satisfies the app's
+  HTTPS requirement out of the box:
+
+  ```bash
+  tailscale serve --bg https / http://localhost:9119
+  # then connect the app to https://<host>.<tailnet>.ts.net
+  ```
+
+- **[WireGuard](https://www.wireguard.com)** — fully self-hosted alternative
+  if you already run your own VPN server; pair it with a TLS reverse proxy
+  (Caddy, nginx) in front of :9119.
+- **[ZeroTier](https://www.zerotier.com)** or **[NetBird](https://netbird.io)** —
+  comparable mesh options if Tailscale is not an option for you.
+
+On a plain LAN (phone and host on the same Wi-Fi) the same HTTPS rule applies
+for release builds; only loopback HTTP for simulators is exempt.
 
 ## Run locally
 
