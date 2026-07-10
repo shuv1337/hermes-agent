@@ -5,7 +5,8 @@ Branch: **`mobile-gateway`**
 Upstream: [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)  
 Remote name in this clone: `upstream`  
 (Add your GitHub fork as `origin` when ready:  
-`git remote add origin git@github.com:<you>/hermes-agent.git`)
+`git remote add origin git@github.com:<you>/hermes-go.git`
+Live fork: [TheTom/hermes-go](https://github.com/TheTom/hermes-go))
 
 ## What this fork is for
 

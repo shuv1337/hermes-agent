@@ -91,6 +91,29 @@ and transcript cache.
 
 This performs an upgrade install and preserves the existing app container.
 
+## Build release binaries
+
+iOS requires a signing team once per checkout: open `ios/Runner.xcworkspace`
+in Xcode, select the Runner target, and pick your team under
+Signing & Capabilities (or edit `DEVELOPMENT_TEAM` in
+`ios/Runner.xcodeproj/project.pbxproj`). Then:
+
+```bash
+# iOS: archive + App Store-signed IPA in build/ios/ipa/
+flutter build ipa --release
+
+# Android: APK for sideloading, or an app bundle for Play
+flutter build apk --release          # build/app/outputs/flutter-apk/
+flutter build appbundle --release    # build/app/outputs/bundle/release/
+```
+
+Upload the IPA with Apple's Transporter app or
+`xcrun altool --upload-app --type ios -f build/ios/ipa/*.ipa`. Install a
+release APK directly with `adb install -r build/app/outputs/flutter-apk/app-release.apk`.
+
+Before any store build, remember the privacy policy define from
+[Run locally](#run-locally) and walk [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md).
+
 ## Project layout
 
 ```text
