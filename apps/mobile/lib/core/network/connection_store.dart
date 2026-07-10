@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:hermes_mobile/core/models/hermes_models.dart';
+import 'package:hermes_mobile/core/network/secure_storage_gate.dart';
 
 /// Persists gateway credentials on device across app **upgrades / deploys**.
 ///
@@ -98,7 +99,7 @@ class ConnectionStore {
   Future<String?> _read(String key) async {
     final memory = _memory;
     if (memory != null) return memory[key];
-    return _storage!.read(key: key);
+    return SecureStorageGate.run(() => _storage!.read(key: key));
   }
 
   Future<void> _write(String key, String value) async {
@@ -107,7 +108,7 @@ class ConnectionStore {
       memory[key] = value;
       return;
     }
-    await _storage!.write(key: key, value: value);
+    await SecureStorageGate.run(() => _storage!.write(key: key, value: value));
   }
 
   Future<void> _delete(String key) async {
@@ -116,7 +117,7 @@ class ConnectionStore {
       memory.remove(key);
       return;
     }
-    await _storage!.delete(key: key);
+    await SecureStorageGate.run(() => _storage!.delete(key: key));
   }
 
   // ── Application Support mirror (survives upgrade installs) ─────────

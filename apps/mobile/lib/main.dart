@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'package:hermes_mobile/app.dart';
 import 'package:hermes_mobile/core/network/connection_store.dart';
+import 'package:hermes_mobile/core/network/secure_storage_gate.dart';
 import 'package:hermes_mobile/core/sync/background_sync.dart';
 
 Future<void> main() async {
@@ -45,6 +46,10 @@ Future<void> _initBackgroundServices(Stopwatch startup) async {
     await ConnectionStore.firstReadSettled.timeout(
       const Duration(seconds: 10),
     );
+    // Boot does a burst of keychain ops (book, cookies, mirror re-seed).
+    // Wait for the whole burst to drain, not just the first read — spawning
+    // Workmanager's engine mid-burst wedges the channel (~30s on device).
+    await SecureStorageGate.whenIdle().timeout(const Duration(seconds: 10));
   } catch (_) {}
   // Background flush/pull + local notifications for agent/job results.
   // Failures here must not block the app (e.g. tests / missing plugins).

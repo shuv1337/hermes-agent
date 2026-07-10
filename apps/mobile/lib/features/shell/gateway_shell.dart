@@ -117,7 +117,11 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
     final navigationHeight = math.max(80.0, 58.0 + (38.0 * textScale));
 
     return Scaffold(
-      body: IndexedStack(index: _tab, children: pages),
+      // Do not eagerly build hidden tabs. Besides wasting cold-start work,
+      // their TextFields cause Flutter to probe UIPasteboard.hasStrings even
+      // though the user has not opened those screens. That API can deadlock
+      // the main thread on iOS 27 beta.
+      body: pages[_tab],
       bottomNavigationBar: NavigationBar(
         height: navigationHeight,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
