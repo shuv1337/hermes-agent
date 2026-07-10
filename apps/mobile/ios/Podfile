@@ -53,6 +53,10 @@ post_install do |installer|
       # (e.g. audioplayers' main-actor isolation warnings) in pod targets.
       config.build_settings['SWIFT_SUPPRESS_WARNINGS'] = 'YES'
       config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+      # Xcode 26 explicit-modules planning fails to resolve CocoaPods Swift
+      # framework modules ("Unable to resolve module dependency"); keep the
+      # implicit module path until pods + Xcode agree on explicit modules.
+      config.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
     end
   end
 end
