@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/db/app_database.dart';
+import 'package:hermes_mobile/core/network/hermes_api.dart';
 import 'package:hermes_mobile/core/sync/session_sync_repository.dart';
 
 void main() {
@@ -71,4 +74,91 @@ void main() {
     expect((await repo.loadSessionsLocal()).first.title, 'A');
     expect((await other.loadSessionsLocal()).first.title, 'B');
   });
+
+  // ── Startup redundant-fetch coalescing (single-flight) ─────────────────
+  //
+  // Reproduces the cold-launch shape from the bug report: several callers
+  // (sessionsProvider.build(), GatewayRealtime connect, GatewayShell boot)
+  // each kick their own `syncSessions()` within milliseconds of each other.
+  // Only one `GET /api/sessions` should reach the network.
+  group('syncSessions single-flight coalescing', () {
+    late _CountingAdapter adapter;
+    late SessionSyncRepository apiRepo;
+
+    setUp(() {
+      adapter = _CountingAdapter(
+        '/api/sessions',
+        '{"data": [{"id": "s1", "title": "Hello"}]}',
+      );
+      final dio = Dio(BaseOptions(baseUrl: 'https://gw.test'))
+        ..httpClientAdapter = adapter;
+      final api = HermesApi(baseUrl: 'https://gw.test', apiKey: 'k', dio: dio);
+      apiRepo = SessionSyncRepository(gatewayId: 'gw-flight', db: db, api: api);
+    });
+
+    test('concurrent startup triggers collapse into one HTTP call', () async {
+      final results = await Future.wait([
+        apiRepo.syncSessions(),
+        apiRepo.syncSessions(),
+        apiRepo.syncSessions(),
+      ]);
+
+      expect(adapter.calls, 1);
+      for (final list in results) {
+        expect(list.map((s) => s.id), ['s1']);
+      }
+    });
+
+    test('a back-to-back call right after completion reuses the cached '
+        'result (TTL) instead of hitting the network again', () async {
+      await apiRepo.syncSessions();
+      expect(adapter.calls, 1);
+
+      // Arrives moments later — well inside the single-flight TTL.
+      final again = await apiRepo.syncSessions();
+      expect(adapter.calls, 1);
+      expect(again.map((s) => s.id), ['s1']);
+    });
+
+    test('bypassTtl (explicit user pull-to-refresh) still hits the network',
+        () async {
+      await apiRepo.syncSessions();
+      expect(adapter.calls, 1);
+
+      await apiRepo.syncSessions(bypassTtl: true);
+      expect(adapter.calls, 2);
+    });
+  });
+}
+
+/// Minimal Dio [HttpClientAdapter] that counts requests to [path] and
+/// returns a fixed JSON [body] for every call — enough to prove single-flight
+/// coalescing without a real gateway.
+class _CountingAdapter implements HttpClientAdapter {
+  _CountingAdapter(this.path, this.body);
+
+  final String path;
+  final String body;
+  int calls = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (options.path.contains(path) || options.uri.path.contains(path)) {
+      calls++;
+    }
+    return ResponseBody.fromString(
+      body,
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

@@ -35,7 +35,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (_checking) return;
     setState(() => _checking = true);
     try {
-      await ref.read(gatewayRestHealthProvider.notifier).refresh();
+      // Silent = boot/auto probe: coalesce with the cold provider build via
+      // TTL. Explicit "Check connection" tap: bypass so the user always gets
+      // a fresh probe.
+      await ref
+          .read(gatewayRestHealthProvider.notifier)
+          .refresh(bypassTtl: !silent);
       final rt = ref.read(gatewayRealtimeProvider);
       if (rt != null) {
         // Opening Settings must NOT force-remint a healthy socket (that was
@@ -109,7 +114,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               hermesHaptic(HapticIntent.selection);
               final rt = ref.read(gatewayRealtimeProvider);
               final ok = await rt?.ensureLive(force: true) ?? false;
-              await ref.read(gatewayRestHealthProvider.notifier).refresh();
+              await ref
+                  .read(gatewayRestHealthProvider.notifier)
+                  .refresh(bypassTtl: true);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -246,11 +253,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             subtitle: Text(context.l10n.syncNowSubtitle),
             onTap: () async {
               final summary = await BackgroundSync.run(reason: 'settings');
-              await ref.read(sessionsProvider.notifier).refresh();
-              await ref.read(jobsProvider.notifier).refresh();
+              await ref
+                  .read(sessionsProvider.notifier)
+                  .refresh(bypassTtl: true);
+              await ref.read(jobsProvider.notifier).refresh(bypassTtl: true);
               await ref.read(modelsProvider.notifier).refresh();
-              await ref.read(skillsProvider.notifier).refresh();
-              await ref.read(gatewayRestHealthProvider.notifier).refresh();
+              await ref.read(skillsProvider.notifier).refresh(bypassTtl: true);
+              await ref
+                  .read(gatewayRestHealthProvider.notifier)
+                  .refresh(bypassTtl: true);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(

@@ -22,6 +22,7 @@ import 'package:hermes_mobile/core/services/feedback.dart';
 import 'package:hermes_mobile/core/services/job_notifier.dart';
 import 'package:hermes_mobile/core/sync/gateway_realtime.dart';
 import 'package:hermes_mobile/core/sync/session_sync_repository.dart';
+import 'package:hermes_mobile/core/sync/single_flight.dart';
 import 'package:hermes_mobile/core/theme/hermes_skins.dart';
 
 final connectionStoreProvider = Provider<ConnectionStore>((ref) {
@@ -403,10 +404,19 @@ class GatewayRestHealth {
 }
 
 class GatewayRestHealthNotifier extends AsyncNotifier<GatewayRestHealth> {
+  /// Coalesces redundant startup `/api/status` probes (cold provider build +
+  /// Settings' `initState` silent check land within milliseconds).
+  final _statusFlight = SingleFlight<GatewayRestHealth>();
+
   @override
   Future<GatewayRestHealth> build() => _probe();
 
-  Future<GatewayRestHealth> _probe() async {
+  /// See [SessionsNotifier.refresh] for [bypassTtl] semantics.
+  Future<GatewayRestHealth> _probe({bool bypassTtl = false}) {
+    return _statusFlight.run(_probeImpl, bypassTtl: bypassTtl);
+  }
+
+  Future<GatewayRestHealth> _probeImpl() async {
     final dash = ref.watch(dashboardClientProvider);
     if (dash == null) {
       return const GatewayRestHealth(ok: false, error: 'No gateway configured');
@@ -428,9 +438,10 @@ class GatewayRestHealthNotifier extends AsyncNotifier<GatewayRestHealth> {
     }
   }
 
-  Future<void> refresh() async {
+  /// See [SessionsNotifier.refresh] for [bypassTtl] semantics.
+  Future<void> refresh({bool bypassTtl = false}) async {
     state = const AsyncLoading();
-    state = AsyncData(await _probe());
+    state = AsyncData(await _probe(bypassTtl: bypassTtl));
   }
 }
 
@@ -875,7 +886,12 @@ class SessionsNotifier extends AsyncNotifier<List<HermesSession>> {
     return local;
   }
 
-  Future<void> refresh() async {
+  /// [bypassTtl] — pass `true` for an explicit user-initiated refresh (e.g.
+  /// pull-to-refresh); it still joins an in-flight pull rather than firing a
+  /// redundant concurrent request. Leave `false` for internal/boot triggers
+  /// so they coalesce with each other via [SessionSyncRepository]'s
+  /// [SingleFlight].
+  Future<void> refresh({bool bypassTtl = false}) async {
     final sync = ref.read(sessionSyncProvider);
     if (sync == null) {
       state = const AsyncData([]);
@@ -884,16 +900,23 @@ class SessionsNotifier extends AsyncNotifier<List<HermesSession>> {
     final local = await sync.loadSessionsLocal();
     if (local.isNotEmpty) state = AsyncData(local);
     final pins = ref.read(pinnedSessionsProvider).value ?? const [];
-    state = await AsyncValue.guard(() => sync.syncSessions(keepIds: pins));
+    state = await AsyncValue.guard(
+      () => sync.syncSessions(keepIds: pins, bypassTtl: bypassTtl),
+    );
   }
 
   /// Soft re-pull from gateway without flipping the list into loading.
-  Future<void> softRefresh() async {
+  ///
+  /// See [refresh] for [bypassTtl] semantics.
+  Future<void> softRefresh({bool bypassTtl = false}) async {
     final sync = ref.read(sessionSyncProvider);
     if (sync == null) return;
     try {
       final pins = ref.read(pinnedSessionsProvider).value ?? const [];
-      final merged = await sync.syncSessions(keepIds: pins);
+      final merged = await sync.syncSessions(
+        keepIds: pins,
+        bypassTtl: bypassTtl,
+      );
       state = AsyncData(merged);
     } catch (e) {
       debugPrint('SessionsNotifier.softRefresh: $e');
@@ -1038,7 +1061,8 @@ class SkillsNotifier extends AsyncNotifier<List<HermesSkill>> {
     }
   }
 
-  Future<void> refresh() async {
+  /// See [SessionsNotifier.refresh] for [bypassTtl] semantics.
+  Future<void> refresh({bool bypassTtl = false}) async {
     final sync = ref.read(sessionSyncProvider);
     if (sync == null) {
       state = const AsyncData([]);
@@ -1050,7 +1074,7 @@ class SkillsNotifier extends AsyncNotifier<List<HermesSkill>> {
       if (local.isNotEmpty) state = AsyncData(_sort(local));
     } catch (_) {}
     try {
-      final list = await sync.listSkills();
+      final list = await sync.listSkills(bypassTtl: bypassTtl);
       state = AsyncData(_sort(list));
     } catch (e) {
       debugPrint('skillsProvider refresh: $e');
@@ -1334,6 +1358,10 @@ final jobsProvider = AsyncNotifierProvider<JobsNotifier, JobsViewState>(
 );
 
 class JobsNotifier extends AsyncNotifier<JobsViewState> {
+  /// Coalesces redundant startup pulls (build's background sync, shell boot,
+  /// session-touch-triggered refresh) behind one `/api/cron/jobs` request.
+  final _syncFlight = SingleFlight<JobsViewState>();
+
   @override
   Future<JobsViewState> build() async {
     // Local first so the tab is never blank on a flaky link.
@@ -1373,7 +1401,14 @@ class JobsNotifier extends AsyncNotifier<JobsViewState> {
   }
 
   /// Pull server; on success merge into SQLite. Never clears cache on failure.
-  Future<JobsViewState> _syncFromServer() async {
+  ///
+  /// Coalesced via [SingleFlight]. See [SessionsNotifier.refresh] for
+  /// [bypassTtl] semantics.
+  Future<JobsViewState> _syncFromServer({bool bypassTtl = false}) {
+    return _syncFlight.run(_syncFromServerImpl, bypassTtl: bypassTtl);
+  }
+
+  Future<JobsViewState> _syncFromServerImpl() async {
     final profile = ref.read(connectionProfileProvider).value;
     if (profile == null) {
       return const JobsViewState(jobs: []);
@@ -1524,10 +1559,11 @@ class JobsNotifier extends AsyncNotifier<JobsViewState> {
         .reconcile(jobs, gatewayId: profile.id);
   }
 
-  Future<void> refresh() async {
+  /// See [SessionsNotifier.refresh] for [bypassTtl] semantics.
+  Future<void> refresh({bool bypassTtl = false}) async {
     final previous = state.value;
     try {
-      final merged = await _syncFromServer();
+      final merged = await _syncFromServer(bypassTtl: bypassTtl);
       state = AsyncData(merged);
       await _reconcile(merged.jobs);
     } catch (e, st) {

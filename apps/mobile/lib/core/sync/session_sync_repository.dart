@@ -17,6 +17,7 @@ import 'package:hermes_mobile/core/services/slash_commands.dart';
 import 'package:hermes_mobile/core/sync/background_sync.dart';
 import 'package:hermes_mobile/core/sync/completion_errors.dart';
 import 'package:hermes_mobile/core/sync/gateway_realtime.dart';
+import 'package:hermes_mobile/core/sync/single_flight.dart';
 import 'package:hermes_mobile/core/sync/watch_store.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
@@ -52,6 +53,13 @@ class SessionSyncRepository {
   GatewayRealtime? _realtime;
   final _uuid = const Uuid();
   bool _flushing = false;
+
+  /// Coalesces redundant startup pulls: several providers/screens each kick
+  /// their own initial `syncSessions`/`listSkills` a few ms apart at cold
+  /// launch. In-flight calls share one Future; a short TTL also collapses
+  /// back-to-back triggers that arrive just after the first one completes.
+  final _sessionsFlight = SingleFlight<List<HermesSession>>();
+  final _skillsFlight = SingleFlight<List<HermesSkill>>();
 
   /// Live WS runtime id keyed by durable/stored session id (Desktop maps both).
   final Map<String, String> _liveByStored = {};
@@ -112,7 +120,24 @@ class SessionSyncRepository {
   ///
   /// Desktop `mergeSessionPage` keeps pinned rows that fell off the recent page;
   /// without that, a pin "disappears until you refresh".
-  Future<List<HermesSession>> syncSessions({Iterable<String>? keepIds}) async {
+  ///
+  /// Coalesced via [SingleFlight]: concurrent/rapid-fire callers (WS connect,
+  /// shell boot, screen open, pull-to-refresh) share one pull. Pass
+  /// [bypassTtl] for an explicit user-initiated refresh — it still joins an
+  /// in-flight pull rather than firing a redundant concurrent request.
+  Future<List<HermesSession>> syncSessions({
+    Iterable<String>? keepIds,
+    bool bypassTtl = false,
+  }) {
+    return _sessionsFlight.run(
+      () => _syncSessionsImpl(keepIds: keepIds),
+      bypassTtl: bypassTtl,
+    );
+  }
+
+  Future<List<HermesSession>> _syncSessionsImpl({
+    Iterable<String>? keepIds,
+  }) async {
     final local = await loadSessionsLocal();
     try {
       await flushOutbox();
@@ -1018,7 +1043,14 @@ class SessionSyncRepository {
   /// 4. WS `commands.catalog` skill pairs as last remote fallback
   ///
   /// Successful remote pulls replace the cache. Failures keep last-known cache.
-  Future<List<HermesSkill>> listSkills() async {
+  ///
+  /// Coalesced via [SingleFlight] (see [syncSessions] for the rationale and
+  /// [bypassTtl] semantics).
+  Future<List<HermesSkill>> listSkills({bool bypassTtl = false}) {
+    return _skillsFlight.run(_listSkillsImpl, bypassTtl: bypassTtl);
+  }
+
+  Future<List<HermesSkill>> _listSkillsImpl() async {
     final local = await loadSkillsLocal();
 
     List<HermesSkill>? remote;

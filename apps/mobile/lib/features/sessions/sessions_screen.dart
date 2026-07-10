@@ -251,7 +251,8 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
             setState(() => _active = null);
           }
         },
-        onRefresh: () => ref.read(sessionsProvider.notifier).softRefresh(),
+        onRefresh: () =>
+            ref.read(sessionsProvider.notifier).softRefresh(bypassTtl: true),
         isUnread: (s) => ref
             .read(sessionReadMapProvider.notifier)
             .isUnread(s, activeId: active?.id),

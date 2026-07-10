@@ -22,7 +22,8 @@ class JobsScreen extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: context.l10n.sync,
-            onPressed: () => ref.read(jobsProvider.notifier).refresh(),
+            onPressed: () =>
+                ref.read(jobsProvider.notifier).refresh(bypassTtl: true),
             icon: const Icon(Icons.sync),
           ),
         ],
@@ -38,7 +39,8 @@ class JobsScreen extends ConsumerWidget {
                 Text('$e', textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: () => ref.read(jobsProvider.notifier).refresh(),
+                  onPressed: () =>
+                      ref.read(jobsProvider.notifier).refresh(bypassTtl: true),
                   child: Text(context.l10n.retry),
                 ),
               ],
@@ -76,8 +78,9 @@ class JobsScreen extends ConsumerWidget {
                           ),
                         ),
                         TextButton(
-                          onPressed: () =>
-                              ref.read(jobsProvider.notifier).refresh(),
+                          onPressed: () => ref
+                              .read(jobsProvider.notifier)
+                              .refresh(bypassTtl: true),
                           child: Text(context.l10n.retry),
                         ),
                       ],
@@ -105,8 +108,9 @@ class JobsScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: 12),
                               FilledButton(
-                                onPressed: () =>
-                                    ref.read(jobsProvider.notifier).refresh(),
+                                onPressed: () => ref
+                                    .read(jobsProvider.notifier)
+                                    .refresh(bypassTtl: true),
                                 child: Text(context.l10n.retry),
                               ),
                             ],
@@ -114,8 +118,9 @@ class JobsScreen extends ConsumerWidget {
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: () =>
-                            ref.read(jobsProvider.notifier).refresh(),
+                        onRefresh: () => ref
+                            .read(jobsProvider.notifier)
+                            .refresh(bypassTtl: true),
                         child: ListView.separated(
                           itemCount: list.length,
                           separatorBuilder: (_, _) =>
@@ -188,7 +193,7 @@ class _JobTile extends ConsumerWidget {
                   await api.resumeJob(job.id);
                 }
             }
-            await ref.read(jobsProvider.notifier).refresh();
+            await ref.read(jobsProvider.notifier).refresh(bypassTtl: true);
           } catch (e) {
             if (context.mounted) {
               ScaffoldMessenger.of(
