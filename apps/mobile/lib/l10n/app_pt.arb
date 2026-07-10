@@ -113,6 +113,7 @@
   "sessionExpiredBanner": "A sessão do gateway expirou ou foi encerrada.\nDigite sua senha novamente para continuar — não reconectamos automaticamente após a expiração.",
   "connectIntro": "Connect to your Hermes gateway — same as Desktop: base URL, then username and password. No API key.",
   "gatewayBaseUrl": "Gateway base URL",
+  "httpPrivateNetworkHint": "Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.",
   "urlRequired": "URL required",
   "provider": "Provider",
   "username": "Usuário",

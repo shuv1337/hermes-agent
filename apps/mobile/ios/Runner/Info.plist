@@ -102,9 +102,16 @@
 	<string>Hermes uses the microphone for voice dictation into the chat composer.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Hermes converts your speech to text for the chat composer.</string>
+	<!-- Plain HTTP is allowed to private/VPN gateways (Dart validator in
+	     GatewayAuthClient.validateBaseUrl is the actual policy gate: LAN,
+	     Tailscale/WireGuard, mDNS, CGNAT; public HTTP is still rejected
+	     there). ATS itself can't distinguish those hosts, so arbitrary
+	     loads are allowed here and enforcement stays in the app layer. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
 </dict>

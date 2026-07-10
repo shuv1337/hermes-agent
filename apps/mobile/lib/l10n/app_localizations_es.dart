@@ -278,6 +278,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get gatewayBaseUrl => 'URL base del gateway';
 
   @override
+  String get httpPrivateNetworkHint =>
+      'HTTP sin cifrar: bien en tu propia LAN o VPN; usa HTTPS para cualquier acceso público.';
+
+  @override
   String get urlRequired => 'URL obligatoria';
 
   @override

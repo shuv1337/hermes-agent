@@ -50,10 +50,16 @@ hermes dashboard --host 0.0.0.0 --no-open
 # Dashboard listens on port 9119 by default.
 ```
 
-Use a trusted private network and expose the dashboard through HTTPS, such as a
-TLS reverse proxy or Tailscale HTTPS. Release builds reject remote plain-HTTP
-URLs because they would expose credentials and agent traffic. Loopback HTTP is
-accepted for simulator/emulator development.
+Use a trusted private network — a LAN or a mesh VPN such as Tailscale or
+WireGuard — to reach the dashboard. Release builds reject plain-HTTP URLs to
+the public internet because they would expose credentials and agent traffic.
+Plain HTTP is allowed for loopback (simulator/emulator development) and for
+private/trusted network space: RFC1918 LAN ranges, link-local addresses, the
+Tailscale/CGNAT range and `.ts.net` MagicDNS names, and `.local` mDNS
+hostnames — that traffic stays on your own network or is already encrypted at
+the VPN tunnel layer. HTTPS (e.g. a TLS reverse proxy or `tailscale serve`) is
+still recommended and is required for anything reachable from the public
+internet.
 
 Do not expose an unauthenticated Hermes gateway to the public internet.
 
@@ -78,8 +84,9 @@ private network with a mesh VPN, instead of port-forwarding the gateway:
 - **[ZeroTier](https://www.zerotier.com)** or **[NetBird](https://netbird.io)** —
   comparable mesh options if Tailscale is not an option for you.
 
-On a plain LAN (phone and host on the same Wi-Fi) the same HTTPS rule applies
-for release builds; only loopback HTTP for simulators is exempt.
+On a plain LAN (phone and host on the same Wi-Fi) plain HTTP is fine too — the
+rule above already covers private network space. HTTPS is still required for
+release builds only when the gateway is reachable from the public internet.
 
 ## Run locally
 

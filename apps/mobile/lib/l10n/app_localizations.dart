@@ -604,6 +604,12 @@ abstract class AppLocalizations {
   /// **'Gateway base URL'**
   String get gatewayBaseUrl;
 
+  /// No description provided for @httpPrivateNetworkHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.'**
+  String get httpPrivateNetworkHint;
+
   /// No description provided for @urlRequired.
   ///
   /// In en, this message translates to:

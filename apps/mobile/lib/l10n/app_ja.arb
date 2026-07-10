@@ -113,6 +113,7 @@
   "sessionExpiredBanner": "ゲートウェイのセッションが期限切れになったか、サインアウトされました。\n続行するにはパスワードを再入力してください。期限切れ後に自動再接続は行いません。",
   "connectIntro": "Hermes ゲートウェイに接続 — Desktop と同じ：ベース URL、ユーザー名とパスワード。API キーは不要。",
   "gatewayBaseUrl": "ゲートウェイのベース URL",
+  "httpPrivateNetworkHint": "Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.",
   "urlRequired": "URL required",
   "provider": "プロバイダー",
   "username": "ユーザー名",

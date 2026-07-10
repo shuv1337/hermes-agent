@@ -113,6 +113,7 @@
   "sessionExpiredBanner": "Deine Gateway-Sitzung ist abgelaufen oder wurde abgemeldet.\nGib dein Passwort erneut ein — nach Ablauf wird nicht automatisch neu verbunden.",
   "connectIntro": "Mit deinem Hermes-Gateway verbinden — wie Desktop: Basis-URL, dann Benutzername und Passwort. Kein API-Schlüssel.",
   "gatewayBaseUrl": "Gateway-Basis-URL",
+  "httpPrivateNetworkHint": "Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.",
   "urlRequired": "URL required",
   "provider": "Provider",
   "username": "Benutzername",

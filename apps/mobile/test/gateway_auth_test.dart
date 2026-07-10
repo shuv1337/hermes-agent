@@ -20,12 +20,8 @@ void main() {
     });
 
     test(
-      'rejects insecure remote, credentials, paths, and incomplete URLs',
+      'rejects insecure remote credentials, paths, and incomplete URLs',
       () {
-        expect(
-          GatewayAuthClient.validateBaseUrl('http://192.168.1.20:9119'),
-          isNotNull,
-        );
         expect(
           GatewayAuthClient.validateBaseUrl('https://user:pass@gw.example'),
           isNotNull,
@@ -37,6 +33,90 @@ void main() {
         expect(GatewayAuthClient.validateBaseUrl('gw.example'), isNotNull);
       },
     );
+
+    test('allows HTTP for private/trusted network space', () {
+      // RFC1918 — 192.168.0.0/16 (was rejected pre-policy-change).
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://192.168.1.20:9119'),
+        isNull,
+      );
+      // RFC1918 — 10.0.0.0/8, including the Android emulator host alias.
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://10.0.2.2:9119'),
+        isNull,
+      );
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://10.255.255.255:9119'),
+        isNull,
+      );
+      // RFC1918 — 172.16.0.0/12 boundary.
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://172.16.0.1:9119'),
+        isNull,
+      );
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://172.31.255.255:9119'),
+        isNull,
+      );
+      // CGNAT — 100.64.0.0/10 (Tailscale tailnet IPs).
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://100.64.0.1:9119'),
+        isNull,
+      );
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://100.127.255.255:9119'),
+        isNull,
+      );
+      // link-local
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://169.254.1.1:9119'),
+        isNull,
+      );
+      // mDNS
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://myhost.local:9119'),
+        isNull,
+      );
+      // Tailscale MagicDNS
+      expect(
+        GatewayAuthClient.validateBaseUrl(
+          'http://myhost.tailnet.ts.net:9119',
+        ),
+        isNull,
+      );
+    });
+
+    test('blocks HTTP just outside the private/trusted ranges', () {
+      // 172.16.0.0/12 boundary — 172.15.x and 172.32.x are public.
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://172.15.255.255:9119'),
+        isNotNull,
+      );
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://172.32.0.1:9119'),
+        isNotNull,
+      );
+      // 100.64.0.0/10 boundary — 100.63.x and 100.128.x are public.
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://100.63.255.255:9119'),
+        isNotNull,
+      );
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://100.128.0.1:9119'),
+        isNotNull,
+      );
+    });
+
+    test('blocks HTTP to the public internet', () {
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://example.com:9119'),
+        isNotNull,
+      );
+      expect(
+        GatewayAuthClient.validateBaseUrl('http://8.8.8.8:9119'),
+        isNotNull,
+      );
+    });
   });
 
   test('password gateway shape: all providers support password', () {

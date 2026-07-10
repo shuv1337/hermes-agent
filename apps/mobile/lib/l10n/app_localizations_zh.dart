@@ -275,6 +275,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get gatewayBaseUrl => '网关基础 URL';
 
   @override
+  String get httpPrivateNetworkHint =>
+      'Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.';
+
+  @override
   String get urlRequired => 'URL required';
 
   @override

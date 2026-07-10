@@ -113,6 +113,7 @@
   "sessionExpiredBanner": "Votre session de passerelle a expiré ou a été fermée.\nSaisissez à nouveau votre mot de passe — aucune reconnexion automatique après expiration.",
   "connectIntro": "Connectez-vous à votre gateway Hermes — comme Desktop : URL, puis identifiant et mot de passe. Pas de clé API.",
   "gatewayBaseUrl": "URL de base du gateway",
+  "httpPrivateNetworkHint": "Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.",
   "urlRequired": "URL required",
   "provider": "Provider",
   "username": "Identifiant",

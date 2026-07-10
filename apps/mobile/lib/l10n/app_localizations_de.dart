@@ -276,6 +276,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get gatewayBaseUrl => 'Gateway-Basis-URL';
 
   @override
+  String get httpPrivateNetworkHint =>
+      'Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.';
+
+  @override
   String get urlRequired => 'URL required';
 
   @override

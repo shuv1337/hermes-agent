@@ -305,6 +305,13 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       decoration: InputDecoration(
                         labelText: context.l10n.gatewayBaseUrl,
                         hintText: 'https://gateway.example.com',
+                        helperText:
+                            GatewayAuthClient.isUnencryptedPrivateNetworkUrl(
+                              _urlCtrl.text,
+                            )
+                            ? context.l10n.httpPrivateNetworkHint
+                            : null,
+                        helperMaxLines: 2,
                       ),
                       validator: (v) {
                         final t = v?.trim() ?? '';
@@ -312,14 +319,16 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                         return GatewayAuthClient.validateBaseUrl(t);
                       },
                       onChanged: (_) {
-                        if (_probed) {
-                          setState(() {
+                        // Also forces a rebuild so the non-blocking HTTP
+                        // helper text above updates as the user types.
+                        setState(() {
+                          if (_probed) {
                             _probed = false;
                             _probe = null;
                             _hint = null;
                             _error = null;
-                          });
-                        }
+                          }
+                        });
                       },
                     ),
                     if (showPasswordForm) ...[

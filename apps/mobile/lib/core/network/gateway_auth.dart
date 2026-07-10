@@ -77,8 +77,13 @@ class GatewayAuthClient {
   }
 
   /// Validate a gateway base URL before any request is attempted.
-  /// Remote agent control is HTTPS-only; loopback HTTP remains available for
-  /// simulator/development workflows.
+  ///
+  /// HTTPS is always allowed. Plain HTTP is allowed for loopback and for
+  /// private/trusted network space (LAN, VPN mesh, mDNS) because that
+  /// traffic never leaves the user's own network — VPN mesh traffic (e.g.
+  /// Tailscale/WireGuard) is already encrypted at the tunnel layer. Plain
+  /// HTTP to ordinary public hosts remains blocked to protect agent
+  /// credentials.
   static String? validateBaseUrl(String raw) {
     final uri = Uri.tryParse(raw.trim());
     if (uri == null ||
@@ -89,7 +94,7 @@ class GatewayAuthClient {
     }
     final scheme = uri.scheme.toLowerCase();
     if (scheme != 'http' && scheme != 'https') {
-      return 'Use https:// (or http:// for loopback development).';
+      return 'Use https:// (or http:// for a private network / VPN).';
     }
     if (uri.userInfo.isNotEmpty) {
       return 'Do not put credentials in the gateway URL.';
@@ -100,16 +105,80 @@ class GatewayAuthClient {
     if (uri.path.isNotEmpty && uri.path != '/') {
       return 'Gateway URLs cannot include a path.';
     }
-    final host = uri.host.toLowerCase();
-    final loopback =
-        host == 'localhost' ||
-        host == '127.0.0.1' ||
-        host == '::1' ||
-        host == '[::1]';
-    if (scheme != 'https' && !loopback) {
+    final host = _stripBrackets(uri.host.toLowerCase());
+    if (scheme != 'https' &&
+        !_isLoopbackHost(host) &&
+        !_isPrivateNetworkHost(host)) {
       return 'Remote gateways require HTTPS to protect agent credentials.';
     }
     return null;
+  }
+
+  /// True when [raw] parses as a plain `http://` URL pointed at an allowed
+  /// non-loopback private/VPN host (LAN, Tailscale, mDNS, CGNAT). Used by
+  /// the UI to decide whether to show a non-blocking "unencrypted" hint;
+  /// loopback and https:// never need it.
+  static bool isUnencryptedPrivateNetworkUrl(String raw) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null ||
+        !uri.hasScheme ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty) {
+      return false;
+    }
+    if (uri.scheme.toLowerCase() != 'http') return false;
+    final host = _stripBrackets(uri.host.toLowerCase());
+    if (_isLoopbackHost(host)) return false;
+    return _isPrivateNetworkHost(host);
+  }
+
+  static String _stripBrackets(String host) =>
+      host.replaceAll('[', '').replaceAll(']', '');
+
+  static bool _isLoopbackHost(String host) {
+    if (host == 'localhost' || host == '::1') return true;
+    final v4 = _parseIPv4(host);
+    return v4 != null && v4[0] == 127;
+  }
+
+  /// RFC1918 private ranges, link-local, CGNAT (Tailscale tailnet IPs),
+  /// mDNS `.local` hostnames, and Tailscale MagicDNS `.ts.net` hostnames.
+  /// Does not include loopback — see [_isLoopbackHost].
+  static bool _isPrivateNetworkHost(String host) {
+    if (host.endsWith('.local') || host.endsWith('.ts.net')) return true;
+    final v4 = _parseIPv4(host);
+    if (v4 != null) {
+      final a = v4[0], b = v4[1];
+      if (a == 10) return true; // 10.0.0.0/8
+      if (a == 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+      if (a == 192 && b == 168) return true; // 192.168.0.0/16
+      if (a == 169 && b == 254) return true; // 169.254.0.0/16 link-local
+      if (a == 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+      return false;
+    }
+    // IPv6 unique local fc00::/7 — first byte 0xfc or 0xfd. Anything else
+    // (including other IPv6) is treated as public/unrecognized.
+    if (host.contains(':') &&
+        (host.startsWith('fc') || host.startsWith('fd'))) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Parses a dotted-quad IPv4 literal into 4 numeric octets (no substring
+  /// matching), or null if [host] is not a valid IPv4 address.
+  static List<int>? _parseIPv4(String host) {
+    final parts = host.split('.');
+    if (parts.length != 4) return null;
+    final octets = <int>[];
+    for (final part in parts) {
+      if (part.isEmpty || part.length > 3) return null;
+      if (!RegExp(r'^\d+$').hasMatch(part)) return null;
+      final n = int.parse(part);
+      if (n > 255) return null;
+      octets.add(n);
+    }
+    return octets;
   }
 
   /// Public probe — no credentials (Desktop probeRemoteAuthMode).

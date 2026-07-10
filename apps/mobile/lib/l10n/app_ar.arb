@@ -113,6 +113,7 @@
   "sessionExpiredBanner": "انتهت جلسة البوابة أو تم تسجيل الخروج منها.\nأعد إدخال كلمة المرور للمتابعة — لا نعيد الاتصال تلقائياً بعد انتهاء الجلسة.",
   "connectIntro": "Connect to your Hermes gateway — same as Desktop: base URL, then username and password. No API key.",
   "gatewayBaseUrl": "Gateway base URL",
+  "httpPrivateNetworkHint": "Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.",
   "urlRequired": "URL required",
   "provider": "Provider",
   "username": "اسم المستخدم",
