@@ -2,7 +2,13 @@ import { type MutableRefObject, useCallback } from 'react'
 
 import { useI18n } from '@/i18n'
 import { notify, notifyError } from '@/store/notifications'
-import { $currentCwd, setCurrentBranch, setCurrentCwd } from '@/store/session'
+import {
+  $currentCwd,
+  $newChatWorkspaceTargetGeneration,
+  setCurrentBranch,
+  setCurrentCwd,
+  setNewChatWorkspaceTarget
+} from '@/store/session'
 import type { SessionRuntimeInfo } from '@/types/hermes'
 
 interface CwdActionsOptions {
@@ -58,6 +64,7 @@ export function useCwdActions({
 
       if (!activeSessionId) {
         setCurrentCwd(trimmed)
+        const workspaceGeneration = setNewChatWorkspaceTarget(trimmed)
 
         try {
           const info = await requestGateway<{ branch?: string; cwd?: string }>('config.get', {
@@ -65,15 +72,22 @@ export function useCwdActions({
             cwd: trimmed
           })
 
+          if ($newChatWorkspaceTargetGeneration.get() !== workspaceGeneration || activeSessionIdRef.current) {
+            return
+          }
+
           // Adopt the backend's normalized cwd so the persisted workspace and
           // branch stay consistent with what the agent will use.
           if (info.cwd) {
             setCurrentCwd(info.cwd)
+            setNewChatWorkspaceTarget(info.cwd)
           }
 
           setCurrentBranch(info.branch || '')
         } catch {
-          setCurrentBranch('')
+          if ($newChatWorkspaceTargetGeneration.get() === workspaceGeneration && !activeSessionIdRef.current) {
+            setCurrentBranch('')
+          }
         }
 
         return 'applied'
@@ -110,7 +124,7 @@ export function useCwdActions({
         return 'staged'
       }
     },
-    [activeSessionId, copy, onSessionRuntimeInfo, requestGateway]
+    [activeSessionId, activeSessionIdRef, copy, onSessionRuntimeInfo, requestGateway]
   )
 
   return { changeSessionCwd, refreshProjectBranch }
