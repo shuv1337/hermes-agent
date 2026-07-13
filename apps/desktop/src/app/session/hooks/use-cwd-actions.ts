@@ -73,7 +73,7 @@ export function useCwdActions({
           })
 
           if ($newChatWorkspaceTargetGeneration.get() !== workspaceGeneration || activeSessionIdRef.current) {
-            return
+            return null
           }
 
           // Adopt the backend's normalized cwd so the persisted workspace and

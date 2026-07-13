@@ -79,7 +79,7 @@ describe('useCwdActions draft workspace target', () => {
     )
     await waitFor(() => expect(handle).not.toBeNull())
 
-    let pendingChange!: Promise<void>
+    let pendingChange!: Promise<'applied' | 'staged' | null>
 
     await act(async () => {
       pendingChange = handle!.changeSessionCwd('/stale-workspace')
