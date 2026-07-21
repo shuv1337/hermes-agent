@@ -86,6 +86,28 @@ export function mediaStreamUrl(path: string): string {
   return `hermes-media://stream/${encodeURIComponent(filePathFromMediaPath(path))}`
 }
 
+// Resolve an attachment to the source consumed by <audio>/<video>. The custom
+// protocol can only read files on the Desktop machine, so remote gateway paths
+// must go through the authenticated FS bridge instead. Returning a data URL is
+// bounded by the bridge's 16 MB cap, but it gives normal TTS/audio attachments
+// working authenticated playback instead of asking the Mac to open a Linux
+// path that cannot exist locally.
+export async function mediaPlaybackUrl(path: string): Promise<string> {
+  if (/^(?:https?|data):/i.test(path)) {
+    return path
+  }
+
+  if (typeof window !== 'undefined' && window.hermesDesktop && isRemoteGateway()) {
+    return gatewayMediaDataUrl(path)
+  }
+
+  if (typeof window !== 'undefined' && window.hermesDesktop && ['audio', 'video'].includes(mediaKind(path))) {
+    return mediaStreamUrl(path)
+  }
+
+  return mediaExternalUrl(path)
+}
+
 export function mediaPathFromMarkdownHref(href?: string): string | null {
   if (!href?.startsWith('#media:')) {
     return null

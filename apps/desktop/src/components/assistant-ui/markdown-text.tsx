@@ -21,13 +21,12 @@ import { preprocessMarkdown } from '@/lib/markdown-preprocess'
 import {
   downloadGatewayMediaFile,
   filePathFromMediaPath,
-  gatewayMediaDataUrl,
   isRemoteGateway,
   mediaExternalUrl,
   mediaKind,
   mediaName,
   mediaPathFromMarkdownHref,
-  mediaStreamUrl
+  mediaPlaybackUrl
 } from '@/lib/media'
 import { previewTargetFromMarkdownHref } from '@/lib/preview-targets'
 import { cn } from '@/lib/utils'
@@ -60,27 +59,11 @@ function preprocessWithTailRepair(text: string): string {
 }
 
 async function mediaSrc(path: string): Promise<string> {
-  if (/^(?:https?|data):/i.test(path)) {
-    return path
+  if (window.hermesDesktop && !isRemoteGateway() && mediaKind(path) === 'image') {
+    return window.hermesDesktop.readFileDataUrl(filePathFromMediaPath(path))
   }
 
-  // Stream audio/video through the custom protocol: data URLs are capped and
-  // load the whole file into memory, which broke playback for larger videos.
-  if (window.hermesDesktop && ['audio', 'video'].includes(mediaKind(path))) {
-    return mediaStreamUrl(path)
-  }
-
-  // Remote gateway: the image lives on the gateway machine, so read it over the
-  // authenticated API rather than this machine's disk.
-  if (window.hermesDesktop && isRemoteGateway()) {
-    return gatewayMediaDataUrl(path)
-  }
-
-  if (!window.hermesDesktop?.readFileDataUrl) {
-    return mediaExternalUrl(path)
-  }
-
-  return window.hermesDesktop.readFileDataUrl(filePathFromMediaPath(path))
+  return mediaPlaybackUrl(path)
 }
 
 function useOpenMediaFile(path: string) {

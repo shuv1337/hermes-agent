@@ -9,7 +9,8 @@ import {
   filePathFromMediaPath,
   gatewayMediaDataUrl,
   isRemoteGateway,
-  mediaExternalUrl
+  mediaExternalUrl,
+  mediaPlaybackUrl
 } from './media'
 
 describe('isRemoteGateway', () => {
@@ -102,6 +103,36 @@ describe('gatewayMediaDataUrl', () => {
     expect(api).toHaveBeenCalledWith({
       path: '/api/fs/read-data-url?path=%2Fhome%2Fu%2F.hermes%2Fskills%2Fdemo%2Fimages%2Fa%20b.png'
     })
+  })
+})
+
+describe('mediaPlaybackUrl', () => {
+  const api = vi.fn(async () => ({ dataUrl: 'data:audio/mpeg;base64,ZHVtbXk=' }))
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    $connection.set(null)
+    api.mockClear()
+  })
+
+  it('reads a remote audio path through the authenticated gateway bridge', async () => {
+    vi.stubGlobal('window', { hermesDesktop: { api } })
+    $connection.set({ mode: 'remote' } as never)
+
+    await expect(mediaPlaybackUrl('/home/u/.hermes/audio_cache/tts.mp3')).resolves.toBe(
+      'data:audio/mpeg;base64,ZHVtbXk='
+    )
+    expect(api).toHaveBeenCalledWith({
+      path: '/api/fs/read-data-url?path=%2Fhome%2Fu%2F.hermes%2Faudio_cache%2Ftts.mp3'
+    })
+  })
+
+  it('keeps local audio on the range-aware custom protocol', async () => {
+    vi.stubGlobal('window', { hermesDesktop: {} })
+    $connection.set({ mode: 'local' } as never)
+
+    await expect(mediaPlaybackUrl('/tmp/tts.mp3')).resolves.toBe('hermes-media://stream/%2Ftmp%2Ftts.mp3')
+    expect(api).not.toHaveBeenCalled()
   })
 })
 
