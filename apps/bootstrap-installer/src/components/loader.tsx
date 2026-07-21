@@ -24,10 +24,12 @@ const CURVE = {
   point(progress: number, detailScale: number) {
     const t = progress * TWO_PI;
     const mix = 1 + detailScale * 0.16;
+
     const x =
       17 * Math.cos(t) +
       7.5 * Math.cos(3 * t + 0.6 * mix) +
       3.2 * Math.sin(5 * t - 0.4);
+
     const y =
       15 * Math.sin(t) +
       8.2 * Math.sin(2 * t + 0.25) -
@@ -62,10 +64,12 @@ function particleFor(
   strokeScale: number,
 ) {
   const tail = index / (CURVE.particleCount - 1);
+
   const { x, y } = CURVE.point(
     norm(progress - tail * CURVE.trailSpan),
     detailScale,
   );
+
   const fade = (1 - tail) ** 0.56;
 
   return {
@@ -101,9 +105,11 @@ export function Loader({
 
     const render = (now: number) => {
       const time = now - startedAt;
+
       const progress =
         ((time + phaseOffset * CURVE.durationMs) % CURVE.durationMs) /
         CURVE.durationMs;
+
       const detailScale = detailScaleFor(time, phaseOffset);
 
       pathRef.current?.setAttribute("d", buildPath(detailScale, pathSteps));
