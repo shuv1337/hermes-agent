@@ -58,6 +58,14 @@ def _scan_context_content(content: str, filename: str) -> str:
     BLOCKED at this layer because the file would otherwise enter the
     system prompt verbatim and the user has no chance to intervene.
     """
+    # Editors (Windows Notepad, PowerShell Out-File without -Encoding
+    # utf8NoBOM, some VS Code profiles) prefix a UTF-8 BOM as an encoding
+    # artifact, not a prompt injection. Strip a leading U+FEFF silently so a
+    # context file (SOUL.md, AGENTS.md, ...) is not blocked wholesale; BOMs
+    # elsewhere in the content remain subject to the threat scan below.
+    if content.startswith("\ufeff"):
+        content = content[1:]
+
     findings = _scan_for_threats(content, scope="context")
     if findings:
         logger.warning("Context file %s blocked: %s", filename, ", ".join(findings))
@@ -114,6 +122,7 @@ def _strip_yaml_frontmatter(content: str) -> str:
     strip it so only the human-readable markdown body is injected into the
     system prompt.
     """
+    content = content.lstrip("\ufeff")  # tolerate UTF-8 BOM (Windows editors)
     if content.startswith("---"):
         end = content.find("\n---", 3)
         if end != -1:
@@ -157,7 +166,7 @@ MEMORY_GUIDANCE = (
     "that prevents the user from having to correct or remind you again. "
     "User preferences and recurring corrections matter more than procedural task details.\n"
     "Do NOT save task progress, session outcomes, completed-work logs, or temporary TODO "
-    "state to memory; use `session_search` to recall those from past transcripts. "
+    "state to memory; use session_search to recall those from past transcripts. "
     "Specifically: do not record PR numbers, issue numbers, commit SHAs, 'fixed bug X', "
     "'submitted PR Y', 'Phase N done', file counts, or any artifact that will be stale "
     "in 7 days. If a fact will be stale in a week, it does not belong in memory. "
@@ -173,7 +182,7 @@ MEMORY_GUIDANCE = (
 
 SESSION_SEARCH_GUIDANCE = (
     "When the user references something from a past conversation or you suspect "
-    "relevant cross-session context exists, use `session_search` to recall it before "
+    "relevant cross-session context exists, use session_search to recall it before "
     "asking them to repeat themselves."
 )
 
@@ -182,7 +191,7 @@ SKILLS_GUIDANCE = (
     "or discovering a non-trivial workflow, save the approach as a "
     "skill with skill_manage so you can reuse it next time.\n"
     "When using a skill and finding it outdated, incomplete, or wrong, "
-    "patch it immediately with `skill_manage` using the patch action — don't wait to be asked. "
+    "patch it immediately with skill_manage(action='patch') — don't wait to be asked. "
     "Skills that aren't maintained become liabilities."
 )
 
@@ -257,6 +266,10 @@ KANBAN_GUIDANCE = (
     "- **Deliverables.** Files a human wants go in "
     "`kanban_complete(artifacts=[<absolute paths>])` (top-level param; paths in "
     "`metadata` are NOT uploaded). Files must exist at completion.\n"
+    "- **Attachments.** Attach real downloadable artifacts instead of pasting "
+    "links in comments: `kanban_attach` (base64) or `kanban_attach_url` "
+    "(server-side public http(s) fetch); 25 MB cap, `kanban_attachments` "
+    "lists them. Workers may only attach to their own task.\n"
     "- **Created cards.** List ids in `kanban_complete(created_cards=[...])` "
     "ONLY when captured from a successful `kanban_create` return — never invent "
     "or paste ids; the kernel rejects the completion on any phantom id.\n"
@@ -544,6 +557,29 @@ def computer_use_guidance(platform_name: Optional[str] = None) -> str:
         "4. After any state-changing action, re-capture to verify. You can "
         "pass `capture_after=true` to get the follow-up screenshot in one "
         "round-trip.\n\n"
+        "## Verify → escalate ladder (background-first, NOT background-only)\n"
+        "Background delivery is the DEFAULT and the co-work path, but it is "
+        "the first rung, not the only one. Read each action's structured "
+        "result and climb only when the driver tells you to:\n"
+        "- `effect: 'confirmed'` + `verified: true` — the driver read the "
+        "result back. Done.\n"
+        "- `effect: 'unverifiable'` — the input was delivered but the driver "
+        "can't confirm it. Re-capture and check the screenshot/tree yourself "
+        "before deciding it worked.\n"
+        "- `effect: 'suspected_noop'`, `code: 'background_unavailable'`, or an "
+        "`escalation.recommended` field — the action did NOT land. Follow "
+        "`escalation.recommended`:\n"
+        "  - `'px'` → re-issue addressing the target by `coordinate=[x,y]` "
+        "read off the screenshot instead of `element`.\n"
+        "  - `'foreground'` (or a pixel click still didn't land) → re-issue "
+        "the SAME action with `delivery_mode='foreground'`. This briefly "
+        "raises the window; it needs its own approval and is only appropriate "
+        "when the user isn't actively working. Common for Electron/Chromium "
+        "consent dialogs, DirectInput games, and raw-input canvases.\n"
+        "- Escalate to foreground as a REACTION to a returned signal, never "
+        "as a prediction from the app being Electron/Chromium/GTK. Do not "
+        "silently retry the same rung expecting a different result, and do "
+        "not conclude 'cua-driver can't drive this app' — climb the ladder.\n\n"
         "## Background mode rules\n"
         "- Do NOT use `raise_window=true` on `focus_app` unless the user "
         "explicitly asked you to bring a window to front. Input routing to "
@@ -659,19 +695,7 @@ PLATFORM_HINTS = {
         "Standard Markdown is automatically converted to Telegram formatting. "
         "Supported: **bold**, *italic*, ~~strikethrough~~, ||spoiler||, "
         "`inline code`, ```code blocks```, [links](url), and ## headers. "
-        "Telegram now supports rich Markdown, so lean into it: whenever it "
-        "makes the answer clearer or easier to scan, actively reach for real "
-        "Markdown tables (pipe `| col | col |` syntax), bullet and numbered "
-        "lists, task lists (`- [ ]` / `- [x]`), headings, nested blockquotes, "
-        "collapsible details, footnotes/references, math/formulas (`$...$`, "
-        "`$$...$$`), underline, subscript/superscript, marked (highlighted) "
-        "text, and anchors. Default to structured formatting over dense "
-        "paragraphs for any comparison, set of steps, key/value summary, or "
-        "tabular data. Prefer real Markdown tables and task lists over "
-        "hand-built bullet substitutes when presenting structured data; these "
-        "degrade gracefully (tables become readable bullet groups) when rich "
-        "rendering is unavailable, but advanced constructs like math and "
-        "collapsible details may render as plain source text in that case. "
+        "Prefer bullet lists and labeled key:value pairs for structured data. "
         "You can send media files natively: to deliver a file to the user, "
         "include MEDIA:/path/to/file in your response. Images "
         "(.png, .jpg, .webp) appear as photos, audio (.ogg) sends as voice "
@@ -752,8 +776,8 @@ PLATFORM_HINTS = {
         "surface, not a terminal. Use markdown freely: it renders with full "
         "GitHub flavor (tables, code blocks with syntax highlighting, math "
         "via $...$, task lists, blockquote callouts). "
-        "You can deliver files natively — include a MEDIA: directive with the "
-        "file's absolute path in your response. Images (.png, .jpg, .webp) appear inline, audio and "
+        "You can deliver files natively — include MEDIA:/path/to/file "
+        "in your response. Images (.png, .jpg, .webp) appear inline, audio and "
         "video play inline, and other files arrive as download links. You can "
         "also include image URLs in markdown format ![alt](url) and they "
         "render inline as photos."
@@ -781,8 +805,19 @@ PLATFORM_HINTS = {
     ),
     "matrix": (
         "You are in a Matrix room communicating with your user. "
-        "Matrix renders Markdown — bold, italic, code blocks, and links work; "
-        "the adapter converts your Markdown to HTML for rich display. "
+        "The adapter converts your Markdown to HTML for rich display — bold, "
+        "italic, inline code, fenced code blocks, headings, bullet and "
+        "numbered lists, blockquotes, and links all render.\n\n"
+        "Do NOT use Markdown tables: many popular Matrix clients (Element X, "
+        "Beeper, most mobile apps) do not render HTML tables, so the cells "
+        "collapse into one continuous run of text. Present tabular data as "
+        "labeled '**Label:** value' lines or bullet lists instead.\n\n"
+        "Avoid ||spoiler|| tags, ~~strikethrough~~, and checkboxes "
+        "(- [ ] / - [x]) — they are not converted and appear as literal "
+        "characters.\n\n"
+        "LINKS: prefer [descriptive link text](url) over bare URLs. When "
+        "referencing something with an associated URL (events, sources, "
+        "people), make the name a clickable link.\n\n"
         "You can send media files natively: include MEDIA:/path/to/file "
         "in your response. Images (.jpg, .png, .webp) are sent as inline photos, "
         "audio (.ogg, .mp3) as voice/audio messages, video (.mp4) inline, "
@@ -807,7 +842,7 @@ PLATFORM_HINTS = {
     "wecom": (
         "You are on WeCom (企业微信 / Enterprise WeChat). Markdown formatting is supported. "
         "You CAN send media files natively — to deliver a file to the user, include "
-        "MEDIA:/full/path/to/file in your response. The file will be sent as a native "
+        "MEDIA:/path/to/file in your response. The file will be sent as a native "
         "WeCom attachment: images (.jpg, .png, .webp) are sent as photos (up to 10 MB), "
         "other files (.pdf, .docx, .xlsx, .md, .txt, etc.) arrive as downloadable documents "
         "(up to 20 MB), and videos (.mp4) play inline. Voice messages are supported but "
@@ -818,7 +853,7 @@ PLATFORM_HINTS = {
     ),
     "qqbot": (
         "You are on QQ, a popular Chinese messaging platform. QQ supports markdown formatting "
-        "and emoji. You can send media files natively: include MEDIA:/full/path/to/file in "
+        "and emoji. You can send media files natively: include MEDIA:/path/to/file in "
         "your response. Images are sent as native photos, and other files arrive as downloadable "
         "documents."
     ),
@@ -826,7 +861,7 @@ PLATFORM_HINTS = {
         "You are on Yuanbao (腾讯元宝), a Chinese AI assistant platform. "
         "Markdown formatting is supported (code blocks, tables, bold/italic). "
         "You CAN send media files natively — to deliver a file to the user, include "
-        "MEDIA:<absolute path to file> in your response. The file will be sent as a native "
+        "MEDIA:/path/to/file in your response. The file will be sent as a native "
         "Yuanbao attachment: images (.jpg, .png, .webp, .gif) are sent as photos, "
         "and other files (.pdf, .docx, .txt, .zip, etc.) arrive as downloadable documents "
         "(max 50 MB). You can also include image URLs in markdown format ![alt](url) and "
@@ -861,9 +896,30 @@ PLATFORM_HINTS = {
         "controls), video, PDFs, HTML, CSV, diffs/patches, and Excalidraw files "
         "render as rich previews. Do not use Markdown image syntax like "
         "![alt](/path) for local files; local paths are not served that way. "
-        "Use MEDIA:/path instead."
+        "Use MEDIA:/absolute/path instead."
     ),
 }
+
+# Telegram rich-messages extension — only injected when the user has opted in
+# to ``platforms.telegram.extra.rich_messages: true``.  The base
+# PLATFORM_HINTS["telegram"] covers MarkdownV2-compatible constructs; this
+# extension adds the Bot API 10.1 rich-Markdown guidance (tables, task lists,
+# collapsible details, math, etc.).
+TELEGRAM_RICH_MESSAGES_HINT = (
+    "Telegram now supports rich Markdown, so lean into it: whenever it "
+    "makes the answer clearer or easier to scan, actively reach for real "
+    "Markdown tables (pipe `| col | col |` syntax), bullet and numbered "
+    "lists, task lists (`- [ ]` / `- [x]`), headings, nested blockquotes, "
+    "collapsible details, footnotes/references, math/formulas (`$...$`, "
+    "`$$...$$`), underline, subscript/superscript, marked (highlighted) "
+    "text, and anchors. Default to structured formatting over dense "
+    "paragraphs for any comparison, set of steps, key/value summary, or "
+    "tabular data. Prefer real Markdown tables and task lists over "
+    "hand-built bullet substitutes when presenting structured data; these "
+    "degrade gracefully (tables become readable bullet groups) when rich "
+    "rendering is unavailable, but advanced constructs like math and "
+    "collapsible details may render as plain source text in that case. "
+)
 
 # ---------------------------------------------------------------------------
 # Environment hints — execution-environment awareness for the agent.
@@ -1683,7 +1739,7 @@ def build_skills_system_prompt(
             "skills, voice, gateway, plugins, or any feature — load the `hermes-agent` skill "
             "first. It has the actual commands (e.g. `hermes config set …`, `hermes tools`, "
             "`hermes setup`) so you don't have to guess or invent workarounds.\n"
-            "If a skill has issues, fix it with `skill_manage` using the patch action.\n"
+            "If a skill has issues, fix it with skill_manage(action='patch').\n"
             "After difficult/iterative tasks, offer to save as a skill. "
             "If a skill you loaded was missing steps, had wrong commands, or needed "
             "pitfalls you discovered, update it before finishing.\n"
@@ -1948,6 +2004,7 @@ def build_context_files_prompt(
     cwd: Optional[str] = None,
     skip_soul: bool = False,
     context_length: Optional[int] = None,
+    allow_install_tree_fallback: bool = False,
 ) -> str:
     """Discover and load context files for the system prompt.
 
@@ -1969,17 +2026,43 @@ def build_context_files_prompt(
     """
     if cwd is None:
         cwd = os.getcwd()
+        cwd_is_fallback = True
+    else:
+        cwd_is_fallback = False
 
     cwd_path = Path(cwd).resolve()
     sections = []
 
-    # Priority-based project context: first match wins
-    project_context = (
-        _load_hermes_md(cwd_path, context_length)
-        or _load_agents_md(cwd_path, context_length)
-        or _load_claude_md(cwd_path, context_length)
-        or _load_cursorrules(cwd_path, context_length)
-    )
+    # Never let a FALLBACK-picked directory inside the Hermes install/source
+    # tree gain system-prompt authority. A backend that self-spawns into that
+    # tree (the desktop app default) would otherwise load this repo's
+    # contributor AGENTS.md as authoritative project context (#64590). An
+    # explicitly configured cwd is honored verbatim — the Hermes tree is a
+    # legitimate workspace when the user deliberately points a session at it —
+    # and CLI-style surfaces pass allow_install_tree_fallback=True because
+    # their launch dir IS the user's shell cwd (developing Hermes in-tree).
+    from agent.runtime_cwd import _is_install_tree
+
+    if (
+        cwd_is_fallback
+        and not allow_install_tree_fallback
+        and _is_install_tree(cwd_path)
+    ):
+        logger.warning(
+            "skipping project-context discovery: working-directory resolution "
+            "fell back to the Hermes install tree (%s) — set terminal.cwd to "
+            "your project directory",
+            cwd_path,
+        )
+        project_context = ""
+    else:
+        # Priority-based project context: first match wins
+        project_context = (
+            _load_hermes_md(cwd_path, context_length)
+            or _load_agents_md(cwd_path, context_length)
+            or _load_claude_md(cwd_path, context_length)
+            or _load_cursorrules(cwd_path, context_length)
+        )
     if project_context:
         sections.append(project_context)
 

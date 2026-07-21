@@ -1,12 +1,7 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Bot,
   Check,
   CheckCircle2,
   ExternalLink,
@@ -46,10 +41,7 @@ import { cn, themedBody } from "@/lib/utils";
 // whatever the live gateway runtime reports (connected/disconnected/fatal).
 const STATE_BADGE: Record<
   string,
-  {
-    tone: "success" | "warning" | "destructive" | "secondary" | "outline";
-    label: string;
-  }
+  { tone: "success" | "warning" | "destructive" | "secondary" | "outline"; label: string }
 > = {
   connected: { tone: "success", label: "Connected" },
   pending_restart: { tone: "warning", label: "Restart to apply" },
@@ -66,18 +58,31 @@ function stateBadge(state: string) {
 }
 
 const TELEGRAM_USER_ID_RE = /^\d+$/;
+const TELEGRAM_BOT_TOKEN_RE = /^\d+:[A-Za-z0-9_-]{30,}$/;
 const SLACK_MEMBER_ID_RE = /^[UW][A-Z0-9]{2,}$/;
 const SLACK_TOKEN_PREFIXES: Record<string, string> = {
   SLACK_BOT_TOKEN: "xoxb-",
   SLACK_APP_TOKEN: "xapp-",
 };
 
-function validateMessagingEnvField(
-  field: MessagingPlatformEnvVar,
-  value: string,
-): string | null {
+function validateMessagingEnvField(field: MessagingPlatformEnvVar, value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
+
+  if (field.key === "TELEGRAM_BOT_TOKEN" && !TELEGRAM_BOT_TOKEN_RE.test(trimmed)) {
+    return "Paste the complete token from @BotFather (for example, 123456789:ABC…).";
+  }
+
+  if (field.key === "TELEGRAM_ALLOWED_USERS") {
+    const invalid = trimmed
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .find((part) => !TELEGRAM_USER_ID_RE.test(part));
+    if (invalid) {
+      return `${invalid} is not a numeric Telegram user ID.`;
+    }
+  }
 
   const expectedPrefix = SLACK_TOKEN_PREFIXES[field.key];
   if (expectedPrefix && !trimmed.startsWith(expectedPrefix)) {
@@ -92,9 +97,7 @@ function validateMessagingEnvField(
       .split(",")
       .map((part) => part.trim())
       .filter(Boolean);
-    const invalid = parts.find(
-      (part) => part !== "*" && !SLACK_MEMBER_ID_RE.test(part),
-    );
+    const invalid = parts.find((part) => part !== "*" && !SLACK_MEMBER_ID_RE.test(part));
     if (invalid) {
       return `${invalid} does not look like a Slack member ID. Use IDs like U01ABC2DEF3.`;
     }
@@ -145,10 +148,7 @@ export default function ChannelsPage() {
     setEditing(null);
     setFieldErrors({});
   }, []);
-  const editModalRef = useModalBehavior({
-    open: editing !== null,
-    onClose: closeEdit,
-  });
+  const editModalRef = useModalBehavior({ open: editing !== null, onClose: closeEdit });
 
   // Per-card busy + restart-needed tracking
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -164,9 +164,7 @@ export default function ChannelsPage() {
       .then((res) => {
         setPlatforms(res.platforms);
         setEnvPath(res.env_path || "~/.hermes/.env");
-        setGatewayStartCommand(
-          res.gateway_start_command || "hermes gateway start",
-        );
+        setGatewayStartCommand(res.gateway_start_command || "hermes gateway start");
       })
       .catch((e) => showToast(`Error: ${e}`, "error"));
   }, [showToast]);
@@ -206,10 +204,7 @@ export default function ChannelsPage() {
     }
     const nextFieldErrors: Record<string, string> = {};
     editing.env_vars.forEach((field) => {
-      const message = validateMessagingEnvField(
-        field,
-        draftEnv[field.key] || "",
-      );
+      const message = validateMessagingEnvField(field, draftEnv[field.key] || "");
       if (message) nextFieldErrors[field.key] = message;
     });
     if (Object.keys(nextFieldErrors).length > 0) {
@@ -240,11 +235,7 @@ export default function ChannelsPage() {
       setPlatforms((prev) =>
         prev.map((p) =>
           p.id === platform.id
-            ? {
-                ...p,
-                enabled: next,
-                state: next ? "pending_restart" : "disabled",
-              }
+            ? { ...p, enabled: next, state: next ? "pending_restart" : "disabled" }
             : p,
         ),
       );
@@ -260,10 +251,7 @@ export default function ChannelsPage() {
     setTestingId(platform.id);
     try {
       const res = await api.testMessagingPlatform(platform.id);
-      showToast(
-        `${platform.name}: ${res.message}`,
-        res.ok ? "success" : "error",
-      );
+      showToast(`${platform.name}: ${res.message}`, res.ok ? "success" : "error");
     } catch (e) {
       showToast(`Error: ${e}`, "error");
     } finally {
@@ -334,9 +322,7 @@ export default function ChannelsPage() {
               className="uppercase shrink-0"
               onClick={handleRestart}
               disabled={restarting}
-              prefix={
-                restarting ? <Spinner /> : <RotateCw className="h-4 w-4" />
-              }
+              prefix={restarting ? <Spinner /> : <RotateCw className="h-4 w-4" />}
             >
               {restarting ? "Restarting…" : "Restart now"}
             </Button>
@@ -349,10 +335,9 @@ export default function ChannelsPage() {
           <CardContent className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
             <WifiOff className="h-4 w-4 shrink-0" />
             <span>
-              The gateway is not running. Configure channels here, then start
-              the gateway with{" "}
-              <code className="font-courier">{gatewayStartCommand}</code> (or
-              the Restart button above).
+              The gateway is not running. Configure channels here, then start the
+              gateway with <code className="font-courier">{gatewayStartCommand}</code>{" "}
+              (or the Restart button above).
             </span>
           </CardContent>
         </Card>
@@ -360,8 +345,8 @@ export default function ChannelsPage() {
 
       <p className="text-xs text-muted-foreground">
         {configured} of {platforms.length} channels configured. Credentials are
-        written to <code className="font-courier">{envPath}</code>; the gateway
-        connects each enabled channel on its next restart.
+        written to <code className="font-courier">{envPath}</code>; the
+        gateway connects each enabled channel on its next restart.
       </p>
 
       {/* Config modal */}
@@ -399,7 +384,9 @@ export default function ChannelsPage() {
                 id="channel-config-title"
                 className="font-mondwest text-display text-base tracking-wider"
               >
-                Configure {editing.name}
+                {editing.id === "telegram"
+                  ? "Use your own Telegram bot"
+                  : `Configure ${editing.name}`}
               </h2>
               {editing.docs_url && (
                 <a
@@ -408,12 +395,56 @@ export default function ChannelsPage() {
                   rel="noopener noreferrer"
                   className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
                 >
-                  Setup guide <ExternalLink className="h-3 w-3" />
+                  {editing.id === "telegram" ? "BotFather guide" : "Setup guide"}
+                  <ExternalLink className="h-3 w-3" />
                 </a>
               )}
             </header>
 
             <div className="grid gap-4 overflow-y-auto overscroll-contain p-4 sm:p-5">
+              {editing.id === "telegram" && (
+                <div className="grid gap-3 text-sm text-muted-foreground">
+                  <p>
+                    Connect a bot you already own, or create one in Telegram before
+                    filling in this form.
+                  </p>
+                  <ol className="grid list-decimal gap-1.5 pl-5">
+                    <li>
+                      Open <span className="text-foreground">@BotFather</span>, send
+                      <code className="mx-1 font-courier text-xs">/newbot</code>, and
+                      follow its prompts.
+                    </li>
+                    <li>Copy the complete bot token BotFather gives you.</li>
+                    <li>
+                      Message <span className="text-foreground">@userinfobot</span> to
+                      find your numeric Telegram user ID, then add it below for
+                      immediate access.
+                    </li>
+                  </ol>
+                  <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+                    <a
+                      href="https://t.me/BotFather"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                    >
+                      Open @BotFather <ExternalLink className="h-3 w-3" />
+                    </a>
+                    <a
+                      href="https://t.me/userinfobot"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                    >
+                      Find my user ID <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                  <p className="text-xs">
+                    You can leave allowed users blank. Hermes will then send new DM
+                    users a code that you approve from the Pairing page.
+                  </p>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 {editing.description}
               </p>
@@ -446,18 +477,14 @@ export default function ChannelsPage() {
                     className="text-base leading-6 sm:text-xs sm:leading-4"
                     placeholder={
                       field.is_set
-                        ? field.redacted_value ||
-                          "•••••• (set — leave blank to keep)"
+                        ? field.redacted_value || "•••••• (set — leave blank to keep)"
                         : field.key
                     }
                     value={draftEnv[field.key] ?? ""}
                     aria-invalid={Boolean(fieldErrors[field.key])}
                     onChange={(e) => {
                       const nextValue = e.target.value;
-                      setDraftEnv((prev) => ({
-                        ...prev,
-                        [field.key]: nextValue,
-                      }));
+                      setDraftEnv((prev) => ({ ...prev, [field.key]: nextValue }));
                       setFieldErrors((prev) => {
                         if (!prev[field.key]) return prev;
                         const next = { ...prev };
@@ -506,8 +533,7 @@ export default function ChannelsPage() {
           const StateIcon =
             platform.state === "connected"
               ? CheckCircle2
-              : platform.state === "fatal" ||
-                  platform.state === "startup_failed"
+              : platform.state === "fatal" || platform.state === "startup_failed"
                 ? AlertTriangle
                 : Radio;
           return (
@@ -571,18 +597,21 @@ export default function ChannelsPage() {
                     >
                       Test
                     </Button>
-                    <Button
-                      size="sm"
-                      className="uppercase"
-                      onClick={() => openConfig(platform)}
-                      prefix={<Settings2 className="h-4 w-4" />}
-                    >
-                      Configure
-                    </Button>
+                    {platform.id !== "telegram" && (
+                      <Button
+                        size="sm"
+                        className="uppercase"
+                        onClick={() => openConfig(platform)}
+                        prefix={<Settings2 className="h-4 w-4" />}
+                      >
+                        Configure
+                      </Button>
+                    )}
                   </div>
                 </div>
                 {platform.id === "telegram" && (
                   <TelegramOnboardingPanel
+                    onManualSetup={() => openConfig(platform)}
                     onChanged={load}
                     onRestartNeeded={() => setRestartNeeded(true)}
                     platform={platform}
@@ -1016,12 +1045,14 @@ function WhatsAppOnboardingPanel({
 }
 
 function TelegramOnboardingPanel({
+  onManualSetup,
   onChanged,
   onRestartNeeded,
   platform,
   setRestartNeeded,
   showToast,
 }: {
+  onManualSetup: () => void;
   onChanged: () => Promise<void>;
   onRestartNeeded: () => void;
   platform: MessagingPlatform;
@@ -1070,14 +1101,13 @@ function TelegramOnboardingPanel({
         if (cancelled) return;
 
         const expiresAt = Date.parse(setup.expires_at);
-        const expired = Number.isFinite(expiresAt) && Date.now() >= expiresAt;
+        const expired =
+          Number.isFinite(expiresAt) && Date.now() >= expiresAt;
         if (isTerminalTelegramOnboardingError(pollError) || expired) {
           setSetup(null);
           setQrDataUrl("");
           setPhase("idle");
-          setError(
-            "Telegram pairing expired. Start a new QR setup to try again.",
-          );
+          setError("Telegram pairing expired. Start a new QR setup to try again.");
           return;
         }
 
@@ -1118,9 +1148,7 @@ function TelegramOnboardingPanel({
     setDetectedOwnerId(null);
     setNewAllowedId("");
     try {
-      const res = await api.startTelegramOnboarding({
-        bot_name: "Hermes Agent",
-      });
+      const res = await api.startTelegramOnboarding({ bot_name: "Hermes Agent" });
       const dataUrl = await QRCode.toDataURL(res.qr_payload, {
         errorCorrectionLevel: "M",
         margin: 1,
@@ -1209,10 +1237,7 @@ function TelegramOnboardingPanel({
           setTimeout(() => void onChanged(), 4000);
         } catch (restartError) {
           onRestartNeeded();
-          showToast(
-            `Telegram saved; gateway restart failed: ${restartError}`,
-            "error",
-          );
+          showToast(`Telegram saved; gateway restart failed: ${restartError}`, "error");
         }
       } else {
         onRestartNeeded();
@@ -1235,26 +1260,74 @@ function TelegramOnboardingPanel({
 
   return (
     <div className="rounded-sm border border-border bg-background/35 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          className="uppercase"
-          onClick={() => void start()}
-          disabled={
-            phase === "starting" || phase === "waiting" || phase === "applying"
-          }
-          prefix={
-            phase === "starting" ? <Spinner /> : <QrCode className="h-4 w-4" />
-          }
-        >
-          {phase === "starting" ? "Starting…" : "Set up with QR"}
-        </Button>
-        {platform.configured && (
-          <span className="text-xs text-muted-foreground">
-            Existing Telegram credentials are configured.
-          </span>
-        )}
+      <div className="grid gap-1">
+        <span className="font-mondwest text-sm text-foreground">
+          Choose how to connect your Telegram bot
+        </span>
+        <span className="text-xs text-muted-foreground">
+          Both options connect a bot you control and save its credentials only to
+          this Hermes installation.
+        </span>
       </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 sm:divide-x sm:divide-border">
+        <div className="grid content-start gap-3 sm:pr-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase text-foreground">
+              Quick setup
+            </span>
+            <Badge tone="success">recommended</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Scan a QR code and confirm in Telegram. Hermes creates the bot and
+            detects your Telegram user ID automatically.
+          </p>
+          <Button
+            size="sm"
+            className="w-fit uppercase"
+            onClick={() => void start()}
+            disabled={phase !== "idle"}
+            prefix={phase === "starting" ? <Spinner /> : <QrCode className="h-4 w-4" />}
+          >
+            {phase === "starting" ? "Starting…" : "Create with QR"}
+          </Button>
+        </div>
+
+        <div className="grid content-start gap-3 border-t border-border pt-4 sm:border-t-0 sm:pl-4 sm:pt-0">
+          <span className="text-xs font-medium uppercase text-foreground">
+            Use your own bot
+          </span>
+          <p className="text-xs text-muted-foreground">
+            Create a bot with @BotFather, or connect one you already have, by
+            entering its token and choosing who can use it.
+          </p>
+          <Button
+            size="sm"
+            outlined
+            className="w-fit uppercase"
+            onClick={onManualSetup}
+            disabled={phase !== "idle"}
+            prefix={<Bot className="h-4 w-4" />}
+          >
+            Manual setup
+          </Button>
+        </div>
+      </div>
+
+      {platform.configured && (
+        <div className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+          Telegram credentials are already configured. A new QR setup or bot token
+          will replace the current bot when you save.
+        </div>
+      )}
+
+      {phase !== "idle" && (
+        <div className="mt-4 border-t border-border pt-4">
+          <span className="text-xs text-muted-foreground">
+            Finish or cancel the current QR setup before switching methods.
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="mt-3 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -1281,10 +1354,9 @@ function TelegramOnboardingPanel({
                     <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
                       Allowed users
                     </span>
-                    {detectedOwnerId &&
-                      allowedIds.includes(detectedOwnerId) && (
-                        <Badge tone="success">owner detected</Badge>
-                      )}
+                    {detectedOwnerId && allowedIds.includes(detectedOwnerId) && (
+                      <Badge tone="success">owner detected</Badge>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {allowedIds.map((id) => (
@@ -1317,12 +1389,7 @@ function TelegramOnboardingPanel({
                     placeholder="Telegram user ID"
                     className="font-courier"
                   />
-                  <Button
-                    size="sm"
-                    outlined
-                    onClick={addAllowedId}
-                    prefix={<Check />}
-                  >
+                  <Button size="sm" outlined onClick={addAllowedId} prefix={<Check />}>
                     Add
                   </Button>
                 </div>
@@ -1333,13 +1400,7 @@ function TelegramOnboardingPanel({
                     className="uppercase"
                     onClick={() => void apply()}
                     disabled={phase === "applying"}
-                    prefix={
-                      phase === "applying" ? (
-                        <Spinner />
-                      ) : (
-                        <Save className="h-4 w-4" />
-                      )
-                    }
+                    prefix={phase === "applying" ? <Spinner /> : <Save className="h-4 w-4" />}
                   >
                     {phase === "applying" ? "Saving…" : "Save and restart"}
                   </Button>

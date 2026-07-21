@@ -44,6 +44,7 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
                     "set_value",
                     "wait",
                     "list_apps",
+                    "list_windows",
                     "focus_app",
                 ],
                 "description": (
@@ -51,12 +52,7 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
                     "effects). All other actions require approval unless "
                     "auto-approved. Use `set_value` for select/popup elements "
                     "and sliders — it selects the matching option directly "
-                    "without opening the native menu (no focus steal). "
-                    "Backend caveat: `middle_click` is not supported by the "
-                    "cua-driver backend (returns an explicit unsupported "
-                    "error). Element drag and `focus_app(raise_window=true)` "
-                    "are supported when the installed cua-driver advertises "
-                    "structured element bounds and the `raise_window` tool."
+                    "without opening the native menu (no focus steal)."
                 ),
             },
             # ── capture ────────────────────────────────────────────
@@ -84,6 +80,21 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
                     "capture is per-window; a single image cannot span "
                     "multiple monitors, so on a multi-screen setup capture "
                     "one window or display at a time."
+                ),
+            },
+            "pid": {
+                "type": "integer",
+                "description": (
+                    "Optional exact process target for action='capture'. Pair "
+                    "with window_id when discovery cannot resolve an X11 app."
+                ),
+            },
+            "window_id": {
+                "type": "integer",
+                "description": (
+                    "Optional exact native window target for action='capture'. "
+                    "Pair with pid when an external cua-driver list_windows "
+                    "lookup has already identified the window."
                 ),
             },
             "max_elements": {
@@ -123,20 +134,15 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
                 "minItems": 2,
                 "maxItems": 2,
                 "description": (
-                    "Pixel coordinates [x, y] in **window-local screenshot "
-                    "pixels** (top-left origin of the PNG returned by the "
-                    "last capture for the active target window) — NOT "
-                    "global screen coordinates. Use only when no element "
+                    "Pixel coordinates [x, y] relative to the captured window "
+                    "screenshot (top-left origin). Only use this if no element "
                     "index is available."
                 ),
             },
             "button": {
                 "type": "string",
                 "enum": ["left", "right", "middle"],
-                "description": (
-                    "Mouse button. Defaults to left. "
-                    "`middle` is not supported by the cua-driver backend."
-                ),
+                "description": "Mouse button. Defaults to left.",
             },
             "modifiers": {
                 "type": "array",
@@ -150,37 +156,21 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
                 "description": "Modifier keys held during the action.",
             },
             # ── drag ───────────────────────────────────────────────
-            "from_element": {
-                "type": "integer",
-                "description": (
-                    "Source element index for drag. Requires a prior capture "
-                    "whose structured elements include non-zero bounds."
-                ),
-            },
-            "to_element": {
-                "type": "integer",
-                "description": (
-                    "Target element index for drag. Requires a prior capture "
-                    "whose structured elements include non-zero bounds."
-                ),
-            },
+            "from_element": {"type": "integer",
+                              "description": "Source element index (drag)."},
+            "to_element": {"type": "integer",
+                            "description": "Target element index (drag)."},
             "from_coordinate": {
                 "type": "array",
                 "items": {"type": "integer"},
                 "minItems": 2, "maxItems": 2,
-                "description": (
-                    "Source [x,y] for drag in window-local screenshot pixels. "
-                    "Use this when an element endpoint has no bounds."
-                ),
+                "description": "Source [x,y] (drag; use when no element available).",
             },
             "to_coordinate": {
                 "type": "array",
                 "items": {"type": "integer"},
                 "minItems": 2, "maxItems": 2,
-                "description": (
-                    "Target [x,y] for drag in window-local screenshot pixels. "
-                    "Use this when an element endpoint has no bounds."
-                ),
+                "description": "Target [x,y] (drag; use when no element available).",
             },
             # ── scroll ─────────────────────────────────────────────
             "direction": {
@@ -222,12 +212,39 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
             "raise_window": {
                 "type": "boolean",
                 "description": (
-                    "Only for action='focus_app'. Default false routes input "
-                    "to the app without raising the window, matching the "
-                    "background co-work model. Set true only on explicit user "
-                    "request; it deliberately brings the target window "
-                    "foreground when the installed cua-driver supports "
-                    "`raise_window`."
+                    "Only for action='focus_app'. If true, brings the "
+                    "window to front (DISRUPTS the user). Default false "
+                    "— input is routed to the app without raising, "
+                    "matching the background co-work model."
+                ),
+            },
+            # ── delivery (verify → escalate ladder) ────────────────
+            "delivery_mode": {
+                "type": "string",
+                "enum": ["background", "foreground"],
+                "description": (
+                    "How input is delivered, for the input actions (click, "
+                    "double_click, right_click, drag, scroll, type, key). "
+                    "`background` (DEFAULT) routes input to the target without "
+                    "raising it or stealing focus — the co-work model. "
+                    "`foreground` briefly fronts the window, acts, then "
+                    "restores the prior frontmost app. Only escalate to "
+                    "`foreground` when a background attempt did NOT land — i.e. "
+                    "a prior result had `effect: 'suspected_noop'`, "
+                    "`code: 'background_unavailable'`, or "
+                    "`escalation.recommended: 'foreground'`. Do not predict it "
+                    "from the app being Electron/Chromium; react to the "
+                    "returned signal. Foreground is a visible focus change and "
+                    "needs its own approval."
+                ),
+            },
+            "bring_to_front": {
+                "type": "boolean",
+                "description": (
+                    "Optional, pairs with delivery_mode='foreground'. Keep the "
+                    "target fronted after the action instead of restoring the "
+                    "previous app, to avoid a per-call flash across a short "
+                    "sequence of foreground actions. Default false."
                 ),
             },
             # ── return shape ───────────────────────────────────────

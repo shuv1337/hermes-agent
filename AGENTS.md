@@ -493,8 +493,6 @@ The dashboard embeds the real `hermes --tui` — **not** a rewrite.  See `hermes
 
 A **separate** chat surface from both the classic CLI and the dashboard's embedded TUI. It is an Electron + React + nanostore renderer (`@assistant-ui/react`) that talks to a `tui_gateway` backend over JSON-RPC (`requestGateway(method, params)`). The WebSocket/JSON-RPC transport lives in the framework-agnostic `apps/shared` package (`@hermes/shared` — `JsonRpcGatewayClient` + WS URL helpers), which the web dashboard (`web/`) also consumes; **desktop has no build/runtime dependency on the dashboard frontend** — it spawns a headless `hermes serve` backend server (the same gateway `dashboard` serves, minus the browser UI entirely: `serve` sets `headless_backend=True`, so `cmd_dashboard` skips `_build_web_ui` AND exports `HERMES_SERVE_HEADLESS=1` so `mount_spa()` disables the SPA even if a stray `web_dist/` exists — only the JSON-RPC/WS/API surface is reachable). `dashboard` and `serve` share `cmd_dashboard`/`start_server` but are independent surfaces — neither launches the other. The one exception is a backward-compat *fallback*: `serve` is newer, so the desktop spawn (`electron/backend-command.ts` + `backendSupportsServe()` in `electron/main.ts`) detects whether the resolved runtime registers `serve` and, only when it does not (an older managed install / PATH `hermes` the app hasn't updated yet), rewrites the argv to the legacy `dashboard --no-open`. Without that, a new app against an un-upgraded runtime would crash on an unknown subcommand and brick every mid-upgrade user. It does NOT embed `hermes --tui` — it has its own composer, transcript, and slash-command pipeline. For scoped Desktop architecture, state, resolver, transport, and testing rules, read `apps/desktop/AGENTS.md`.
 
-**Desktop launcher invariant:** Linux desktop launchers / Walker may invoke the packaged Electron binary repeatedly. The Electron main process must hold a single-instance lock and focus the existing window on `second-instance`; otherwise each activation can spawn its own `hermes dashboard --no-open --tui` backend on the next 912x port and races can surface as backend bind failures.
-
 **Slash commands in the desktop app are curated client-side, then dispatched to the backend.** The pipeline:
 
 - **Backend already provides everything.** `tui_gateway/server.py` `commands.catalog` (empty-query list) and `complete.slash` (typed-query completions) both include built-in commands, user `quick_commands`, AND skill-derived commands (`scan_skill_commands()` / `get_skill_commands()`). The desktop app does not need a new RPC to see skills.
@@ -1096,14 +1094,16 @@ kanban task.
 
 - **CLI:** `hermes_cli/kanban.py` wires `hermes kanban` with verbs
   `init`, `create`, `list` (alias `ls`), `show`, `assign`, `link`,
-  `unlink`, `comment`, `complete`, `block`, `unblock`, `archive`,
-  `tail`, plus less-commonly-used `watch`, `stats`, `runs`, `log`,
-  `assignees`, `heartbeat`, `notify-*`, `dispatch`, `daemon`, `gc`.
+  `unlink`, `comment`, `attach`, `attachments`, `attach-rm`, `complete`,
+  `block`, `unblock`, `archive`, `tail`, plus less-commonly-used `watch`,
+  `stats`, `runs`, `log`, `assignees`, `heartbeat`, `notify-*`,
+  `dispatch`, `daemon`, `gc`.
 - **Worker/orchestrator toolset:** `tools/kanban_tools.py` exposes
   `kanban_show`, `kanban_complete`, `kanban_block`, `kanban_heartbeat`,
-  `kanban_comment`, `kanban_create`, `kanban_link`; profiles that
-  explicitly enable the `kanban` toolset outside a dispatcher-spawned
-  task also get `kanban_list` and `kanban_unblock` for board routing.
+  `kanban_comment`, `kanban_create`, `kanban_link`, `kanban_attach`,
+  `kanban_attach_url`, `kanban_attachments`; profiles that explicitly
+  enable the `kanban` toolset outside a dispatcher-spawned task also get
+  `kanban_list` and `kanban_unblock` for board routing.
 - **Dispatcher:** long-lived loop that (default every 60s) reclaims
   stale claims, promotes ready tasks, atomically claims, and spawns
   assigned profiles. Runs **inside the gateway** by default via
@@ -1233,39 +1233,6 @@ Leaks as literal `?[K` text under `prompt_toolkit`'s `patch_stdout`. Use space-p
 ### `_last_resolved_tool_names` is a process-global in `model_tools.py`
 `_run_single_child()` in `delegate_tool.py` saves and restores this global around subagent execution. If you add new code that reads this global, be aware it may be temporarily stale during child agent runs.
 
-### `hermes gateway restart` can leave the service in auto-restart limbo
-The restart command sends USR1 to the old process and relies on systemd's `Restart=on-failure` to
-spawn a new one. If `hermes gateway status` shows `activating (auto-restart)` for more than ~10s,
-the auto-restart didn't fire. Run `hermes gateway start` explicitly to bring it back. Always verify
-the new PID is `active (running)` after a restart before walking away.
-
-### Anthropic OAuth content blocklist causes misleading 400 errors
-Anthropic's Claude-Code OAuth edge maintains multiple content blocklists. When a request hits one
-the API returns a 400 "out of extra usage" error — **not** a clear blocklist message — with
-characteristic <200ms latency (genuine inference takes >250ms).
-
-**Known blocklists:**
-- **System-prompt n-gram blocklist** (ongoing): specific literals in `agent/prompt_builder.py`
-  and tool-schema descriptions (e.g. `tools/memory_tool.py`). Fix: reword to break tokenization.
-  Static guards in `tests/agent/test_prompt_builder.py::TestAnthropicOAuthBlocklistGuard`.
-- **Tool-name pattern blocklist** (April 2026): tool names matching `^mcp_[a-z0-9_]+$` are
-  rejected (any uppercase letter in the suffix takes them outside the pattern). Our OAuth path
-  used to prepend a plain `mcp_` prefix so every lowercase snake_case Hermes tool tripped it.
-  Fixed in `agent/anthropic_adapter.py::_encode_oauth_tool_name` — prepends `mcp_` AND uppercases
-  the first char (or capitalizes an existing prefixed-lowercase name in place so `mcp_example_get_prompt`
-  → `mcp_Example_get_prompt`). `_decode_oauth_tool_name` reverses it via the caller's
-  `canonical_tool_names` set. Static guards in `tests/agent/test_anthropic_adapter.py::TestOAuthToolNameEncoding`
-  and `TestBuildAnthropicKwargsOAuthToolEncoding`.
-
-**Live probe suite:** `tests/integration/test_oauth_blocklist_bisect.py` exercises guidance
-constants, every `PLATFORM_HINTS[k]`, every full per-platform system prompt, the skills index
-(including per-skill bisect), and every tool schema individually. Run it explicitly after any
-suspected OAuth-filter regression:
-
-```bash
-pytest -m integration tests/integration/test_oauth_blocklist_bisect.py -v -s -n0 -o 'addopts='
-```
-
 ### DO NOT hardcode cross-tool references in schema descriptions
 Tool schema descriptions must not mention tools from other toolsets by name (e.g., `browser_navigate` saying "prefer web_search"). Those tools may be unavailable (missing API keys, disabled toolset), causing the model to hallucinate calls to non-existent tools. If a cross-reference is needed, add it dynamically in `get_tool_definitions()` in `model_tools.py` — see the `browser_navigate` / `execute_code` post-processing blocks for the pattern.
 
@@ -1293,18 +1260,6 @@ Unused code that was never shipped was dead for a reason. Before wiring an
 unused module into a live code path, E2E test the real resolution chain
 with actual imports (not mocks) against a temp `HERMES_HOME`.
 
-### Honcho peer names must not be bare gateway user IDs
-`plugins/memory/honcho/__init__.py`'s `_do_session_init` builds
-`runtime_user_peer_name`/`_alt` from gateway `user_id`/`user_id_alt` via
-`HonchoMemoryProvider._slugged_peer_name()`, which prefixes an unslugged id
-with its platform (e.g. Telegram `1614192390` → `u_telegram_1614192390`).
-Honcho's deriver renders every line as `<time> <peer_name>: <content>`, so a
-bare numeric/opaque id becomes the grammatical subject of every extracted
-observation (`"1614192390 is responding to..."`). This regressed once
-already (a bare `kwargs.get("user_id")` passthrough shipped upstream) — if
-you touch this code path, keep the platform-prefixing behavior and its
-tests in `tests/honcho_plugin/test_session.py::TestToolsModeInitBehavior`.
-
 ### Tests must not write to `~/.hermes/`
 The `_isolate_hermes_home` autouse fixture in `tests/conftest.py` redirects `HERMES_HOME` to a temp dir. Never hardcode `~/.hermes/` paths in tests.
 
@@ -1325,6 +1280,7 @@ def profile_env(tmp_path, monkeypatch):
 
 ## Testing
 
+### Python
 **ALWAYS use `scripts/run_tests.sh`** — do not call `pytest` directly. The script enforces
 hermetic environment parity with CI (unset credential vars, TZ=UTC, LANG=C.UTF-8,
 `-n auto` xdist workers, in-tree subprocess-isolation plugin). Direct `pytest`
@@ -1338,12 +1294,20 @@ scripts/run_tests.sh tests/agent/test_foo.py::test_x  # one test
 scripts/run_tests.sh -v --tb=long                     # pass-through pytest flags
 ```
 
-### Subprocess-per-test-file isolation
+**Flake policy:** the runner auto-retries a failing test FILE once in a fresh
+subprocess (`--file-retries`, default 1; `HERMES_TEST_FILE_RETRIES=0` to
+disable). Pass-on-retry counts as green but is printed in a `⚠ FLAKY` summary
+section with both attempts' output. A FLAKY report is a bug to fix, not noise
+to ignore — timing-sensitive tests must not assume a quiet runner (loose
+wall-clock bounds ≥ 2s, event-based sync, no `assert not _wait_until(...)`
+negative-timing races).
+
+#### Subprocess-per-test-file isolation
 
 Every test file runs in a freshly-spawned Python subprocess via `run_tests_parallel.py`. This means module-level dicts/sets and
 ContextVars from one test file cannot leak into the next.
 
-### Why the wrapper
+#### Why the wrapper
 
 |                     | Without wrapper                             | With wrapper                              |
 | ------------------- | ------------------------------------------- | ----------------------------------------- |
@@ -1352,6 +1316,17 @@ ContextVars from one test file cannot leak into the next.
 | Timezone            | Local TZ (PDT etc.)                         | UTC                                       |
 | Locale              | Whatever is set                             | C.UTF-8                                   |
 
+### Where to place what tests
+
+The CI change classifier (`scripts/ci/classify_changes.py`) runs specific jobs based on what files changed. A Python test that asserts
+about the contents of `package.json`, `package-lock.json`, `.ts`/`.tsx`
+source, or any other JS-side artifact will not run on a PR that only touches
+those files. This means a regression can go green on a PR and red on `main` (where the
+classifier fails open and runs everything).
+
+Any test that reads or asserts about `package.json`,
+`package-lock.json`, `tsconfig.json`, `.ts`/`.tsx`/`.js`/`.mjs`/`.cjs`
+source files configuration belongs in the JS (vitest) test suite, not in `tests/*.py`.
 
 ### Don't write change-detector tests
 
@@ -1402,232 +1377,57 @@ not the specific names.
 Reviewers should reject new change-detector tests; authors should convert
 them into invariants before re-requesting review.
 
-## Fork divergence policy (scrutinize every diverging conflict)
+### Never read source code in tests
 
-**Default stance: minimize fork divergence. Adopt upstream unless we have a
-standing, documented reason not to.** Every commit we carry on top of
-`upstream/main` is a recurring merge tax and a latent source of silent
-regressions (see the computer_use backend incident: upstream rewrote the
-backend, our parallel feature's tests survived the merge but the
-implementation didn't, and 19 tests failed pointing at a dead API).
+A test that reads a source file's text is testing *the shape of the
+source code*, not its behavior. This is a hard antipattern, banned outright.
+Any test that reads a .py, .ts, .tsx, etc., file is suspect.
 
-**On every upstream merge, interrogate each divergence before preserving it.**
-For each fork-only commit / patch / conflict, answer:
+**Why it's actively harmful, not just weak:**
 
-1. **Is it still needed?** Did upstream ship an equivalent (possibly better)
-   solution? If so, **retire ours** and adopt theirs — don't re-apply out of
-   habit. Move retired patches to `~/.hermes/patches/_retired/` and record the
-   adoption in the "Retired divergences" list below.
-2. **Is it still valid?** Does the patch's target still exist, and does the
-   surrounding upstream code still make our change coherent? A patch that
-   "applies cleanly" can still be semantically stale (orphaned tests, dead
-   symbols, behavior upstream now handles differently).
-3. **Is it still ours to own?** Site-specific needs (remote-macOS shim, OAuth
-   blocklist evasion, skills dir) are legitimate long-term carries. Generic
-   improvements should be **upstreamed via PR** so they stop being divergence.
-4. **Did the merge keep BOTH halves of a feature?** When a fork feature spans
-   implementation + tests + schema, verify the merge didn't keep one half and
-   revert the other. Run the feature's own test suite immediately post-merge —
-   a passing-on-our-old-tests-but-failing-now split is the tell.
+- It passes when the implementation is subtly broken (the regex matches a
+  call site that exists but is wired wrong) and fails when a correct
+  refactor changes formatting, variable names, or control flow with
+  identical runtime behavior. Both directions of failure are wrong.
+- It can't be run against a built/bundled/minified artifact, so it silently
+  stops testing anything the moment code moves, gets renamed, or a
+  dependency reformats it.
+- It actively blocks refactors: reviewers see "keeps a pattern intact" tests
+  fail during pure structural cleanup with no behavior change, and either
+  hand-wave the failure (dangerous) or waste time updating regexes that add
+  nothing (waste).
+- It gives false confidence. a green suite full of source-regex tests
+  looks like coverage but has never once executed the code path it claims
+  to guard.
 
-**Bias toward deletion.** When in doubt, prefer upstream's version and delete
-our divergence. The goal is a fork that is *only* the irreducible site-specific
-set — small enough to audit by eye on every merge. If you adopt upstream over a
-fork patch, say so explicitly to the user and update the lists below in the
-same change.
+**Do not write:**
 
-### Retired divergences (adopted upstream — do NOT re-apply)
+```ts
+const source = fs.readFileSync(path.join(__dirname, 'main.ts'), 'utf8')
 
-- **`feat: adopt cua driver element bounds` (`ecd251bd3`, 2026-05-12)** —
-  fork-only rewrite of `tools/computer_use/cua_backend.py` (+1268 lines:
-  `_active_target`, `_resolve_element`, `_sort_windows_frontmost_first`,
-  structured-element parsing, element drag, coordinate fallback,
-  `raise_window`). **Superseded** by upstream's independent backend rewrite
-  (`e31f3b3c5` focus-safe backend + `#24170` bug fixes + `dc235e93c` dead-code
-  removal). The 2026-06-02 desktop merge kept our tests but reverted the
-  backend to upstream's — we adopted upstream's backend and restored
-  upstream's `tests/tools/test_computer_use.py`, re-applying only the Linux
-  escape-hatch tweak to `TestRegistration` (which belongs to the
-  remote-macOS patch, NOT to `ecd251bd3`). Do not resurrect the 1566-line
-  backend. If a future need arises, re-port on top of upstream's backend.
-
-- **`feat(computer_use): allow remote macOS over HERMES_CUA_DRIVER_CMD on Linux`
-  (`318357255`, retired 2026-07-03 in the v0.18.0 merge)** — fork patch that
-  relaxed the `sys.platform != "darwin"` gates in `tools/computer_use/` so the
-  toolset ran on Linux when `HERMES_CUA_DRIVER_CMD` was set. **Superseded** by
-  upstream's cross-platform computer_use (PR #50507, v0.18.0): upstream's
-  `tool.py` gate is now `sys.platform not in ("darwin", "win32", "linux")`
-  (Linux allowed natively) AND upstream honors `HERMES_CUA_DRIVER_CMD`
-  throughout (`cua_backend.py`, `permissions.py`, `doctor.py`). The v0.18.0
-  merge took upstream's `tool.py` + `schema.py` cleanly; the remote-mac shim
-  (`/usr/local/bin/cua-remote` + `HERMES_CUA_DRIVER_CMD`) still drives a remote
-  Mac from Linux, now riding upstream's code path. Do NOT re-apply the gate
-  relaxation — it is a no-op against upstream's gate.
-
-- **Desktop realtime-voice + fork `/cwd` wiring (dropped 2026-07-03, v0.18.0
-  merge).** Upstream's v0.18.0 desktop rewrite extracted the composer into
-  per-concern hooks (`use-composer-*`) and moved `use-prompt-actions` into a
-  directory, and it ships its own cwd support (`session/hooks/use-cwd-actions`).
-  The fork's realtime-voice desktop feature (`0dda37e23` + follow-ups:
-  `store/realtime-voice`, `use-realtime-conversation`, `realtime-session`,
-  `use-audio-level`, `dev/realtime-spike`, the `createRealtimeSession` hermes
-  export, and the composer/controls/appearance-settings integration) and the
-  fork's `/cwd` desktop wiring (`48fb3fd42`, `changeSessionCwd`) were entangled
-  with the OLD composer structure and did not survive the rewrite (typecheck
-  errors: undefined `useRealtimeConversation`, `changeSessionCwd` not in
-  `PromptActionsOptions`). Resolution: adopted upstream's desktop files
-  wholesale for the entangled surface and removed the fork-only realtime files
-  (−2067 lines). `apps/desktop` typecheck + `vite build` are green.
-  **To restore realtime voice, re-port it onto upstream's `use-composer-voice`
-  hook architecture** — do NOT graft the old files back onto the new composer.
-
-## Local patches on this checkout
-
-This checkout (`~/repos/hermes-agent` on shuvdev) carries a few patches on
-top of upstream `main` that solve site-specific needs. They live as regular
-commits and should be re-applied / preserved across upstream merges —
-**but only after passing the Fork divergence policy interrogation above.**
-
-- **`feat(computer_use): allow remote macOS over HERMES_CUA_DRIVER_CMD on Linux`
-  — RETIRED (2026-07-03, v0.18.0 merge).** Upstream now ships cross-platform
-  computer_use (Linux allowed natively) and honors `HERMES_CUA_DRIVER_CMD`
-  itself, so the fork gate-relaxation is superseded. See "Retired divergences"
-  above. The remote-mac setup (`/usr/local/bin/cua-remote` shim +
-  `HERMES_CUA_DRIVER_CMD`, design at `~/.hermes/plans/remote-macos-computer-use.md`)
-  still works on upstream's code path. Do NOT re-apply the gate patch.
-
-- **`fix(prompt_builder): replace blocked MEDIA:/absolute/path literal for Anthropic OAuth safety`**
-  Local hardening for the Anthropic OAuth provider config. Keep.
-
-- **`fix: preserve local gateway and delegation patches`**
-  Squash-marker commit for older local gateway/delegation tweaks. Keep.
-
-- **`feat(skills): configurable primary skills directory`**
-  Makes the default skills location overridable instead of hardcoded to
-  `<HERMES_HOME>/skills`. `get_skills_dir()` in `hermes_constants.py` now
-  honors `HERMES_SKILLS_DIR` (env, wins) then `skills.dir` in `config.yaml`
-  (mtime-cached, lazy `yaml` import to keep the module dependency-light).
-  The four module-level `SKILLS_DIR` constants (`tools/skills_tool.py`,
-  `tools/skill_manager_tool.py`, `tools/skills_sync.py`,
-  `tools/skills_hub.py`) now derive from `get_skills_dir()`, so this changes
-  BOTH discovery AND where `skill_manage` creates new skills / where the hub
-  installs / where bundled skills are seeded. `skills.external_dirs` remains
-  discovery-only. New `skills.dir` config key added to `DEFAULT_CONFIG`
-  (no config-version bump — additive key, auto-merged). Tests:
-  `tests/test_hermes_constants.py::TestGetSkillsDir`. Keep across upstream
-  merges — without it, the skills dir is hardcoded again.
-
-When merging upstream, run a diff against `upstream/main` and confirm these
-commits are still on top. If a merge wipes them, cherry-pick back from the
-backup branches.
-
-### Post-merge runtime refresh (REQUIRED after every upstream merge)
-
-A merge only updates the source tree on disk. The **running gateway** and the
-**packaged desktop app** keep serving the pre-merge code until they are
-explicitly refreshed. Skipping these steps leaves a stale gateway process and
-a Walker/desktop launcher that boots the old UI (the packaged `app.asar` is a
-build artifact, not live source — it does NOT track HEAD). Run both after
-every merge:
-
-1. **Re-apply local patches** (see the patches skill / `~/.hermes/patches/apply.sh`)
-   and confirm the fork-only commits above are still on top.
-
-2. **Restart the gateway** so the long-lived process picks up new code
-   (module-level caches and the system prompt are built once at start):
-   ```bash
-   hermes gateway restart
-   # If status shows `activating (auto-restart)` for >10s, the auto-restart
-   # didn't fire — run `hermes gateway start` explicitly. ALWAYS verify the
-   # new PID is `active (running)` before walking away:
-   hermes gateway status
-   ```
-
-3. **Rebuild the packaged desktop app** so both Walker launchers
-   (`hermes-agent.desktop` and `hermes-agent-nick.desktop`) run current code.
-   The frontend `app.asar` is stale until rebuilt — verify the artifact
-   timestamp is newer than HEAD's commit time, not just that the build
-   "succeeded":
-   ```bash
-   hermes desktop --force-build
-   # Verify the new artifact + that no source is newer than the build:
-   stat -c '%y  %n' apps/desktop/release/linux-unpacked/resources/app.asar
-   find apps/desktop/src apps/desktop/electron -type f \
-     -newer apps/desktop/release/linux-unpacked/resources/app.asar | wc -l   # want 0
-   ```
-   Note: the packaged backend resolves to the adopted runtime
-   (`~/.hermes/hermes-agent` → this checkout), so the backend is current as
-   soon as the merge lands; only the **bundled frontend** needs the rebuild.
-
-4. **Secondary hosts (nick):** the desktop runs locally per host, so repeat
-   the gateway restart + (if that host launches the desktop) the rebuild on
-   each host after pulling. See the patches skill's "Updating a secondary
-   host" section.
-
-## Local environment setup (host state, not code)
-
-These are machine-local arrangements on shuvdev that are NOT committed to the
-repo but are load-bearing for how this checkout runs. Re-create them if you
-set up a fresh box or blow away `~/.hermes`.
-
-### Desktop app build (`apps/desktop`)
-
-The Electron desktop app builds and runs on Linux. Two build modes:
-
-- **Source build** — `hermes desktop --source` (or `--source --build-only`):
-  `npm ci` + `vite build` → `apps/desktop/dist/`, launched via `electron .`
-  from the repo. Backend resolves to the source tree.
-- **Packaged build** — `hermes desktop` (default) or `--build-only`:
-  `npm ci` + `vite build` + `electron-builder --dir` →
-  `apps/desktop/release/linux-unpacked/Hermes` (standalone 200 MB ELF binary +
-  `app.asar`). Backend resolves to the installed/adopted runtime.
-
-Distributables: `cd apps/desktop && npm run dist:linux` (AppImage + deb + rpm).
-
-**Electron-binary extraction gotcha (source mode only):** a fresh root
-`npm ci` sometimes downloads Electron's binary to `~/.cache/electron/` but
-fails to extract it into `node_modules/electron/dist/` (leaves only
-`libvulkan.so.1`), so `require('electron')` errors with "Electron failed to
-install correctly." Fix: extract the cached zip and write `path.txt` with NO
-trailing newline:
-```bash
-unzip -oq ~/.cache/electron/*/electron-v<VER>-linux-x64.zip \
-  -d node_modules/electron/dist/
-printf 'electron' > node_modules/electron/path.txt   # echo adds a newline → spawn ENOENT
-```
-The **packaged** (`electron-builder`) path does its own download/extract and
-is unaffected. Sandbox works via unprivileged user namespaces
-(`kernel.unprivileged_userns_clone=1`) — no setuid `chrome-sandbox` needed.
-
-### `~/.hermes/hermes-agent` symlink → this checkout (enables desktop self-update)
-
-```
-~/.hermes/hermes-agent -> /home/shuv/repos/hermes-agent
+test('backend spawn hides the Windows console', () => {
+  assert.match(source, /spawn\(\s*backend\.command,\s*backend\.args[\s\S]{0,300}hiddenWindowsChildOptions/)
+})
 ```
 
-The desktop self-updater (`apps/desktop/electron/main.cjs`, `resolveUpdateRoot`
-/ `checkUpdates`) only runs against `$HERMES_HOME/hermes-agent` when it's a
-git checkout. Our real source lives at `~/repos/hermes-agent`, so without this
-symlink Settings → Updates shows *"…isn't a git checkout — desktop self-update
-only runs against a source install."* The symlink makes
-`ACTIVE_HERMES_ROOT` resolve to our checkout so the updater is enabled.
+**Do write — extract the logic into a small pure/DI-testable function and
+call it for real:**
 
-Side effects (all verified benign):
-- Backend resolution shifts from "existing `hermes` on PATH" (step 4) to
-  "adopt `ACTIVE_HERMES_ROOT`" (step 3b). Both resolve to the SAME repo
-  (`~/.local/bin/hermes` → `~/repos/hermes-agent/venv`), so no behavior change.
-- The adopt path writes `~/.hermes/hermes-agent/.hermes-bootstrap-complete`
-  (an `adopted` marker pinning the current commit). Via the symlink this
-  lands at the repo root. It is git-excluded via **`.git/info/exclude`**
-  (NOT the tracked `.gitignore` — keep it host-local). Re-add the exclude
-  line if you re-clone.
-- `banner.py` prefers `Path(__file__)` over the symlink path; `backup.py`
-  *excludes* `hermes-agent` from backup tarballs — neither mis-handles the
-  symlink.
+```ts
+// backend-spawn.ts
+export function hiddenWindowsChildOptions(options: SpawnOptionsLike = {}, isWindows = process.platform === 'win32') {
+  if (!isWindows || 'windowsHide' in options) return options
+  return { ...options, windowsHide: true }
+}
 
-**Self-update caveat:** "Apply update" runs `hermes update --yes --branch main`
-(a `git pull` on our fork `shuv1337/hermes-agent`) + `hermes desktop
---build-only` against this dev checkout. That moves HEAD and can collide with
-uncommitted local work. For a dev checkout, prefer updating manually:
-`git pull && hermes desktop --force-build`. The read-only "Check now" button
-is always safe.
+// backend-spawn.test.ts
+test('windowsHide defaults to true on Windows, is left alone elsewhere', () => {
+  assert.equal(hiddenWindowsChildOptions({}, true).windowsHide, true)
+  assert.equal(hiddenWindowsChildOptions({}, false).windowsHide, undefined)
+  assert.equal(hiddenWindowsChildOptions({ windowsHide: false }, true).windowsHide, false)
+})
+```
+
+If the logic lives inline in a god-file (`main.ts`, `cli.py`,
+`gateway/run.py`) and extracting it feels disruptive: that's the actual
+signal to do the extraction, not to regex around it.

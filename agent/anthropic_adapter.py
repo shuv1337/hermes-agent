@@ -15,7 +15,6 @@ import json
 import logging
 import os
 import platform
-import re
 import secrets
 import stat
 import subprocess
@@ -23,7 +22,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from hermes_constants import get_hermes_home
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from utils import base_url_host_matches, normalize_proxy_env_vars
 
 # NOTE: `import anthropic` is deliberately NOT at module top — the SDK pulls
@@ -128,7 +127,7 @@ _FAST_MODE_SUPPORTED_SUBSTRINGS = ("opus-4-6", "opus-4.6")
 _ANTHROPIC_OUTPUT_LIMITS = {
     # Mythos-class named models (claude-fable-5, …) — 1M context, reasoning
     "claude-fable":      128_000,
-    # Claude Sonnet 5 — 1M context (default and max), 128k max output
+    # Claude Sonnet 5
     "claude-sonnet-5":   128_000,
     # Claude 4.8
     "claude-opus-4-8":   128_000,
@@ -250,7 +249,13 @@ def _supports_adaptive_thinking(model: str) -> bool:
     only returns False for the explicit legacy list of older Claude families
     that require manual budget-based thinking. Non-Claude Anthropic-Messages
     models (minimax, qwen3, …) return False so they keep the manual path.
+
+    Kimi / Moonshot models are the exception: their Anthropic-compatible
+    endpoints implement the adaptive contract (``thinking.type="adaptive"``
+    + ``output_config.effort``, including ``xhigh`` and ``display``).
     """
+    if _model_name_is_kimi_family(model):
+        return True
     if not _is_claude_model(model):
         return False
     m = model.lower()
@@ -376,108 +381,7 @@ def _detect_claude_code_version() -> str:
 
 
 _CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
-_MCP_TOOL_PREFIX = "mcp_"
-
-
-# April 2026 Anthropic OAuth blocklist pattern. The edge rejects any request
-# whose ``tools[*].name`` matches this regex with a misleading
-# ``out of extra usage`` 400 at <200ms. The pattern is ``mcp_`` followed
-# exclusively by lowercase letters, digits, and underscores — ANY uppercase
-# letter anywhere in the suffix takes the name outside the match. See the
-# bisect probe in ``tests/integration/test_oauth_blocklist_bisect.py`` for
-# the characterization data.
-_OAUTH_BLOCKED_TOOL_NAME_RE = re.compile(r"^mcp_[a-z0-9_]+$")
-
-
-def _encode_oauth_tool_name(name: str) -> str:
-    """Wrap a tool name so Anthropic's OAuth edge accepts it.
-
-    Background (April 2026): Anthropic's OAuth content filter added a new
-    heuristic that rejects any request whose ``tools[*].name`` matches
-    ``_OAUTH_BLOCKED_TOOL_NAME_RE`` — i.e. ``mcp_`` followed by only lowercase
-    letters, digits, and underscores. Every Hermes core tool is lowercase
-    snake_case, so plain ``_MCP_TOOL_PREFIX + name`` produced exactly that
-    pattern and every OAuth request with tools attached got rejected with a
-    misleading 'out of extra usage' 400.
-
-    Encoding rules (preserves round-trip via ``_decode_oauth_tool_name``):
-      - Canonical Hermes tool (no ``mcp_`` prefix): prepend ``mcp_`` and
-        uppercase the first char of the original name. ``terminal`` →
-        ``mcp_Terminal``.
-      - Canonical MCP tool (already starts with ``mcp_``) whose full name
-        already contains an uppercase letter: leave untouched. It's already
-        outside the blocklist pattern.
-        ``mcp_example_EXAMPLE_GET_TOOL_SCHEMAS`` is unchanged.
-      - Canonical MCP tool whose full name is entirely lowercase/digits:
-        uppercase the first char after the prefix in place. The prefix is
-        NOT duplicated, so dispatch keeps working and logs stay readable.
-        ``mcp_example_get_prompt`` → ``mcp_Example_get_prompt``.
-
-    Bisect results (see ``tests/integration/test_oauth_blocklist_bisect.py``):
-    any uppercase character anywhere in the suffix breaks the heuristic.
-    Uppercasing only the first char is the smallest reversible change.
-
-    The canonical tool registry (used by dispatch, logs, activity feeds, etc.)
-    is untouched — this encoding only affects the bytes we send to Anthropic.
-    """
-    if not name:
-        return _MCP_TOOL_PREFIX
-    if name.startswith(_MCP_TOOL_PREFIX):
-        # The name already has the Claude Code MCP prefix (real MCP tool).
-        # Only encode if it would otherwise trigger the blocklist.
-        if not _OAUTH_BLOCKED_TOOL_NAME_RE.match(name):
-            return name
-        stripped = name[len(_MCP_TOOL_PREFIX):]
-        if not stripped:
-            return name
-        return _MCP_TOOL_PREFIX + stripped[0].upper() + stripped[1:]
-    # Canonical Hermes tool: add the prefix and uppercase the first char so
-    # the resulting name never matches the blocklist regex.
-    return _MCP_TOOL_PREFIX + name[0].upper() + name[1:]
-
-
-def _decode_oauth_tool_name(
-    encoded: str,
-    *,
-    canonical_names: Optional[Set[str]] = None,
-) -> str:
-    """Reverse of ``_encode_oauth_tool_name``.
-
-    Disambiguates between canonical Hermes tools (no prefix) and canonical MCP
-    tools (prefixed) using ``canonical_names`` when provided. Without it,
-    falls back to the historical 'drop the prefix' behavior.
-
-    Names that were pass-through encoded (already contain uppercase, e.g.
-    ``mcp_example_EXAMPLE_GET_TOOL_SCHEMAS``) round-trip exactly because
-    the decoder prefers the canonical-match branch when it has the set.
-    """
-    if not encoded.startswith(_MCP_TOOL_PREFIX):
-        return encoded
-    stripped = encoded[len(_MCP_TOOL_PREFIX):]
-    if not stripped:
-        return encoded
-
-    # Candidate A: the name the encoder produced from a prefixed canonical
-    # (``mcp_Example_get_prompt`` → ``mcp_example_get_prompt``).
-    mcp_style = _MCP_TOOL_PREFIX + stripped[0].lower() + stripped[1:]
-    # Candidate B: the name the encoder produced from an unprefixed canonical
-    # (``mcp_Terminal`` → ``terminal``).
-    hermes_style = stripped[0].lower() + stripped[1:]
-
-    if canonical_names:
-        # A pass-through name (encoder left it alone) is already canonical.
-        if encoded in canonical_names:
-            return encoded
-        if mcp_style in canonical_names:
-            return mcp_style
-        if hermes_style in canonical_names:
-            return hermes_style
-        # Unknown — return the encoded name so downstream dispatch surfaces a
-        # clear 'unknown tool' error rather than silently routing somewhere.
-        return encoded
-    # Legacy callers without canonical_names: preserve the pre-fix behavior
-    # of dropping the prefix.
-    return hermes_style
+_MCP_TOOL_PREFIX = "mcp__"
 
 
 def _get_claude_code_version() -> str:
@@ -553,7 +457,8 @@ def _is_kimi_coding_endpoint(base_url: str | None) -> bool:
 
 # Model-name prefixes that identify the Kimi / Moonshot family.  Covers
 # - official slugs: ``kimi-k2.5``, ``kimi_thinking``, ``moonshot-v1-8k``
-# - common release lines: ``k1.5-...``, ``k2-thinking``, ``k25-...``, ``k2.5-...``
+# - common release lines: ``k1.5-...``, ``k2-thinking``, ``k25-...``, ``k2.5-...``,
+#   and the bare Coding Plan slug ``k3`` (plus ``k3.x``/``k3-...`` variants)
 # Matched case-insensitively against the post-``normalize_model_name`` form,
 # so a caller's ``provider/vendor/model`` slug is handled the same as a
 # bare name.
@@ -563,7 +468,13 @@ _KIMI_FAMILY_MODEL_PREFIXES = (
     "k1.", "k1-",
     "k2.", "k2-",
     "k25", "k2.5",
+    "k3.", "k3-",
 )
+
+# Bare release slugs with no separator suffix (Kimi Coding Plan serves K3
+# as the exact slug ``k3``). Kept exact-match so unrelated model names that
+# merely start with the same characters don't get misclassified.
+_KIMI_FAMILY_EXACT_SLUGS = frozenset({"k3"})
 
 
 def _model_name_is_kimi_family(model: str | None) -> bool:
@@ -575,6 +486,8 @@ def _model_name_is_kimi_family(model: str | None) -> bool:
     # Strip vendor prefix (e.g. ``moonshotai/kimi-k2.5`` → ``kimi-k2.5``)
     if "/" in m:
         m = m.rsplit("/", 1)[-1]
+    if m in _KIMI_FAMILY_EXACT_SLUGS:
+        return True
     return m.startswith(_KIMI_FAMILY_MODEL_PREFIXES)
 
 
@@ -638,8 +551,9 @@ def _requires_bearer_auth(base_url: str | None) -> bool:
 
     Some third-party /anthropic endpoints implement Anthropic's Messages API but
     require Authorization: Bearer instead of Anthropic's native x-api-key header.
-    MiniMax's global and China Anthropic-compatible endpoints, and Azure AI
-    Foundry's Anthropic-style endpoint follow this pattern.
+    MiniMax's global and China Anthropic-compatible endpoints, Azure AI
+    Foundry's Anthropic-style endpoint, and Palantir Foundry's LLM proxy
+    follow this pattern.
     """
     normalized = _normalize_base_url_text(base_url)
     if not normalized:
@@ -648,6 +562,11 @@ def _requires_bearer_auth(base_url: str | None) -> bool:
     return (
         normalized.startswith(("https://api.minimax.io/anthropic", "https://api.minimaxi.com/anthropic"))
         or "azure.com" in normalized
+        # Palantir Foundry LLM proxy (<org>.palantirfoundry.com/api/v2/llm/proxy/anthropic)
+        # rejects x-api-key with 401 and requires Authorization: Bearer.
+        # Hostname match (not substring) so e.g. evil.com/palantirfoundry
+        # paths don't trigger Bearer auth.
+        or base_url_host_matches(normalized, "palantirfoundry.com")
     )
 
 
@@ -1672,7 +1591,10 @@ def _is_bedrock_model_id(model: str) -> bool:
     """
     lower = model.lower()
     # Regional inference-profile prefixes
-    if any(lower.startswith(p) for p in ("global.", "us.", "eu.", "ap.", "jp.")):
+    if any(lower.startswith(p) for p in (
+        "global.", "us.", "eu.", "apac.", "ap.", "au.", "jp.",
+        "ca.", "sa.", "me.", "af.",
+    )):
         return True
     # Bare Bedrock model IDs: provider.model-family
     if lower.startswith("anthropic."):
@@ -2374,13 +2296,6 @@ def _manage_thinking_signatures(
     """
     _THINKING_TYPES = frozenset(("thinking", "redacted_thinking"))
     _is_third_party = _is_third_party_anthropic_endpoint(base_url)
-    # Kimi / DeepSeek share a contract: strip signed Anthropic blocks
-    # (neither upstream can validate Anthropic signatures), preserve unsigned
-    # ones synthesised from reasoning_content.  See #13848, #16748.
-    _preserve_unsigned_thinking = (
-        _is_kimi_family_endpoint(base_url, model)
-        or _is_deepseek_anthropic_endpoint(base_url)
-    )
 
     last_assistant_idx = None
     for i in range(len(result) - 1, -1, -1):
@@ -2392,8 +2307,12 @@ def _manage_thinking_signatures(
         if m.get("role") != "assistant" or not isinstance(m.get("content"), list):
             continue
 
-        if _preserve_unsigned_thinking:
-            # Kimi / DeepSeek: strip signed, preserve unsigned.
+        if _is_kimi_family_endpoint(base_url, model):
+            # Kimi does not enforce thinking signatures — replay as-is
+            # (shared cleanup below still strips cache markers + the internal flag).
+            pass
+        elif _is_deepseek_anthropic_endpoint(base_url):
+            # DeepSeek: strip signed, preserve unsigned.
             new_content = []
             for b in m["content"]:
                 if not isinstance(b, dict) or b.get("type") not in _THINKING_TYPES:
@@ -2404,12 +2323,6 @@ def _manage_thinking_signatures(
                     continue
                 new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
-            # Strip cache_control from any remaining thinking blocks —
-            # cache markers interfere with signature validation on the
-            # endpoints that DO preserve thinking blocks.
-            for b in m["content"]:
-                if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
-                    b.pop("cache_control", None)
         elif _is_third_party or idx != last_assistant_idx:
             # Third-party: strip ALL thinking blocks (signatures are proprietary).
             # Direct Anthropic: strip from non-latest assistant messages only.
@@ -2418,25 +2331,17 @@ def _manage_thinking_signatures(
                 if not (isinstance(b, dict) and b.get("type") in _THINKING_TYPES)
             ]
             m["content"] = stripped or [{"type": "text", "text": "(thinking elided)"}]
-            # No surviving thinking blocks here, so nothing to strip cache_control from.
         else:
-            # Latest assistant on direct Anthropic: pass thinking blocks
-            # through BYTE-EXACT. Opus 4.8+ rejects any mutation of
-            # ``thinking`` / ``redacted_thinking`` blocks on the latest
-            # assistant message with HTTP 400 "`thinking` or
-            # `redacted_thinking` blocks in the latest assistant message
-            # cannot be modified." That includes downgrading unsigned
-            # blocks to text AND removing ``cache_control`` keys. We only
-            # drop a block when the validator is guaranteed to reject it,
-            # leaving the rest UNTOUCHED.
+            # Latest assistant on direct Anthropic: keep signed, downgrade unsigned
+            # to text so the reasoning isn't lost.
             #
-            # Exception: if orphan-stripping (or another structural mutation)
-            # removed a tool_use block from THIS turn, every thinking signature
-            # on it was computed against the original turn content and is now
-            # dead. Anthropic rejects the turn either way — replaying the signed
-            # block 400s with "cannot be modified", and a bare signed block with
-            # no following tool_use is also invalid. In that (and only that) case
-            # demote ALL thinking blocks on this turn to text so the turn replays
+            # Exception: if orphan-stripping (or another structural mutation) removed
+            # a tool_use block from THIS turn, every thinking signature on it was
+            # computed against the original turn content and is now dead.  Anthropic
+            # rejects the turn either way — replaying the signed block 400s with
+            # "thinking blocks in the latest assistant message cannot be modified",
+            # and a bare signed block with no following tool_use is also invalid.
+            # Demote ALL thinking blocks on this turn to text so the turn replays
             # cleanly and the model can re-plan from the surviving tool results.
             signature_dead = bool(m.get("_thinking_signature_invalidated"))
             new_content = []
@@ -2450,19 +2355,23 @@ def _manage_thinking_signatures(
                         new_content.append({"type": "text", "text": thinking_text})
                     continue
                 if b.get("type") == "redacted_thinking":
-                    # Redacted blocks need 'data' to validate; drop otherwise.
+                    # Redacted blocks use 'data' for the signature payload —
+                    # drop the block when 'data' is missing (can't be validated).
                     if b.get("data"):
                         new_content.append(b)
-                    continue
-                if not b.get("signature"):
-                    # Unsigned thinking would be rejected; drop the whole
-                    # block rather than downgrade-to-text (which counts as
-                    # a modification under the Opus 4.8+ contract).
-                    continue
-                # Signed: pass through with ALL keys intact, including any
-                # cache_control marker. Stripping it counts as a modification.
-                new_content.append(b)
+                elif b.get("signature"):
+                    new_content.append(b)
+                else:
+                    thinking_text = b.get("thinking", "")
+                    if thinking_text:
+                        new_content.append({"type": "text", "text": thinking_text})
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
+
+        # Strip cache_control from any remaining thinking/redacted_thinking
+        # blocks — cache markers interfere with signature validation.
+        for b in m["content"]:
+            if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
+                b.pop("cache_control", None)
 
         # Drop the internal bookkeeping flag — it must never reach the API payload.
         m.pop("_thinking_signature_invalidated", None)
@@ -2663,15 +2572,38 @@ def build_anthropic_kwargs(
                 text = text.replace("Nous Research", "Anthropic")
                 block["text"] = text
 
-        # 3. Encode tool names so OAuth requests avoid Anthropic's
-        #    ``^mcp_[a-z0-9_]+$`` blocklist while preserving a reversible
-        #    mapping back to canonical registry names.
+        # 3. Normalize tool names so NOTHING goes on the OAuth wire with a
+        #    single-underscore ``mcp_`` prefix.  Anthropic's subscription/OAuth
+        #    billing classifier treats a single-underscore ``mcp_`` tool name as
+        #    a third-party-app fingerprint and rejects the request with HTTP 400
+        #    "Third-party apps now draw from extra usage, not plan limits"
+        #    (verified empirically: a single ``mcp_foo`` tool flips a request
+        #    from plan-billing to the extra-usage lane; ``mcp__foo`` is accepted).
+        #
+        #    Two cases, both must land on the double-underscore ``mcp__`` form:
+        #      a) bare Hermes-native tools (``read_file``)  -> ``mcp__read_file``
+        #      b) native MCP server tools registered under their full
+        #         single-underscore ``mcp_<server>_<tool>`` name
+        #         (``mcp_linear_get_issue``) -> ``mcp__linear_get_issue``
+        #    Case (b) is the gap that the bare ``mcp_``->``mcp__`` constant swap
+        #    left open: those tools were *skipped* and stayed single-underscore,
+        #    so any session with an MCP server configured still tripped the
+        #    classifier. normalize_response reverses both forms via registry
+        #    lookup so the dispatcher still sees the original name. GH-25255.
+        def _to_oauth_wire_name(name: str) -> str:
+            if name.startswith("mcp__"):
+                return name  # already correct, don't double-prefix
+            if name.startswith("mcp_"):
+                # single-underscore native MCP tool -> promote to double
+                return "mcp__" + name[len("mcp_"):]
+            return _MCP_TOOL_PREFIX + name  # bare name -> mcp__<name>
+
         if anthropic_tools:
             for tool in anthropic_tools:
                 if "name" in tool:
-                    tool["name"] = _encode_oauth_tool_name(tool["name"])
+                    tool["name"] = _to_oauth_wire_name(tool["name"])
 
-        # 4. Apply the same encoding to tool names in message history
+        # 4. Apply the same normalization to tool names in message history
         #    (tool_use blocks) so replayed turns match the wire names above.
         for msg in anthropic_messages:
             content = msg.get("content")
@@ -2679,7 +2611,7 @@ def build_anthropic_kwargs(
                 for block in content:
                     if isinstance(block, dict):
                         if block.get("type") == "tool_use" and "name" in block:
-                            block["name"] = _encode_oauth_tool_name(block["name"])
+                            block["name"] = _to_oauth_wire_name(block["name"])
                         elif block.get("type") == "tool_result" and "tool_use_id" in block:
                             pass  # tool_result uses ID, not name
 
@@ -2712,25 +2644,19 @@ def build_anthropic_kwargs(
     # MiniMax Anthropic-compat endpoints support thinking (manual mode only,
     # not adaptive).  Haiku does NOT support extended thinking — skip entirely.
     #
-    # Kimi's /coding endpoint speaks the Anthropic Messages protocol but has
-    # its own thinking semantics: when ``thinking.enabled`` is sent, Kimi
-    # validates the message history and requires every prior assistant
-    # tool-call message to carry OpenAI-style ``reasoning_content``.  The
-    # Anthropic path never populates that field, and
-    # ``convert_messages_to_anthropic`` strips all Anthropic thinking blocks
-    # on third-party endpoints — so the request fails with HTTP 400
-    # "thinking is enabled but reasoning_content is missing in assistant
-    # tool call message at index N".  Kimi's reasoning is driven server-side
-    # on the /coding route, so skip Anthropic's thinking parameter entirely
-    # for that host.  (Kimi on chat_completions enables thinking via
-    # extra_body in the ChatCompletionsTransport — see #13503.)
+    # Kimi / Moonshot models also use adaptive thinking: their
+    # Anthropic-compatible endpoints (api.moonshot.cn/anthropic,
+    # api.kimi.com/coding) accept ``thinking.type="adaptive"`` +
+    # ``output_config.effort``, and the replay-validation 400s that
+    # originally motivated dropping the parameter (#13848) no longer
+    # occur.  (Kimi on chat_completions enables thinking via extra_body
+    # in the ChatCompletionsTransport — see #13503.)
     #
     # On 4.7+ the `thinking.display` field defaults to "omitted", which
     # silently hides reasoning text that Hermes surfaces in its CLI. We
     # request "summarized" so the reasoning blocks stay populated — matching
     # 4.6 behavior and preserving the activity-feed UX during long tool runs.
-    _is_kimi_coding = _is_kimi_family_endpoint(base_url, model)
-    if reasoning_config and isinstance(reasoning_config, dict) and not _is_kimi_coding:
+    if reasoning_config and isinstance(reasoning_config, dict):
         if reasoning_config.get("enabled") is not False and "haiku" not in model.lower():
             effort = str(reasoning_config.get("effort", "medium")).lower()
             budget = THINKING_BUDGET.get(effort, 8000)

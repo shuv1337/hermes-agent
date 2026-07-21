@@ -163,11 +163,6 @@ class ChatCompletionsTransport(ProviderTransport):
           ``Extra inputs are not permitted, field: 'messages[N].tool_name'``.
           Permissive providers (OpenRouter, MiniMax) silently ignore the
           field, which masked the bug for months.
-        - ``reasoning_details`` on assistant messages — native Anthropic uses
-          signed thinking blocks internally, but OpenAI Chat Completions has no
-          top-level ``messages[N].reasoning_details`` field. Strict relays
-          (Fireworks/Kimi) reject saved Claude turns with
-          ``Extra inputs are not permitted, field: 'messages[N].reasoning_details'``.
         - Hermes-internal scaffolding markers — any top-level message key
           starting with ``_`` (e.g. ``_empty_recovery_synthetic``,
           ``_empty_terminal_sentinel``, ``_thinking_prefill``). These are
@@ -190,9 +185,9 @@ class ChatCompletionsTransport(ProviderTransport):
                 "codex_reasoning_items" in msg
                 or "codex_message_items" in msg
                 or "tool_name" in msg
-                or "reasoning_details" in msg
                 or "effect_disposition" in msg
                 or "timestamp" in msg  # #47868 — strict providers reject this
+                or "api_content" in msg  # persist-what-you-send sidecar
             ):
                 needs_sanitize = True
                 break
@@ -219,6 +214,7 @@ class ChatCompletionsTransport(ProviderTransport):
         for msg_idx, msg in enumerate(messages):
             if not isinstance(msg, dict):
                 continue
+
             copied_msg: dict[str, Any] | None = None
 
             def mutable_msg() -> dict[str, Any]:
@@ -232,17 +228,19 @@ class ChatCompletionsTransport(ProviderTransport):
                 "codex_reasoning_items" in msg
                 or "codex_message_items" in msg
                 or "tool_name" in msg
-                or "reasoning_details" in msg
                 or "effect_disposition" in msg
                 or "timestamp" in msg  # #47868 — leak into strict providers
+                or "api_content" in msg  # persist-what-you-send sidecar
             ):
                 out_msg = mutable_msg()
                 out_msg.pop("codex_reasoning_items", None)
                 out_msg.pop("codex_message_items", None)
                 out_msg.pop("tool_name", None)
-                out_msg.pop("reasoning_details", None)
                 out_msg.pop("effect_disposition", None)
                 out_msg.pop("timestamp", None)  # #47868 — leak into strict providers
+                out_msg.pop("api_content", None)  # persist-what-you-send sidecar
+
+
             # Drop all Hermes-internal scaffolding markers (``_``-prefixed).
             # OpenAI's message schema has no ``_``-prefixed fields, so this
             # is safe and future-proofs against new markers being added.
@@ -781,15 +779,18 @@ class ChatCompletionsTransport(ProviderTransport):
         return True
 
     def extract_cache_stats(self, response: Any) -> dict[str, int] | None:
-        """Extract OpenRouter/OpenAI cache stats from prompt_tokens_details."""
+        """Extract cache stats from prompt_tokens_details (OpenRouter/OpenAI)
+        or DeepSeek's native top-level prompt_cache_hit_tokens field."""
         usage = getattr(response, "usage", None)
         if usage is None:
             return None
         details = getattr(usage, "prompt_tokens_details", None)
-        if details is None:
-            return None
-        cached = getattr(details, "cached_tokens", 0) or 0
-        written = getattr(details, "cache_write_tokens", 0) or 0
+        cached = getattr(details, "cached_tokens", 0) or 0 if details else 0
+        written = getattr(details, "cache_write_tokens", 0) or 0 if details else 0
+        if not cached:
+            # DeepSeek native API shape (api.deepseek.com): top-level
+            # prompt_cache_hit_tokens / prompt_cache_miss_tokens (#61871).
+            cached = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
         if cached or written:
             return {"cached_tokens": cached, "creation_tokens": written}
         return None

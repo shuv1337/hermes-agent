@@ -15,11 +15,10 @@ function removeLastChar(text: string): string {
   return c.join("");
 }
 
+ 
 function isPlainText(data: string): boolean {
-  return chars(data).every((ch) => {
-    const codePoint = ch.codePointAt(0) ?? 0;
-    return codePoint > 0x1f && codePoint !== 0x7f;
-  });
+  // eslint-disable-next-line no-control-regex -- terminal data may contain control chars
+  return !/[\x00-\x1f\x7f]/.test(data);
 }
 
 function lastWordMatch(line: string): RegExpMatchArray | null {
