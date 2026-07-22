@@ -1215,6 +1215,26 @@ automatically scope to the active profile.
 
 ## Known Pitfalls
 
+### Keep Anthropic OAuth tool-name encoding consistent across both directions
+The current OAuth wire contract is the upstream `mcp__` double-underscore form:
+`build_anthropic_kwargs()` maps both bare Hermes tools and single-underscore MCP
+server tools onto `mcp__...`, and `AnthropicTransport.normalize_response()` maps
+them back via registry lookup. The older fork-only `_encode_oauth_tool_name` /
+`_decode_oauth_tool_name` uppercase scheme has been retired; do not restore it
+during merges. A partial merge that updates `agent/anthropic_adapter.py` without
+updating `agent/transports/anthropic.py` makes every Anthropic response fail at
+normalization time. Validate both files together with
+`tests/agent/test_anthropic_mcp_prefix_strip.py` and
+`tests/agent/transports/test_transport.py`.
+
+### Preserve latest-assistant thinking blocks byte-exact for Opus 4.8+
+Direct Anthropic rejects any mutation of `thinking` or `redacted_thinking` blocks
+on the latest assistant message. Keep signed blocks byte-exact, including
+`cache_control`; drop unsigned blocks rather than converting them to text. Kimi
+and DeepSeek have different replay contracts, so changes to
+`_manage_thinking_signatures()` must run the direct-Anthropic, Kimi, and DeepSeek
+test suites together.
+
 ### DO NOT hardcode `~/.hermes` paths
 Use `get_hermes_home()` from `hermes_constants` for code paths. Use `display_hermes_home()`
 for user-facing print/log messages. Hardcoding `~/.hermes` breaks profiles — each profile

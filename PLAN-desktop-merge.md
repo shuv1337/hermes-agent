@@ -28,7 +28,7 @@ Node 26 is installed (above the Node 22 minimum). No other new prereqs.
 
 | File | Fork patches | Upstream changes | Risk |
 |------|-------------|-----------------|------|
-| `agent/anthropic_adapter.py` | OAuth blocklist evasion (`ab6eb9783`, multiple merges) | **Removed** the entire `_OAUTH_BLOCKED_TOOL_NAME_RE` + `_encode_oauth_tool_name` block | 🔴 CRITICAL — must re-apply after merge |
+| `agent/anthropic_adapter.py` + `agent/transports/anthropic.py` | Retired uppercase OAuth encoding (`ab6eb9783`) | Upstream `mcp__` producer/consumer contract supersedes it | 🔴 CRITICAL — take upstream in both files; never mix schemes |
 | `tools/skill_manager_tool.py` | Symlink fix: `os.walk(followlinks=True)` (`992a147f3`) | Replaced with `rglob("SKILL.md")` which silently breaks symlinked skill dirs | 🔴 CRITICAL — re-apply immediately |
 | `gateway/platforms/signal.py` | `require_mention` gating + self-@mention strip (`e8034a962`, `38aa74095`) | New message handling; duplicate-block risk from previous merge patterns | 🟠 HIGH |
 | `agent/prompt_builder.py` | OAuth-safe MEDIA: literal rewordings (`88c103b07`, `03f8a5e8f`) | CUA driver element bounds additions | 🟠 HIGH |
@@ -126,33 +126,32 @@ for root, _dirs, files in os.walk(skills_dir, followlinks=True):
 
 Do the same in `_find_skill_in_other_profiles()`. Verify: `python -c "from tools.skill_manager_tool import _find_skill; print(_find_skill('shuvgeist'))"` (should find symlinked skill).
 
-### `agent/anthropic_adapter.py` 🔴
+### `agent/anthropic_adapter.py` + `agent/transports/anthropic.py` 🔴
 
-**Shape:** Upstream removed the entire OAuth blocklist evasion block (no conflict marker, just our code gone). This is not a textual conflict — it's a silent drop.
+> **Superseded guidance (corrected after the v0.17.0 merge):** Do **not**
+> restore the fork-only `_encode_oauth_tool_name` / `_decode_oauth_tool_name`
+> uppercase scheme from `ab6eb9783`. Upstream's `mcp__` double-underscore
+> implementation supersedes it and also handles native MCP server tools.
+
+**Required invariant:** `build_anthropic_kwargs()` and
+`AnthropicTransport.normalize_response()` must use the same wire-name contract.
+Outgoing OAuth tools become `mcp__...`; the response transport reverses that
+form via registry lookup. A partial merge that takes upstream's adapter (which
+removed `_decode_oauth_tool_name`) while retaining the fork transport import
+causes every Anthropic response to fail locally after a successful API call.
 
 **Check after merge:**
 
 ```bash
-grep -n "_OAUTH_BLOCKED_TOOL_NAME_RE\|_encode_oauth_tool_name\|mcp_Terminal" agent/anthropic_adapter.py
+! grep -R "_decode_oauth_tool_name\|_encode_oauth_tool_name" \
+    agent/anthropic_adapter.py agent/transports/anthropic.py
+scripts/run_tests.sh tests/agent/test_anthropic_mcp_prefix_strip.py \
+    tests/agent/transports/test_transport.py -q
 ```
 
-If empty, we need to re-apply. The full diff is in commit `ab6eb9783`. Key pieces:
-
-```python
-import re
-_OAUTH_BLOCKED_TOOL_NAME_RE = re.compile(r"^mcp_[a-z0-9_]+$")
-
-def _encode_oauth_tool_name(name: str) -> str:
-    """Wrap a tool name so Anthropic's OAuth edge accepts it."""
-    ...
-
-def _decode_oauth_tool_name(name: str) -> str:
-    ...
-```
-
-These are called in `convert_tools_to_anthropic()` and the tool result decoder. Re-apply from the commit or from `git show ab6eb9783 -- agent/anthropic_adapter.py`.
-
-**Why it matters:** Without this, every Anthropic OAuth request with tools attached gets a misleading 400 "out of extra usage" error. This kills all tool use on Max plan.
+The request- and response-side tests must both pass. Also run the Opus 4.8
+thinking replay tests because merge conflicts in `anthropic_adapter.py` can
+silently revert the byte-exact latest-assistant contract.
 
 ### `agent/prompt_builder.py` 🟠
 

@@ -2308,9 +2308,11 @@ def _manage_thinking_signatures(
             continue
 
         if _is_kimi_family_endpoint(base_url, model):
-            # Kimi does not enforce thinking signatures — replay as-is
-            # (shared cleanup below still strips cache markers + the internal flag).
-            pass
+            # Kimi does not enforce thinking signatures — replay as-is, but
+            # remove cache markers that are specific to Anthropic's cache API.
+            for b in m["content"]:
+                if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
+                    b.pop("cache_control", None)
         elif _is_deepseek_anthropic_endpoint(base_url):
             # DeepSeek: strip signed, preserve unsigned.
             new_content = []
@@ -2323,6 +2325,9 @@ def _manage_thinking_signatures(
                     continue
                 new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
+            for b in m["content"]:
+                if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
+                    b.pop("cache_control", None)
         elif _is_third_party or idx != last_assistant_idx:
             # Third-party: strip ALL thinking blocks (signatures are proprietary).
             # Direct Anthropic: strip from non-latest assistant messages only.
@@ -2332,16 +2337,23 @@ def _manage_thinking_signatures(
             ]
             m["content"] = stripped or [{"type": "text", "text": "(thinking elided)"}]
         else:
-            # Latest assistant on direct Anthropic: keep signed, downgrade unsigned
-            # to text so the reasoning isn't lost.
+            # Latest assistant on direct Anthropic: pass thinking blocks
+            # through BYTE-EXACT. Opus 4.8+ rejects any mutation of
+            # ``thinking`` / ``redacted_thinking`` blocks on the latest
+            # assistant message with HTTP 400 "`thinking` or
+            # `redacted_thinking` blocks in the latest assistant message
+            # cannot be modified." That includes downgrading unsigned
+            # blocks to text AND removing ``cache_control`` keys. We only
+            # drop a block when the validator is guaranteed to reject it,
+            # leaving the rest UNTOUCHED.
             #
-            # Exception: if orphan-stripping (or another structural mutation) removed
-            # a tool_use block from THIS turn, every thinking signature on it was
-            # computed against the original turn content and is now dead.  Anthropic
-            # rejects the turn either way — replaying the signed block 400s with
-            # "thinking blocks in the latest assistant message cannot be modified",
-            # and a bare signed block with no following tool_use is also invalid.
-            # Demote ALL thinking blocks on this turn to text so the turn replays
+            # Exception: if orphan-stripping (or another structural mutation)
+            # removed a tool_use block from THIS turn, every thinking signature
+            # on it was computed against the original turn content and is now
+            # dead. Anthropic rejects the turn either way — replaying the signed
+            # block 400s with "cannot be modified", and a bare signed block with
+            # no following tool_use is also invalid. In that (and only that) case
+            # demote ALL thinking blocks on this turn to text so the turn replays
             # cleanly and the model can re-plan from the surviving tool results.
             signature_dead = bool(m.get("_thinking_signature_invalidated"))
             new_content = []
@@ -2355,23 +2367,19 @@ def _manage_thinking_signatures(
                         new_content.append({"type": "text", "text": thinking_text})
                     continue
                 if b.get("type") == "redacted_thinking":
-                    # Redacted blocks use 'data' for the signature payload —
-                    # drop the block when 'data' is missing (can't be validated).
+                    # Redacted blocks need 'data' to validate; drop otherwise.
                     if b.get("data"):
                         new_content.append(b)
-                elif b.get("signature"):
-                    new_content.append(b)
-                else:
-                    thinking_text = b.get("thinking", "")
-                    if thinking_text:
-                        new_content.append({"type": "text", "text": thinking_text})
+                    continue
+                if not b.get("signature"):
+                    # Unsigned thinking would be rejected; drop the whole
+                    # block rather than downgrade-to-text (which counts as
+                    # a modification under the Opus 4.8+ contract).
+                    continue
+                # Signed: pass through with ALL keys intact, including any
+                # cache_control marker. Stripping it counts as a modification.
+                new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
-
-        # Strip cache_control from any remaining thinking/redacted_thinking
-        # blocks — cache markers interfere with signature validation.
-        for b in m["content"]:
-            if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
-                b.pop("cache_control", None)
 
         # Drop the internal bookkeeping flag — it must never reach the API payload.
         m.pop("_thinking_signature_invalidated", None)

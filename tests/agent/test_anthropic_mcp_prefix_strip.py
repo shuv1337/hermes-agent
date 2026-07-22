@@ -1,9 +1,16 @@
-"""Tests for Anthropic OAuth mcp tool-name round-tripping.
+"""Tests for GH-25255: Anthropic OAuth ``mcp__`` tool-name round-trip.
 
-Anthropic's OAuth edge rejects tool names matching ``^mcp_[a-z0-9_]+$`` with a
-misleading quota error. Current requests avoid that blocklist by capitalizing the
-first character after ``mcp_`` while keeping names reversible. The response-side
-suite also preserves compatibility with the older ``mcp__`` wire encoding.
+Anthropic's subscription/OAuth billing classifier treats a **single-underscore**
+``mcp_`` tool name as a third-party-app fingerprint and rejects the request with
+HTTP 400 "Third-party apps now draw from extra usage, not plan limits".  So on
+the OAuth wire NOTHING may carry a single-underscore ``mcp_`` prefix:
+
+  * bare native tools            ``read_file``            -> ``mcp__read_file``
+  * native MCP server tools      ``mcp_linear_get_issue`` -> ``mcp__linear_get_issue``
+
+``normalize_response`` reverses the ``mcp__`` wire name back to whatever the tool
+registry knows (the single-underscore ``mcp_<server>_<tool>`` form for MCP server
+tools, or the bare name for native tools) so the dispatcher is unaffected.
 """
 
 from __future__ import annotations
@@ -46,11 +53,6 @@ class _FakeRegistry:
         if name in self._names:
             return SimpleNamespace(name=name)  # truthy = tool exists
         return None
-
-    def get_all_tool_names(self):
-        # Used by the transport's OAuth tool-name decoder to disambiguate
-        # canonical Hermes vs MCP-style names.
-        return list(self._names)
 
 
 # ---------------------------------------------------------------------------
@@ -171,12 +173,12 @@ class TestAnthropicMcpPrefixStrip:
 
 
 # ---------------------------------------------------------------------------
-# Request side: registry name -> capitalized mcp_ wire name (blocklist-safe)
+# Request side: registry name -> mcp__ wire name (no single-underscore leaks)
 # ---------------------------------------------------------------------------
 
 class TestAnthropicOAuthOutgoingPrefix:
-    """build_anthropic_kwargs must emit names outside Anthropic's OAuth
-    ``^mcp_[a-z0-9_]+$`` blocklist while preserving reversible names."""
+    """build_anthropic_kwargs must emit ZERO single-underscore ``mcp_`` names on
+    the OAuth wire — bare names and MCP server names both land on ``mcp__``."""
 
     def _build(self, tools, is_oauth=True):
         from agent.anthropic_adapter import build_anthropic_kwargs
@@ -189,19 +191,20 @@ class TestAnthropicOAuthOutgoingPrefix:
             is_oauth=is_oauth,
         )
 
-    def test_oauth_capitalizes_bare_tool_name(self):
-        """OAuth + bare name -> ``mcp_`` prefix with capitalized suffix."""
+    def test_oauth_adds_double_prefix_to_bare_tool_name(self):
+        """OAuth + bare name -> ``mcp__`` prefix added."""
         kwargs = self._build([{
             "type": "function",
             "function": {"name": "read_file", "description": "x", "parameters": {}},
         }])
-        assert [t["name"] for t in kwargs["tools"]] == ["mcp_Read_file"]
+        assert [t["name"] for t in kwargs["tools"]] == ["mcp__read_file"]
 
-    def test_oauth_capitalizes_single_underscore_mcp_server_tool(self):
-        """OAuth + ``mcp_<server>_<tool>`` -> capitalized after prefix.
+    def test_oauth_promotes_single_underscore_mcp_server_tool(self):
+        """OAuth + ``mcp_<server>_<tool>`` -> promoted to double underscore.
 
-        MCP server tools must not be skipped and left as all-lowercase
-        ``mcp_...`` names that match Anthropic's OAuth blocklist.
+        This is the gap left by the bare constant swap: MCP server tools used
+        to be *skipped* and went on the wire single-underscore, still tripping
+        the classifier.  They must become ``mcp__`` and NOT be double-prefixed.
         """
         kwargs = self._build([{
             "type": "function",
@@ -212,7 +215,9 @@ class TestAnthropicOAuthOutgoingPrefix:
             },
         }])
         names = [t["name"] for t in kwargs["tools"]]
-        assert names == ["mcp_Linear_get_issue"]
+        assert names == ["mcp__linear_get_issue"]
+        # never double-prefixed
+        assert not any(n.startswith("mcp__mcp_") for n in names)
 
     def test_oauth_already_double_prefixed_left_alone(self):
         """OAuth + already-``mcp__`` name -> unchanged (no triple underscore)."""
@@ -222,10 +227,8 @@ class TestAnthropicOAuthOutgoingPrefix:
         }])
         assert [t["name"] for t in kwargs["tools"]] == ["mcp__already"]
 
-    def test_oauth_no_blocklisted_mcp_name_on_wire(self):
-        """Mixed set: every wire name avoids the OAuth mcp_ blocklist."""
-        from agent.anthropic_adapter import _OAUTH_BLOCKED_TOOL_NAME_RE
-
+    def test_oauth_no_single_underscore_mcp_on_wire(self):
+        """Mixed set: every wire name is bare-free of single-underscore mcp_."""
         kwargs = self._build([
             {"type": "function", "function": {"name": "read_file",
                                               "description": "x", "parameters": {}}},
@@ -235,9 +238,10 @@ class TestAnthropicOAuthOutgoingPrefix:
                                               "description": "z", "parameters": {}}},
         ])
         names = sorted(t["name"] for t in kwargs["tools"])
-        assert names == ["mcp_Linear_get_issue", "mcp_Read_file", "mcp_Terminal"]
+        assert names == ["mcp__linear_get_issue", "mcp__read_file", "mcp__terminal"]
+        # The core invariant: NOTHING single-underscore reaches the wire.
         for n in names:
-            assert not _OAUTH_BLOCKED_TOOL_NAME_RE.match(n)
+            assert not (n.startswith("mcp_") and not n.startswith("mcp__"))
 
     def test_non_oauth_path_untouched(self):
         """Non-OAuth requests never get the prefix — schemas pass through as-is."""

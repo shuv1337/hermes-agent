@@ -84,16 +84,11 @@ class AnthropicTransport(ProviderTransport):
         to OpenAI finish_reason, and collects reasoning_details in provider_data.
         """
         import json
-        from agent.anthropic_adapter import (
-            _decode_oauth_tool_name,
-            _sanitize_replay_block,
-            _to_plain_data,
-        )
+        from agent.anthropic_adapter import _to_plain_data, _sanitize_replay_block
         from agent.transports.types import ToolCall
 
         strip_tool_prefix = kwargs.get("strip_tool_prefix", False)
-        canonical_tool_names = kwargs.get("canonical_tool_names")
-        legacy_double_mcp_prefix = "mcp__"
+        _MCP_PREFIX = "mcp__"
 
         text_parts = []
         reasoning_parts = []
@@ -136,24 +131,26 @@ class AnthropicTransport(ProviderTransport):
                     reasoning_details.append(block_dict)
             elif block.type == "tool_use":
                 name = block.name
-                if strip_tool_prefix:
-                    if name.startswith(legacy_double_mcp_prefix):
-                        # Backward-compatible decode for older OAuth wire names
-                        # that used ``mcp__`` to dodge Anthropic's mcp_ filter.
-                        from tools.registry import registry as _tool_registry
-
-                        if not _tool_registry.get_entry(name):
-                            bare = name[len(legacy_double_mcp_prefix):]
-                            single = "mcp_" + bare
-                            if _tool_registry.get_entry(single):
-                                name = single
-                            elif _tool_registry.get_entry(bare):
-                                name = bare
-                    else:
-                        name = _decode_oauth_tool_name(
-                            name,
-                            canonical_names=canonical_tool_names,
-                        )
+                if strip_tool_prefix and name.startswith(_MCP_PREFIX):
+                    # On the OAuth wire every tool carries a double-underscore
+                    # ``mcp__`` prefix (added in build_anthropic_kwargs to avoid
+                    # Anthropic's single-underscore third-party classifier).
+                    # Reverse it back to the name the registry/dispatcher knows.
+                    # Two original forms map onto the same ``mcp__`` wire name:
+                    #   ``mcp__read_file``       <- bare native tool ``read_file``
+                    #   ``mcp__linear_get_issue`` <- MCP server tool
+                    #                                ``mcp_linear_get_issue``
+                    # Resolve by registry lookup, preferring whichever original
+                    # is actually registered; never rewrite a name the LLM used
+                    # that already resolves natively. GH-25255.
+                    from tools.registry import registry as _tool_registry
+                    if not _tool_registry.get_entry(name):
+                        bare = name[len(_MCP_PREFIX):]            # read_file
+                        single = "mcp_" + bare                    # mcp_read_file / mcp_linear_get_issue
+                        if _tool_registry.get_entry(single):
+                            name = single
+                        elif _tool_registry.get_entry(bare):
+                            name = bare
                 tool_calls.append(
                     ToolCall(
                         id=block.id,
