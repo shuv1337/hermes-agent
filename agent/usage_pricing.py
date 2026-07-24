@@ -170,6 +170,31 @@ _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
         source_url="https://openai.com/index/previewing-gpt-5-6-sol/",
         pricing_version="openai-gpt-5.6-2026-07",
     ),
+    # ── Anthropic Claude Opus 5 ──────────────────────────────────────────
+    # Drop-in upgrade from Opus 4.8 at identical $5/$25 base pricing, so no
+    # long-context or generation premium to encode.
+    # NOTE: Opus 5 lowers the minimum cacheable prefix to 512 tokens (down
+    # from 1024 on 4.8).  That affects whether a cache entry is created at
+    # all, not the per-token rate, so these figures are unchanged.
+    #
+    # No separate ``-fast`` row: unlike Opus 4.8, Opus 5 has no distinct
+    # fast model ID — fast mode is the ``speed: "fast"`` parameter, and usage
+    # comes back under the base model ID. A run with fast mode enabled bills
+    # at $10/$50 but is tracked here at $5/$25. Same pre-existing gap as
+    # Opus 4.6 fast, which likewise has no pricing row.
+    # Source: https://platform.claude.com/docs/en/about-claude/pricing
+    (
+        "anthropic",
+        "claude-opus-5",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("5.00"),
+        output_cost_per_million=Decimal("25.00"),
+        cache_read_cost_per_million=Decimal("0.50"),
+        cache_write_cost_per_million=Decimal("6.25"),
+        source="official_docs_snapshot",
+        source_url="https://platform.claude.com/docs/en/about-claude/pricing",
+        pricing_version="anthropic-pricing-2026-07",
+    ),
     # ── Anthropic Claude 4.8 ─────────────────────────────────────────────
     # Same $5/$25 base pricing as 4.6/4.7.  Fast-mode variant is a separate
     # model ID with 2x premium (vs the 6x premium on older Opus generations).

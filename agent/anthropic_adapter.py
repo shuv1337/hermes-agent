@@ -113,12 +113,40 @@ _NO_XHIGH_CLAUDE_SUBSTRINGS = (
     "claude-sonnet-4-6", "claude-sonnet-4.6",
 )
 
+# Claude models where *omitting* the ``thinking`` field still runs adaptive
+# thinking.  On 4.6/4.7/4.8 an absent ``thinking`` means no thinking, so
+# "reasoning off" needed no wire representation.  Opus 5 and Sonnet 5 flipped
+# that default: staying silent now spends thinking tokens against max_tokens
+# and can truncate a response the caller sized for answer text alone.  These
+# models need an explicit ``{"type": "disabled"}`` to actually turn it off.
+_THINKING_ON_BY_DEFAULT_CLAUDE_SUBSTRINGS = (
+    "claude-opus-5",
+    "claude-sonnet-5",
+)
+
+# Claude models where thinking cannot be switched off at all — an explicit
+# ``{"type": "disabled"}`` returns HTTP 400.  Omitting the field is the only
+# valid way to express "no preference" here, so these must NOT get the
+# explicit-disable treatment above.
+_THINKING_ALWAYS_ON_CLAUDE_SUBSTRINGS = (
+    "claude-fable",
+    "claude-mythos",
+)
+
 
 def _is_claude_model(model: str | None) -> bool:
     return "claude" in (model or "").lower()
 
 
-_FAST_MODE_SUPPORTED_SUBSTRINGS = ("opus-4-6", "opus-4.6")
+# Models that take fast mode via the native ``speed: "fast"`` request
+# parameter: Opus 4.6 and Opus 5. Opus 4.7 400s on the parameter.
+#
+# Opus 4.8 is deliberately absent — Hermes reaches 4.8 fast through the
+# separate ``anthropic/claude-opus-4.8-fast`` model ID rather than the
+# parameter (see d89e7a3cd and test_supports_fast_mode_predicate). Opus 5
+# has no such split model ID, so the parameter is the only route for it.
+# Matched after normalizing dots to hyphens.
+_FAST_MODE_SUPPORTED_SUBSTRINGS = ("opus-4-6", "opus-5")
 
 # ── Max output token limits per Anthropic model ───────────────────────
 # Source: Anthropic docs + Cline model catalog.  Anthropic's API requires
@@ -127,6 +155,8 @@ _FAST_MODE_SUPPORTED_SUBSTRINGS = ("opus-4-6", "opus-4.6")
 _ANTHROPIC_OUTPUT_LIMITS = {
     # Mythos-class named models (claude-fable-5, …) — 1M context, reasoning
     "claude-fable":      128_000,
+    # Claude Opus 5
+    "claude-opus-5":     128_000,
     # Claude Sonnet 5
     "claude-sonnet-5":   128_000,
     # Claude 4.8
@@ -298,15 +328,42 @@ def _forbids_sampling_params(model: str) -> bool:
     return not any(v in m for v in _LEGACY_MANUAL_THINKING_CLAUDE_SUBSTRINGS)
 
 
-def _supports_fast_mode(model: str) -> bool:
-    """Return True for models that support Anthropic Fast Mode (speed=fast).
+def _requires_explicit_thinking_disable(model: str) -> bool:
+    """Return True when "reasoning off" must be sent as ``thinking.disabled``.
 
-    Per Anthropic docs, fast mode is currently supported on Opus 4.6 only.
-    Sending ``speed: "fast"`` to any other Claude model (including Opus 4.7)
-    returns HTTP 400. This guard prevents silently 400'ing when stale config
-    or older callers leave fast mode enabled across a model upgrade.
+    Only for Claude models that think by default when the field is absent
+    (Opus 5, Sonnet 5).  Fable/Mythos reject an explicit disable, and every
+    older Claude family treats an absent ``thinking`` as off already — both
+    are excluded so the emitted request is unchanged for them.
+
+    Unknown Claude models default to False.  Unlike the adaptive-thinking and
+    sampling-param gates, guessing wrong here is not symmetric: emitting a
+    disable a model rejects is an outright 400, whereas omitting it on a
+    thinks-by-default model costs tokens but still returns an answer.
     """
-    return any(v in model for v in _FAST_MODE_SUPPORTED_SUBSTRINGS)
+    if not _is_claude_model(model):
+        return False
+    m = model.lower().replace(".", "-")
+    if any(v in m for v in _THINKING_ALWAYS_ON_CLAUDE_SUBSTRINGS):
+        return False
+    return any(v in m for v in _THINKING_ON_BY_DEFAULT_CLAUDE_SUBSTRINGS)
+
+
+def _supports_fast_mode(model: str) -> bool:
+    """Return True for models that take fast mode via the ``speed`` parameter.
+
+    Opus 4.6 and Opus 5. Sending ``speed: "fast"`` to Opus 4.7 returns HTTP
+    400, and Opus 4.8 routes fast mode through its own model ID instead, so
+    both stay False here. This guard prevents silently 400'ing when stale
+    config or older callers leave fast mode enabled across a model upgrade.
+
+    Fast mode is Claude-API only — Bedrock, Vertex, and Foundry reject it.
+    The caller pairs this with ``_is_third_party_anthropic_endpoint``.
+    """
+    return any(
+        v in model.lower().replace(".", "-")
+        for v in _FAST_MODE_SUPPORTED_SUBSTRINGS
+    )
 
 
 # Beta headers for enhanced features that are safe on ordinary/native Anthropic
@@ -2532,9 +2589,9 @@ def build_anthropic_kwargs(
     thinking block signatures are stripped (they are Anthropic-proprietary).
 
     When *fast_mode* is True, adds ``extra_body["speed"] = "fast"`` and the
-    fast-mode beta header for ~2.5x faster output throughput on Opus 4.6.
-    Currently only supported on native Anthropic endpoints (not third-party
-    compatible ones).
+    fast-mode beta header for ~2.5x faster output throughput on Opus 4.6 and
+    Opus 5. Currently only supported on native Anthropic endpoints (not
+    third-party compatible ones).
     """
     system, anthropic_messages = convert_messages_to_anthropic(
         messages, base_url=base_url, model=model
@@ -2686,6 +2743,15 @@ def build_anthropic_kwargs(
                 # Anthropic requires temperature=1 when thinking is enabled on older models
                 kwargs["temperature"] = 1
                 kwargs["max_tokens"] = max(effective_max_tokens, budget + 4096)
+        elif _requires_explicit_thinking_disable(model):
+            # Opus 5 / Sonnet 5 think by default, so staying silent here would
+            # quietly ignore the caller's "reasoning off" and bill for thinking
+            # tokens out of max_tokens. Say it on the wire instead.
+            #
+            # Deliberately no ``output_config`` alongside this: Opus 5 rejects
+            # a disable paired with xhigh/max effort, and the server default
+            # (high) is within the allowed range.
+            kwargs["thinking"] = {"type": "disabled"}
 
     # ── Strip sampling params on 4.7+ ─────────────────────────────────
     # Opus 4.7 rejects any non-default temperature/top_p/top_k with a 400.
@@ -2696,10 +2762,10 @@ def build_anthropic_kwargs(
         for _sampling_key in ("temperature", "top_p", "top_k"):
             kwargs.pop(_sampling_key, None)
 
-    # ── Fast mode (Opus 4.6 only) ────────────────────────────────────
+    # ── Fast mode (Opus 4.6 / Opus 5) ────────────────────────────────
     # Adds extra_body.speed="fast" + the fast-mode beta header for ~2.5x
-    # output speed. Per Anthropic docs, fast mode is only supported on
-    # Opus 4.6 — Opus 4.7 and other models 400 on the speed parameter.
+    # output speed. Opus 4.7 400s on the speed parameter, and Opus 4.8 uses
+    # a separate model ID rather than this parameter.
     # Only for native Anthropic endpoints — third-party providers would
     # reject the unknown beta header and speed parameter.
     if (
