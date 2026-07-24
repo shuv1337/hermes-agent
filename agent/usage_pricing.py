@@ -103,25 +103,6 @@ _UTC_NOW = lambda: datetime.now(timezone.utc)
 # Official docs snapshot entries. Models whose published pricing and cache
 # semantics are stable enough to encode exactly.
 _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
-    # ── Anthropic Claude Sonnet 5 ────────────────────────────────────────
-    # $3/$15 standard pricing, unchanged from Sonnet 4.6 (new tokenizer
-    # produces ~30% more tokens for the same text, so cost-per-request
-    # differs even though cost-per-token doesn't). Introductory pricing of
-    # $2/$10 applies through 2026-08-31; this snapshot reflects the
-    # standard rate that follows.
-    # Source: https://platform.claude.com/docs/en/about-claude/models/whats-new-sonnet-5
-    (
-        "anthropic",
-        "claude-sonnet-5",
-    ): PricingEntry(
-        input_cost_per_million=Decimal("3.00"),
-        output_cost_per_million=Decimal("15.00"),
-        cache_read_cost_per_million=Decimal("0.30"),
-        cache_write_cost_per_million=Decimal("3.75"),
-        source="official_docs_snapshot",
-        source_url="https://platform.claude.com/docs/en/about-claude/pricing",
-        pricing_version="anthropic-pricing-2026-06",
-    ),
     # ── OpenAI GPT-5.6 series (Sol/Terra/Luna) ───────────────────────────
     # Announced in limited preview 2026-06-26; GA 2026-07-09 at the same
     # rates (Sol $5/$30, Terra $2.50/$15, Luna $1/$6 per 1M in/out). Cache
@@ -226,7 +207,17 @@ _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
     # ── Anthropic Claude Sonnet 5 ────────────────────────────────────────
     # Launched 2026-06-30. Introductory pricing ($2/$10 per MTok) runs
     # through 2026-08-31, after which it reverts to $3/$15 (matching
-    # Sonnet 4.6). Update this entry when the intro window closes.
+    # Sonnet 4.6, whose per-token rate is unchanged — the new tokenizer
+    # produces ~30% more tokens for the same text, so cost-per-request
+    # still differs). Update this entry when the intro window closes.
+    #
+    # This is the single source of truth for the key. A duplicate
+    # ("anthropic", "claude-sonnet-5") entry carrying the post-intro
+    # $3/$15 rate used to sit earlier in this literal, where the later
+    # key silently won and left it dead — two conflicting rates in one
+    # file, only one of them reachable. Removed upstream in f6abfc05b.
+    # Don't reintroduce it to pre-encode the reversion; when the intro
+    # window closes, edit the figures below instead.
     # Source: https://platform.claude.com/docs/en/about-claude/pricing
     (
         "anthropic",

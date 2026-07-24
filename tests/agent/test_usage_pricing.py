@@ -1,3 +1,4 @@
+from decimal import Decimal
 from types import SimpleNamespace
 
 from agent.usage_pricing import (
@@ -257,8 +258,15 @@ def test_nous_portal_pricing_preserves_vendor_prefixed_model_ids(monkeypatch):
 
 
 def test_claude_sonnet_5_pricing_entry_exists():
-    """claude-sonnet-5 must have a pricing entry ($3/$15 per Mtok, unchanged
-    from Sonnet 4.6) so sessions don't show as unknown cost.
+    """claude-sonnet-5 must resolve to exactly one pricing entry so sessions
+    don't show as unknown cost.
+
+    Asserts the cache rates as *ratios* of the input rate rather than fixed
+    dollar figures: Sonnet 5 is on introductory pricing through 2026-08-31,
+    after which the entry legitimately changes to $3/$15. Pinning the
+    figures here made this a change-detector that fails on a correct price
+    update — and it previously masked a duplicate dict key by agreeing with
+    the shadowed entry instead of the reachable one.
     """
     entry = get_pricing_entry(
         "claude-sonnet-5",
@@ -266,13 +274,34 @@ def test_claude_sonnet_5_pricing_entry_exists():
     )
 
     assert entry is not None
-    assert float(entry.input_cost_per_million) == 3.00
-    assert float(entry.output_cost_per_million) == 15.00
-    assert float(entry.cache_read_cost_per_million) == 0.30
-    assert float(entry.cache_write_cost_per_million) == 3.75
+    # Standard Anthropic cache multipliers: read 0.1x input, write 1.25x.
+    assert entry.cache_read_cost_per_million == entry.input_cost_per_million / 10
+    assert entry.cache_write_cost_per_million == entry.input_cost_per_million * Decimal("1.25")
+    # Output is 5x input across the Sonnet line, intro rate or not.
+    assert entry.output_cost_per_million == entry.input_cost_per_million * 5
+
+
+def test_claude_sonnet_5_no_duplicate_pricing_key():
+    """Regression guard for the duplicate ("anthropic", "claude-sonnet-5")
+    key removed upstream in f6abfc05b.
+
+    A repeated key in a dict literal is silently legal — the last one wins
+    and the other becomes unreachable — so this can only be caught by
+    reading the source, which the file itself cannot do at runtime. Assert
+    instead that the reachable entry is the intro-priced one the maintainers
+    chose to keep.
+    """
+    entry = get_pricing_entry("claude-sonnet-5", provider="anthropic")
+
+    assert entry is not None
+    assert entry.pricing_version == "anthropic-pricing-2026-06-intro"
 
 
 def test_claude_sonnet_5_estimate_usage_cost():
+    """Cost estimation must agree with whatever the table currently holds."""
+    entry = get_pricing_entry("claude-sonnet-5", provider="anthropic")
+    assert entry is not None
+
     result = estimate_usage_cost(
         "claude-sonnet-5",
         CanonicalUsage(input_tokens=1_000_000, output_tokens=500_000),
@@ -281,8 +310,10 @@ def test_claude_sonnet_5_estimate_usage_cost():
 
     assert result.status == "estimated"
     assert result.amount_usd is not None
-    # 1M input × $3/M + 500K output × $15/M = $3 + $7.5 = $10.5
-    assert float(result.amount_usd) == 10.5
+    # 1M input × input_rate + 500K output × output_rate, derived from the
+    # entry so the intro→standard price change doesn't break this test.
+    expected = entry.input_cost_per_million + (entry.output_cost_per_million / 2)
+    assert result.amount_usd == expected
 
 
 def test_deepseek_v4_pro_pricing_entry_exists():
