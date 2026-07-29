@@ -128,3 +128,40 @@ class TestEnvFileParsing:
         assert ss.build_profile_secret_scope(tmp_path) == {
             "ANTHROPIC_API_KEY": "sk-profile"
         }
+
+    def test_build_profile_secret_scope_merges_external_vault(
+        self, tmp_path, monkeypatch
+    ):
+        """Vault-only tokens must land in the multiplex scope.
+
+        Multiplex mode treats the profile scope as sole credential authority.
+        Bitwarden etc. write into os.environ at process start, but
+        build_profile_secret_scope previously only read .env — so vault-only
+        TELEGRAM_BOT_TOKEN never enabled the adapter.
+        """
+        (tmp_path / ".env").write_text(
+            "BWS_ACCESS_TOKEN=bws-bootstrap\nLOCAL_ONLY=from-dotenv\n"
+        )
+
+        def _fake_apply_all(cfg, home_path, environ=None):
+            assert environ is not None
+            assert environ.get("BWS_ACCESS_TOKEN") == "bws-bootstrap"
+            # Simulate Bitwarden bulk apply into the private environ.
+            environ["TELEGRAM_BOT_TOKEN"] = "vault-telegram-token"
+            return None
+
+        monkeypatch.setattr(
+            "agent.secret_sources.registry.apply_all", _fake_apply_all
+        )
+        import hermes_cli.env_loader as el
+
+        monkeypatch.setattr(
+            el,
+            "_load_secrets_config",
+            lambda home: {"bitwarden": {"enabled": True}},
+        )
+
+        scope = ss.build_profile_secret_scope(tmp_path)
+        assert scope["TELEGRAM_BOT_TOKEN"] == "vault-telegram-token"
+        assert scope["BWS_ACCESS_TOKEN"] == "bws-bootstrap"
+        assert scope["LOCAL_ONLY"] == "from-dotenv"

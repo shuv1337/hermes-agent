@@ -194,12 +194,82 @@ def load_env_file(env_path: Path) -> Dict[str, str]:
     return secrets
 
 
+def _merge_external_secrets_into_scope(
+    scope: Dict[str, str], hermes_home: Path
+) -> None:
+    """Layer Bitwarden / 1Password / etc. secrets into a profile scope.
+
+    Multiplex mode installs this scope as the *sole* credential authority for
+    a turn (``get_secret`` does not fall through to ``os.environ``). External
+    vault secrets are applied into ``os.environ`` at process start by
+    ``load_hermes_dotenv``, but never into the profile ``.env`` file — so
+    without this merge, vault-only tokens (e.g. ``TELEGRAM_BOT_TOKEN`` from
+    Bitwarden) are invisible under multiplex and the platform never enables.
+
+    Precedence matches startup load: profile ``.env`` wins over vault values
+    unless the source is configured with ``override_existing: true``. Fail-open
+    on any error so a misconfigured vault cannot block gateway startup.
+    """
+    try:
+        from hermes_cli.env_loader import _load_secrets_config
+        from agent.secret_sources.registry import apply_all
+    except Exception:
+        return
+
+    try:
+        cfg = _load_secrets_config(Path(hermes_home))
+    except Exception:
+        return
+    if not cfg:
+        return
+
+    # Bootstrap tokens (BWS_ACCESS_TOKEN, OP_SERVICE_ACCOUNT_TOKEN, …) live in
+    # the profile .env and must be visible to source fetchers. Seed a private
+    # environ from the scope, then fall back to process env for any missing
+    # bootstrap key so secondary profiles can reuse the default's vault login
+    # when they share the same secrets project.
+    environ: Dict[str, str] = dict(scope)
+    for bootstrap_key in (
+        "BWS_ACCESS_TOKEN",
+        "BWS_SERVER_URL",
+        "OP_SERVICE_ACCOUNT_TOKEN",
+        "OP_CONNECT_HOST",
+        "OP_CONNECT_TOKEN",
+    ):
+        if not environ.get(bootstrap_key):
+            parent = os.environ.get(bootstrap_key)
+            if parent:
+                environ[bootstrap_key] = parent
+
+    try:
+        apply_all(cfg, Path(hermes_home), environ=environ)
+    except Exception:
+        return
+
+    # Copy vault-applied keys back. apply_all already honored override_existing
+    # against the seeded scope; only take keys that are now present.
+    for key, value in environ.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            continue
+        if _is_global_env(key):
+            continue
+        scope[key] = value
+
+
 def build_profile_secret_scope(hermes_home: Path) -> Dict[str, str]:
-    """Build a profile's secret mapping from its ``<home>/.env``.
+    """Build a profile's secret mapping from its ``<home>/.env`` (+ vaults).
 
     Returns a fresh dict (safe to install via ``set_secret_scope``). Genuinely
     global vars are intentionally NOT copied in — ``get_secret`` reads those
     from ``os.environ`` directly, so the scope holds only profile secrets.
+
+    External secret sources configured under ``secrets:`` in the profile's
+    ``config.yaml`` (Bitwarden, 1Password, …) are merged in after the ``.env``
+    parse so multiplex gateways see the same credentials as single-profile
+    mode. Without that merge, vault-only platform tokens never enable their
+    adapters under ``gateway.multiplex_profiles``.
     """
-    return load_env_file(Path(hermes_home) / ".env")
+    scope = load_env_file(Path(hermes_home) / ".env")
+    _merge_external_secrets_into_scope(scope, Path(hermes_home))
+    return scope
 
