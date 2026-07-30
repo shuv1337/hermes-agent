@@ -211,8 +211,45 @@ def load_env_file(env_path: Path) -> Dict[str, str]:
     return secrets
 
 
+def _load_external_secrets_into_scope(
+    scope: Dict[str, str], hermes_home: Path
+) -> None:
+    """Load a profile's configured vaults without mutating process env."""
+    try:
+        from agent.secret_sources.registry import apply_all
+        from hermes_cli.env_loader import _load_secrets_config
+
+        config = _load_secrets_config(hermes_home)
+    except Exception:
+        return
+    if not config:
+        return
+
+    # Source clients need their bootstrap credentials, which may come from
+    # this profile's .env or from the process-level gateway environment.
+    environ = dict(scope)
+    for key in (
+        "BWS_ACCESS_TOKEN",
+        "BWS_SERVER_URL",
+        "OP_SERVICE_ACCOUNT_TOKEN",
+        "OP_CONNECT_HOST",
+        "OP_CONNECT_TOKEN",
+    ):
+        if not environ.get(key) and os.environ.get(key):
+            environ[key] = os.environ[key]
+
+    try:
+        apply_all(config, hermes_home, environ=environ)
+    except Exception:
+        return
+
+    for key, value in environ.items():
+        if isinstance(key, str) and isinstance(value, str) and not _is_global_env(key):
+            scope[key] = value
+
+
 def build_profile_secret_scope(hermes_home: Path) -> Dict[str, str]:
-    """Build a profile's secret mapping from its ``<home>/.env``.
+    """Build a profile's secret mapping from its ``<home>/.env`` and vaults.
 
     Returns a fresh dict (safe to install via ``set_secret_scope``). Genuinely
     global vars are intentionally NOT copied in — ``get_secret`` reads those
@@ -231,5 +268,11 @@ def build_profile_secret_scope(hermes_home: Path) -> Dict[str, str]:
         if _is_global_env(key):
             continue
         secrets[key] = value
+
+    # Multiplex startup can build a secondary profile's scope before the
+    # regular dotenv path has populated its per-home snapshot. Fetch into a
+    # private mapping so vault-only credentials remain profile-isolated.
+    if not external_secrets:
+        _load_external_secrets_into_scope(secrets, home)
 
     return secrets

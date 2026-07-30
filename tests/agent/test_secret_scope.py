@@ -117,9 +117,39 @@ class TestEnvFileParsing:
 
 
     def test_build_profile_secret_scope(self, tmp_path):
-        (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-profile\n")
+        (tmp_path / ".env").write_text(
+            "ANTHROPIC_API_KEY=sk-profile\n", encoding="utf-8"
+        )
         assert ss.build_profile_secret_scope(tmp_path) == {
             "ANTHROPIC_API_KEY": "sk-profile"
+        }
+
+    def test_build_profile_secret_scope_loads_vault_without_snapshot(
+        self, tmp_path, monkeypatch
+    ):
+        (tmp_path / ".env").write_text(
+            "BWS_ACCESS_TOKEN=bws-bootstrap\nLOCAL_ONLY=from-dotenv\n",
+            encoding="utf-8",
+        )
+
+        def fake_apply_all(config, home, environ=None):
+            assert config == {"bitwarden": {"enabled": True}}
+            assert home == tmp_path
+            assert environ["BWS_ACCESS_TOKEN"] == "bws-bootstrap"
+            environ["TELEGRAM_BOT_TOKEN"] = "vault-telegram-token"
+
+        monkeypatch.setattr(
+            "agent.secret_sources.registry.apply_all", fake_apply_all
+        )
+        monkeypatch.setattr(
+            "hermes_cli.env_loader._load_secrets_config",
+            lambda home: {"bitwarden": {"enabled": True}},
+        )
+
+        assert ss.build_profile_secret_scope(tmp_path) == {
+            "BWS_ACCESS_TOKEN": "bws-bootstrap",
+            "LOCAL_ONLY": "from-dotenv",
+            "TELEGRAM_BOT_TOKEN": "vault-telegram-token",
         }
 
     def test_build_profile_secret_scope_includes_home_external_secrets(
