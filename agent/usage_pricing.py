@@ -151,31 +151,6 @@ _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
         source_url="https://openai.com/index/previewing-gpt-5-6-sol/",
         pricing_version="openai-gpt-5.6-2026-07",
     ),
-    # ── Anthropic Claude Opus 5 ──────────────────────────────────────────
-    # Drop-in upgrade from Opus 4.8 at identical $5/$25 base pricing, so no
-    # long-context or generation premium to encode.
-    # NOTE: Opus 5 lowers the minimum cacheable prefix to 512 tokens (down
-    # from 1024 on 4.8).  That affects whether a cache entry is created at
-    # all, not the per-token rate, so these figures are unchanged.
-    #
-    # No separate ``-fast`` row: unlike Opus 4.8, Opus 5 has no distinct
-    # fast model ID — fast mode is the ``speed: "fast"`` parameter, and usage
-    # comes back under the base model ID. A run with fast mode enabled bills
-    # at $10/$50 but is tracked here at $5/$25. Same pre-existing gap as
-    # Opus 4.6 fast, which likewise has no pricing row.
-    # Source: https://platform.claude.com/docs/en/about-claude/pricing
-    (
-        "anthropic",
-        "claude-opus-5",
-    ): PricingEntry(
-        input_cost_per_million=Decimal("5.00"),
-        output_cost_per_million=Decimal("25.00"),
-        cache_read_cost_per_million=Decimal("0.50"),
-        cache_write_cost_per_million=Decimal("6.25"),
-        source="official_docs_snapshot",
-        source_url="https://platform.claude.com/docs/en/about-claude/pricing",
-        pricing_version="anthropic-pricing-2026-07",
-    ),
     # ── Anthropic Claude 4.8 ─────────────────────────────────────────────
     # Same $5/$25 base pricing as 4.6/4.7.  Fast-mode variant is a separate
     # model ID with 2x premium (vs the 6x premium on older Opus generations).
@@ -207,17 +182,7 @@ _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
     # ── Anthropic Claude Sonnet 5 ────────────────────────────────────────
     # Launched 2026-06-30. Introductory pricing ($2/$10 per MTok) runs
     # through 2026-08-31, after which it reverts to $3/$15 (matching
-    # Sonnet 4.6, whose per-token rate is unchanged — the new tokenizer
-    # produces ~30% more tokens for the same text, so cost-per-request
-    # still differs). Update this entry when the intro window closes.
-    #
-    # This is the single source of truth for the key. A duplicate
-    # ("anthropic", "claude-sonnet-5") entry carrying the post-intro
-    # $3/$15 rate used to sit earlier in this literal, where the later
-    # key silently won and left it dead — two conflicting rates in one
-    # file, only one of them reachable. Removed upstream in f6abfc05b.
-    # Don't reintroduce it to pre-encode the reversion; when the intro
-    # window closes, edit the figures below instead.
+    # Sonnet 4.6). Update this entry when the intro window closes.
     # Source: https://platform.claude.com/docs/en/about-claude/pricing
     (
         "anthropic",
@@ -548,13 +513,91 @@ _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
     # Google Gemini
     (
         "google",
+        "gemini-3.6-flash",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("1.50"),
+        output_cost_per_million=Decimal("7.50"),
+        cache_read_cost_per_million=Decimal("0.15"),
+        source="official_docs_snapshot",
+        source_url="https://ai.google.dev/gemini-api/docs/pricing",
+        pricing_version="google-pricing-2026-07-28",
+    ),
+    (
+        "google",
+        "gemini-3.5-flash",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("1.50"),
+        output_cost_per_million=Decimal("9.00"),
+        cache_read_cost_per_million=Decimal("0.15"),
+        source="official_docs_snapshot",
+        source_url="https://ai.google.dev/pricing",
+        pricing_version="google-pricing-2026-07-07",
+    ),
+    (
+        "google",
+        "gemini-3.5-flash-lite",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("0.30"),
+        output_cost_per_million=Decimal("2.50"),
+        cache_read_cost_per_million=Decimal("0.03"),
+        source="official_docs_snapshot",
+        source_url="https://ai.google.dev/gemini-api/docs/pricing",
+        pricing_version="google-pricing-2026-07-28",
+    ),
+    (
+        "google",
+        "gemini-3.1-pro",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("2.00"),
+        output_cost_per_million=Decimal("12.00"),
+        cache_read_cost_per_million=Decimal("0.20"),
+        source="official_docs_snapshot",
+        source_url="https://ai.google.dev/pricing",
+        pricing_version="google-pricing-2026-07-07",
+    ),
+    (
+        "google",
+        "gemini-3.1-flash-lite",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("0.25"),
+        output_cost_per_million=Decimal("1.50"),
+        cache_read_cost_per_million=Decimal("0.025"),
+        source="official_docs_snapshot",
+        source_url="https://ai.google.dev/pricing",
+        pricing_version="google-pricing-2026-07-07",
+    ),
+    (
+        "google",
+        "gemini-3-pro-preview",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("2.00"),
+        output_cost_per_million=Decimal("12.00"),
+        cache_read_cost_per_million=Decimal("0.20"),
+        source="official_docs_snapshot",
+        source_url="https://ai.google.dev/pricing",
+        pricing_version="google-pricing-2026-07-07",
+    ),
+    (
+        "google",
+        "gemini-3-flash-preview",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("0.50"),
+        output_cost_per_million=Decimal("3.00"),
+        cache_read_cost_per_million=Decimal("0.05"),
+        source="official_docs_snapshot",
+        source_url="https://ai.google.dev/pricing",
+        pricing_version="google-pricing-2026-07-07",
+    ),
+    (
+        "google",
         "gemini-2.5-pro",
     ): PricingEntry(
         input_cost_per_million=Decimal("1.25"),
         output_cost_per_million=Decimal("10.00"),
+        cache_read_cost_per_million=Decimal("0.125"),
         source="official_docs_snapshot",
         source_url="https://ai.google.dev/pricing",
-        pricing_version="google-pricing-2026-03-16",
+        pricing_version="google-pricing-2026-07-07",
     ),
     (
         "google",
@@ -562,9 +605,10 @@ _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
     ): PricingEntry(
         input_cost_per_million=Decimal("0.15"),
         output_cost_per_million=Decimal("0.60"),
+        cache_read_cost_per_million=Decimal("0.015"),
         source="official_docs_snapshot",
         source_url="https://ai.google.dev/pricing",
-        pricing_version="google-pricing-2026-03-16",
+        pricing_version="google-pricing-2026-07-07",
     ),
     (
         "google",
@@ -572,9 +616,10 @@ _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
     ): PricingEntry(
         input_cost_per_million=Decimal("0.10"),
         output_cost_per_million=Decimal("0.40"),
+        cache_read_cost_per_million=Decimal("0.01"),
         source="official_docs_snapshot",
         source_url="https://ai.google.dev/pricing",
-        pricing_version="google-pricing-2026-03-16",
+        pricing_version="google-pricing-2026-07-07",
     ),
     # AWS Bedrock — pricing per the Bedrock pricing page.
     # Bedrock charges the same per-token rates as the model provider but
@@ -913,6 +958,18 @@ for _base_56 in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
     ]
 del _base_56
 
+# The direct Gemini provider currently exposes preview IDs for these two
+# models. Keep the official snapshot keyed by both their documented stable
+# names and the provider's emitted IDs so a catalog selection is billable.
+for _alias, _canonical in {
+    "gemini-3.1-pro-preview": "gemini-3.1-pro",
+    "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
+}.items():
+    _OFFICIAL_DOCS_PRICING[("google", _alias)] = _OFFICIAL_DOCS_PRICING[
+        ("google", _canonical)
+    ]
+del _alias, _canonical
+
 
 def _to_decimal(value: Any) -> Optional[Decimal]:
     if value is None:
@@ -960,11 +1017,17 @@ def resolve_billing_route(
         return BillingRoute(provider="openai", model=model.split("/")[-1], base_url=base_url or "", billing_mode="official_docs_snapshot")
     if provider_name in {"minimax", "minimax-cn"}:
         return BillingRoute(provider=provider_name, model=model.split("/")[-1], base_url=base_url or "", billing_mode="official_docs_snapshot")
-    # Vertex AI hosts the same Gemini models as Google AI Studio; price them
-    # off the gemini official-docs snapshot. Strip the "google/" vendor prefix
-    # the OpenAI-compat endpoint requires so the pricing key matches.
-    if provider_name == "vertex" or base_url_host_matches(base_url or "", "aiplatform.googleapis.com"):
-        return BillingRoute(provider="gemini", model=model.split("/")[-1], base_url=base_url or "", billing_mode="official_docs_snapshot")
+    # Google AI Studio (Gemini) and Vertex AI host the same Gemini models.
+    # Price them off the official docs snapshot — the pricing keys are
+    # keyed on provider='google', so normalize every Google-flavored
+    # provider name/host onto it. Strip the "google/" vendor prefix the
+    # Vertex OpenAI-compat endpoint requires so the pricing key matches.
+    if (
+        provider_name in {"google", "gemini", "vertex", "google-gemini", "google-ai-studio", "google-vertex", "vertex-ai"}
+        or base_url_host_matches(base_url or "", "aiplatform.googleapis.com")
+        or base_url_host_matches(base_url or "", "generativelanguage.googleapis.com")
+    ):
+        return BillingRoute(provider="google", model=model.split("/")[-1], base_url=base_url or "", billing_mode="official_docs_snapshot")
     if provider_name == "fireworks" or base_url_host_matches(base_url or "", "api.fireworks.ai"):
         # Fireworks model ids look like accounts/fireworks/models/<name>;
         # rsplit("/", 1)[-1] yields just <name> which is what the dict keys on.
@@ -1181,8 +1244,8 @@ def normalize_usage(
         output_tokens = _to_int(getattr(response_usage, "completion_tokens", 0))
         details = getattr(response_usage, "prompt_tokens_details", None)
         # Primary: OpenAI-style prompt_tokens_details. Fallback: Anthropic-style
-        # top-level fields that some OpenAI-compatible proxies (OpenRouter, Cline)
-        # expose when routing Claude models — without this
+        # top-level fields that some OpenAI-compatible proxies (OpenRouter, Vercel
+        # AI Gateway, Cline) expose when routing Claude models — without this
         # fallback, cache writes are undercounted as 0 and cache reads can be
         # missed when the proxy only surfaces them at the top level.
         # Port of cline/cline#10266.

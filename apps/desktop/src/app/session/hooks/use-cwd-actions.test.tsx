@@ -37,7 +37,6 @@ function Harness({
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }) {
   const actions = useCwdActions({
-    activeSessionId: activeSessionIdRef.current,
     activeSessionIdRef,
     requestGateway
   })
@@ -75,7 +74,7 @@ describe('useCwdActions draft workspace target', () => {
     )
     await waitFor(() => expect(handle).not.toBeNull())
 
-    let pendingChange!: Promise<'applied' | 'staged' | null>
+    let pendingChange!: Promise<void>
 
     await act(async () => {
       pendingChange = handle!.changeSessionCwd('/stale-workspace')

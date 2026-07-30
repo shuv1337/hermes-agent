@@ -8,7 +8,6 @@ import os
 import shutil
 import stat
 import sys
-import sysconfig
 from contextvars import ContextVar, Token
 from pathlib import Path
 
@@ -79,7 +78,7 @@ def _warn_profile_fallback_once() -> None:
     try:
         fallback_home = _get_platform_default_hermes_home()
         active_path = fallback_home / "active_profile"
-        active = active_path.read_text().strip() if active_path.exists() else ""
+        active = active_path.read_text(encoding="utf-8").strip() if active_path.exists() else ""
     except (UnicodeDecodeError, OSError):
         active = ""
     if active and active != "default":
@@ -191,23 +190,6 @@ def get_default_hermes_root() -> Path:
     return env_path
 
 
-def _get_packaged_data_dir(name: str) -> Path | None:
-    """Return an installed data-files directory if one exists.
-
-    Used to discover bundled skills/optional-skills when Hermes is installed
-    from a wheel that emitted them via setuptools data_files.
-    """
-    candidates = []
-    for scheme in ("data", "purelib", "platlib"):
-        raw = sysconfig.get_path(scheme)
-        if raw:
-            candidates.append(Path(raw) / name)
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return None
-
-
 def get_optional_skills_dir(default: Path | None = None) -> Path:
     """Return the optional-skills directory, honoring package-manager wrappers.
 
@@ -217,9 +199,6 @@ def get_optional_skills_dir(default: Path | None = None) -> Path:
     override = os.getenv("HERMES_OPTIONAL_SKILLS", "").strip()
     if override:
         return Path(override)
-    packaged = _get_packaged_data_dir("optional-skills")
-    if packaged is not None:
-        return packaged
     if default is not None:
         return default
     return get_hermes_home() / "optional-skills"
@@ -236,9 +215,6 @@ def get_optional_mcps_dir(default: Path | None = None) -> Path:
     override = os.getenv("HERMES_OPTIONAL_MCPS", "").strip()
     if override:
         return Path(override)
-    packaged = _get_packaged_data_dir("optional-mcps")
-    if packaged is not None:
-        return packaged
     if default is not None:
         return default
     return get_hermes_home() / "optional-mcps"
@@ -249,22 +225,23 @@ def get_bundled_skills_dir(default: Path | None = None) -> Path:
 
     Resolution order:
         1. ``HERMES_BUNDLED_SKILLS`` env var (Nix wrapper / explicit override)
-        2. Wheel-installed ``<sysconfig data>/skills`` (pip install path)
-        3. Caller-supplied ``default`` (typically the source-checkout path)
-        4. ``<HERMES_HOME>/skills`` last-resort
+        2. Caller-supplied ``default`` (typically the source-checkout path)
+        3. ``<HERMES_HOME>/skills`` last-resort
     """
     override = os.getenv("HERMES_BUNDLED_SKILLS", "").strip()
     if override:
         return Path(override)
-    packaged = _get_packaged_data_dir("skills")
-    if packaged is not None:
-        return packaged
     if default is not None:
         return default
     return get_hermes_home() / "skills"
 
 
-def get_hermes_dir(new_subpath: str, old_name: str) -> Path:
+def get_hermes_dir(
+    new_subpath: str,
+    old_name: str,
+    *,
+    home: Path | None = None,
+) -> Path:
     """Resolve a Hermes subdirectory with backward compatibility.
 
     New installs get the consolidated layout (e.g. ``cache/images``).
@@ -282,12 +259,15 @@ def get_hermes_dir(new_subpath: str, old_name: str) -> Path:
     Args:
         new_subpath: Preferred path relative to HERMES_HOME (e.g. ``"cache/images"``).
         old_name: Legacy path relative to HERMES_HOME (e.g. ``"image_cache"``).
+        home: Optional explicit Hermes home. Profile-aware callers that manage
+            more than one home in the same process use this instead of
+            temporarily mutating the process or context-local HERMES_HOME.
 
     Returns:
         Absolute ``Path`` — legacy location if it exists with content,
         otherwise the new location.
     """
-    home = get_hermes_home()
+    home = home or get_hermes_home()
     old_path = home / old_name
     if _legacy_path_has_content(old_path):
         return old_path
@@ -1192,70 +1172,8 @@ def get_config_path() -> Path:
     return get_hermes_home() / "config.yaml"
 
 
-_SKILLS_DIR_CACHE: dict = {}
-
-
-def _read_skills_dir_override() -> str:
-    """Return the configured primary skills-dir override, or ``""`` if unset.
-
-    Resolution order (first non-empty wins):
-        1. ``HERMES_SKILLS_DIR`` env var
-        2. ``skills.dir`` in ``config.yaml``
-
-    Reads ``config.yaml`` with a small mtime-keyed cache so the hot
-    skill-scan paths don't re-parse YAML on every call.  Kept dependency-light
-    (lazy ``yaml`` import) to preserve this module's import-safety guarantee.
-    """
-    env_override = os.getenv("HERMES_SKILLS_DIR", "").strip()
-    if env_override:
-        return env_override
-
-    config_path = get_config_path()
-    try:
-        stat = config_path.stat()
-    except OSError:
-        return ""
-
-    cache_key = (str(config_path), stat.st_mtime_ns)
-    cached = _SKILLS_DIR_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-
-    value = ""
-    try:
-        import yaml  # lazy: keep module import-safe / dependency-light
-
-        parsed = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        if isinstance(parsed, dict):
-            skills_cfg = parsed.get("skills")
-            if isinstance(skills_cfg, dict):
-                raw = skills_cfg.get("dir")
-                if isinstance(raw, str):
-                    value = raw.strip()
-    except Exception:
-        value = ""
-
-    _SKILLS_DIR_CACHE.clear()
-    _SKILLS_DIR_CACHE[cache_key] = value
-    return value
-
-
 def get_skills_dir() -> Path:
-    """Return the primary skills directory (where new skills are created).
-
-    Defaults to ``<HERMES_HOME>/skills``.  Overridable via the
-    ``HERMES_SKILLS_DIR`` env var or ``skills.dir`` in ``config.yaml`` --
-    this changes BOTH where skills are discovered and where
-    ``skill_manage`` creates new skills.  Relative overrides resolve
-    against ``HERMES_HOME``; ``~`` and ``${VAR}`` are expanded.
-    """
-    override = _read_skills_dir_override()
-    if override:
-        expanded = os.path.expanduser(os.path.expandvars(override))
-        p = Path(expanded)
-        if not p.is_absolute():
-            p = get_hermes_home() / p
-        return p
+    """Return the path to the skills directory under HERMES_HOME."""
     return get_hermes_home() / "skills"
 
 
@@ -1320,3 +1238,5 @@ FINISH_REASON_LENGTH = "length"
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_MODELS_URL = f"{OPENROUTER_BASE_URL}/models"
+
+AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"

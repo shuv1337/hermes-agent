@@ -3,7 +3,7 @@ CLI commands for the DM pairing system.
 
 Usage:
     hermes pairing list              # Show all pending + approved users
-    hermes pairing approve <platform> <code>  # Approve a pairing code
+    hermes pairing approve <platform> <request-id|code>  # Approve a pairing request
     hermes pairing revoke <platform> <user_id> # Revoke user access
     hermes pairing clear-pending     # Clear all expired/pending codes
 """
@@ -39,18 +39,15 @@ def _cmd_list(store):
 
     if pending:
         print(f"\n  Pending Pairing Requests ({len(pending)}):")
-        print(f"  {'Platform':<12} {'Ref':<10} {'User ID':<20} {'Name':<20} {'Age'}")
-        print(f"  {'--------':<12} {'---':<10} {'-------':<20} {'----':<20} {'---'}")
+        print(f"  {'Platform':<12} {'Request ID':<18} {'User ID':<20} {'Name':<20} {'Age'}")
+        print(f"  {'--------':<12} {'----------':<18} {'-------':<20} {'----':<20} {'---'}")
         for p in pending:
             print(
-                f"  {p['platform']:<12} {p['code']:<10} {p['user_id']:<20} "
+                f"  {p['platform']:<12} {(p.get('request_id') or '-'):<18} {p['user_id']:<20} "
                 f"{(p.get('user_name') or ''):<20} {p['age_minutes']}m ago"
             )
-        print(
-            "\n  Note: 'Ref' is a hash prefix to tell requests apart -- it is "
-            "NOT the pairing code.\n  Approve with the code the user received "
-            "in their DM: hermes pairing approve <platform> <code>"
-        )
+        print("\n  Approve with: hermes pairing approve <platform> <request-id>")
+        print("  The code the bot DM'd the user also works if they relay it.")
     else:
         print("\n  No pending pairing requests.")
 
@@ -67,25 +64,14 @@ def _cmd_list(store):
 
 
 def _cmd_approve(store, platform: str, code: str):
-    """Approve a pairing code."""
+    """Approve a pairing request id (from ``pairing list``) or a DM'd code."""
     platform = platform.lower().strip()
-    code = code.upper().strip()
+    code = code.strip()
 
-    # Catch the common mistake of pasting the 'Ref' column (a hash prefix)
-    # from `hermes pairing list` instead of the real code. Fail fast with a
-    # clear hint so it doesn't burn a failed attempt toward lockout.
-    if not store.is_valid_code_format(code):
-        print(
-            f"\n  '{code}' is not a valid pairing code."
-        )
-        print(
-            "  Pairing codes are 8 characters (A-Z, 2-9). The 'Ref' shown by\n"
-            "  'hermes pairing list' is only a hash prefix -- not the code.\n"
-            "  Approve with the code the user received in their DM.\n"
-        )
-        return
-
-    result = store.approve_code(platform, code)
+    if store.looks_like_request_id(code):
+        result = store.approve_request(platform, code)
+    else:
+        result = store.approve_code(platform, code.upper())
     if result:
         uid = result["user_id"]
         name = result.get("user_name") or ""
@@ -111,8 +97,8 @@ def _cmd_approve(store, platform: str, code: str):
             "~/.hermes/platforms/pairing/_rate_limits.json\n".format(platform)
         )
     else:
-        print(f"\n  Code '{code}' not found or expired for platform '{platform}'.")
-        print("  Run 'hermes pairing list' to see pending codes.\n")
+        print(f"\n  Pairing request or code '{code}' not found or expired for platform '{platform}'.")
+        print("  Run 'hermes pairing list' to see pending requests.\n")
 
 
 def _cmd_revoke(store, platform: str, user_id: str):

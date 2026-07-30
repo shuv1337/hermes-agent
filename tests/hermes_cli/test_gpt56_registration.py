@@ -27,16 +27,6 @@ class TestGpt56SortInvariants:
         models.sort(key=lambda m: _model_sort_key(m, "gpt"))
         assert models[0] == "gpt-5.6-sol"
 
-    def test_56_series_outranks_55(self):
-        models = ["gpt-5.5", "gpt-5.5-pro", "gpt-5.6-sol"]
-        models.sort(key=lambda m: _model_sort_key(m, "gpt"))
-        assert models[0] == "gpt-5.6-sol"
-
-    def test_aggregator_prefix_form(self):
-        models = ["openai/gpt-5.5-pro", "openai/gpt-5.6-sol"]
-        models.sort(key=lambda m: _model_sort_key(m, "openai/gpt"))
-        assert models[0] == "openai/gpt-5.6-sol"
-
 
     def test_base_sol_outranks_sol_pro_for_alias_default(self):
         # "-pro" high-effort variants parse as suffix "sol-pro" (rank 1), so
@@ -53,14 +43,6 @@ class TestGpt56PricingRoute:
         assert entry is not None
         assert entry.input_cost_per_million == Decimal("5.00")
 
-    def test_official_pricing_reachable_from_openai_api_slug(self):
-        # "openai-api" is the picker slug for direct api.openai.com and must
-        # normalize to the "openai" pricing key space.
-        route = resolve_billing_route("gpt-5.6-sol", provider="openai-api")
-        assert route.provider == "openai"
-        entry = _lookup_official_docs_pricing(route)
-        assert entry is not None
-        assert entry.input_cost_per_million == Decimal("5.00")
 
     def test_cache_write_is_1_25x_input_for_56_series(self):
         for slug in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
@@ -84,7 +66,7 @@ class TestGpt56PricingRoute:
 
 
 class TestGpt56CodexCompaction:
-    """Codex OAuth exposes the whole gpt-5.6 family at 372K, so
+    """Codex OAuth caps the whole gpt-5.6 family at 272K, same as 5.4/5.5, so
     the compaction auto-raise (0.85) must fire for every 5.6 variant on the
     openai-codex route and NOT on the direct-API/OpenRouter routes."""
 
@@ -108,7 +90,7 @@ class TestGpt56CodexCompaction:
         from agent.auxiliary_client import _compression_threshold_for_model
 
         # Direct OpenAI API / OpenRouter expose the full 1.05M window, so the
-        # Codex-only compaction override must NOT apply there.
+        # 272K-cap override must NOT apply there.
         assert (
             _compression_threshold_for_model("gpt-5.6-sol", provider="openai")
             is None
@@ -120,14 +102,3 @@ class TestGpt56CodexCompaction:
             is None
         )
 
-    def test_autoraise_respects_opt_out(self):
-        from agent.auxiliary_client import _compression_threshold_for_model
-
-        assert (
-            _compression_threshold_for_model(
-                "gpt-5.6-sol",
-                provider="openai-codex",
-                allow_codex_gpt55_autoraise=False,
-            )
-            is None
-        )

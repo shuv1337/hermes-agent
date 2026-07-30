@@ -20,12 +20,13 @@ export function PageHeaderProvider({
 
   // Clear any per-page title / toolbar slots when the path changes. Child routes
   // re-fill these on mount via usePageHeader.
-
+  /* eslint-disable react-hooks/set-state-in-effect */
   useLayoutEffect(() => {
     setTitleOverride(null);
     setAfterTitle(null);
     setEnd(null);
   }, [pathname]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const defaultTitle = useMemo(
     () => resolvePageTitle(pathname, t, pluginTabs),
@@ -35,7 +36,8 @@ export function PageHeaderProvider({
 
   const isChatRoute = pathname === "/chat" || pathname === "/chat/";
   /** Env jump-nav is wide — stack below title on small screens so KEYS stays readable. */
-  const isEnvRoute = pathname === "/env" || pathname.startsWith("/env/");
+  const isEnvRoute =
+    pathname === "/env" || pathname.startsWith("/env/");
 
   const value = useMemo(
     () => ({

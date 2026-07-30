@@ -16,7 +16,6 @@ import base64
 import json
 import logging
 import os
-import re
 import random
 import shutil
 import subprocess
@@ -44,6 +43,8 @@ from gateway.platforms.base import (
     cache_image_from_url,
 )
 from gateway.platforms.helpers import redact_phone
+from gateway.platforms.media_cache import DEFAULT_EXT_TO_MIME, mime_for_ext
+from tools.audio_container import CONTAINER_TO_EXT, sniff_container
 from gateway.platforms.signal_format import markdown_to_signal
 from gateway.platforms.signal_rate_limit import (
     SIGNAL_BATCH_PACING_NOTICE_THRESHOLD,
@@ -100,18 +101,15 @@ def _guess_extension(data: bytes) -> str:
         return ".webp"
     if data[:4] == b"%PDF":
         return ".pdf"
-    if len(data) >= 8 and data[4:8] == b"ftyp":
-        return ".mp4"
-    if data[:4] == b"OggS":
-        return ".ogg"
-    if len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0:
-        # ``0xFF 0xFx`` is shared by MP3 and ADTS AAC. The discriminator
-        # is bits 3-1 of byte 1: ADTS has ``ID=0`` and ``layer=00`` (mask
-        # 0xF6, target 0xF0); MP3 has ``ID=1`` and ``layer`` in {01,10,11}
-        # (mask 0xF6, target in {0xF2, 0xF4, 0xF6}).
-        if (data[1] & 0xF6) == 0xF0:
-            return ".aac"
-        return ".mp3"
+    # Audio/AV containers: delegate to the shared central sniffer
+    # (tools/audio_container.py) — ONE module owns magic-byte container
+    # detection. It handles the brand/form-type disambiguations this
+    # function used to carry locally: RIFF/WAVE vs WEBP (WEBP is claimed
+    # above, before delegation), ftyp audio brands ("M4A ", "M4B ") vs
+    # video brands (isom/mp42/avc1/qt), and MP3 vs ADTS AAC sync words.
+    container = sniff_container(data)
+    if container is not None:
+        return CONTAINER_TO_EXT[container]
     if data[:2] == b"PK":
         return ".zip"
     return ".bin"
@@ -125,18 +123,17 @@ def _is_audio_ext(ext: str) -> bool:
     return ext.lower() in {".mp3", ".wav", ".ogg", ".m4a", ".aac"}
 
 
-_EXT_TO_MIME = {
-    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-    ".gif": "image/gif", ".webp": "image/webp",
-    ".ogg": "audio/ogg", ".mp3": "audio/mpeg", ".wav": "audio/wav",
-    ".m4a": "audio/mp4", ".aac": "audio/aac",
-    ".mp4": "video/mp4", ".pdf": "application/pdf", ".zip": "application/zip",
-}
+# Historical Signal ext→mime table now lives in
+# gateway.platforms.media_cache.DEFAULT_EXT_TO_MIME (byte-identical);
+# kept as a module alias for backwards compatibility with any callers
+# that referenced the private name.
+_EXT_TO_MIME = DEFAULT_EXT_TO_MIME
 
 
 def _ext_to_mime(ext: str) -> str:
     """Map file extension to MIME type."""
-    return _EXT_TO_MIME.get(ext.lower(), "application/octet-stream")
+    # preserves historical signal mapping (shared table matches verbatim)
+    return mime_for_ext(ext, fallback="application/octet-stream")
 
 
 def _remux_aac_to_m4a(aac_data: bytes) -> Optional[Tuple[bytes, str]]:
@@ -274,19 +271,13 @@ class SignalAdapter(BasePlatformAdapter):
         group_allowed_str = os.getenv("SIGNAL_GROUP_ALLOWED_USERS", "")
         self.group_allow_from = set(_parse_comma_list(group_allowed_str))
 
-        # Mention filter — only respond in groups when the bot account is
-        # @mentioned, unless a narrow bypass such as reply-to-bot applies.
-        # Read from config extra first, then SIGNAL_* env vars.
-        self.require_mention = self._signal_bool_config(
-            "require_mention",
-            "SIGNAL_REQUIRE_MENTION",
-            default=True,
-        )
-        self.reply_to_bot_bypasses_mention = self._signal_bool_config(
-            "reply_to_bot_bypasses_mention",
-            "SIGNAL_REPLY_TO_BOT_BYPASSES_MENTION",
-            default=True,
-        )
+        # Mention filter — only respond in groups when the bot account is @mentioned.
+        # Read from config extra first, then SIGNAL_REQUIRE_MENTION env var.
+        _rm_cfg = extra.get("require_mention")
+        if _rm_cfg is not None:
+            self.require_mention = bool(_rm_cfg)
+        else:
+            self.require_mention = os.getenv("SIGNAL_REQUIRE_MENTION", "false").lower() in ("true", "1", "yes", "on")
 
         # DM allowlist — mirrors SIGNAL_ALLOWED_USERS checked by run.py.
         # Stored here so the reaction hooks can skip unauthorized senders
@@ -381,11 +372,6 @@ class SignalAdapter(BasePlatformAdapter):
             except Exception as e:
                 logger.error("Signal: cannot reach signal-cli at %s: %s", self.http_url, e)
                 return False
-
-            try:
-                await self._resolve_account_uuid()
-            except Exception:
-                logger.debug("Signal: account UUID resolution failed", exc_info=True)
 
             self._running = True
             self._last_sse_activity = time.time()
@@ -605,19 +591,9 @@ class SignalAdapter(BasePlatformAdapter):
         if not data_message:
             return
 
-        # Check for group message.
-        # Modern Signal groups surface on dataMessage.groupV2.id; legacy V1
-        # groups still arrive under dataMessage.groupInfo.groupId. signal-cli
-        # versions differ in which field they expose for V2 groups — some
-        # forward the underlying libsignal envelope verbatim (groupV2), others
-        # normalize everything into groupInfo. Read groupV2 first and fall
-        # back to groupInfo so V2-only groups aren't misrouted as DMs.
+        # Check for group message
         group_info = data_message.get("groupInfo")
-        group_v2 = data_message.get("groupV2")
-        group_id = (
-            (group_v2.get("id") if isinstance(group_v2, dict) else None)
-            or (group_info.get("groupId") if isinstance(group_info, dict) else None)
-        )
+        group_id = group_info.get("groupId") if group_info else None
         is_group = bool(group_id)
 
         # Group message filtering — derived from SIGNAL_GROUP_ALLOWED_USERS:
@@ -643,18 +619,22 @@ class SignalAdapter(BasePlatformAdapter):
         if text and mentions:
             text = _render_mentions(text, mentions)
 
-        if is_group and not self._should_process_group_message(text, data_message, group_id):
-            logger.debug(
-                "Signal: ignoring group message (require_mention=true, bot not mentioned)"
+        # Mention filter: in groups, only process messages that @mention the bot account
+        if is_group and self.require_mention:
+            account_norm = self._account_normalized
+            # Check rendered mention tags OR raw mention metadata
+            mentioned_in_text = account_norm and (
+                f"@{account_norm}" in (text or "")
             )
-            return
-
-        # Strip a leading self-@mention so slash commands typed as
-        # ``@<bot> /status`` reach ``is_command()`` as ``/status``. Without
-        # this the gateway routes the message to the agent as plain text and
-        # the model tries to interpret the command itself. Mirrors WeCom's
-        # leading-@ strip (gateway/platforms/wecom.py).
-        text = self._clean_bot_mention_text(text, data_message)
+            mentioned_in_metadata = any(
+                m.get("number") == account_norm or m.get("uuid") == account_norm
+                for m in (data_message.get("mentions") or [])
+            )
+            if not mentioned_in_text and not mentioned_in_metadata:
+                logger.debug(
+                    "Signal: ignoring group message (require_mention=true, bot not mentioned)"
+                )
+                return
 
         # Strip the bot's own @mention from any group message so the agent
         # doesn't misinterpret "@+155****4567 say hello" as a directive to
@@ -727,7 +707,7 @@ class SignalAdapter(BasePlatformAdapter):
         # Build session source
         source = self.build_source(
             chat_id=chat_id,
-            chat_name=(group_info.get("groupName") if isinstance(group_info, dict) else None) or sender_name,
+            chat_name=group_info.get("groupName") if group_info else sender_name,
             chat_type=chat_type,
             user_id=sender,
             user_name=sender_name or sender,
@@ -787,170 +767,6 @@ class SignalAdapter(BasePlatformAdapter):
                       redact_phone(sender), chat_id[:20], (text or "")[:50])
 
         await self.handle_message(event)
-
-    @staticmethod
-    def _coerce_bool(value: Any, default: bool = False) -> bool:
-        if isinstance(value, bool):
-            return value
-        if value is None:
-            return default
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"true", "1", "yes", "on"}:
-                return True
-            if normalized in {"false", "0", "no", "off"}:
-                return False
-            return default
-        return bool(value)
-
-    def _signal_bool_config(self, key: str, env_name: str, *, default: bool) -> bool:
-        configured = (self.config.extra or {}).get(key)
-        if configured is not None:
-            return self._coerce_bool(configured, default=default)
-        return self._coerce_bool(os.getenv(env_name), default=default)
-
-    def _signal_require_mention(self) -> bool:
-        return self.require_mention
-
-    def _signal_reply_to_bot_bypasses_mention(self) -> bool:
-        return self.reply_to_bot_bypasses_mention
-
-    def _signal_free_response_chats(self) -> set:
-        raw = (self.config.extra or {}).get("free_response_chats")
-        if raw is None:
-            raw = os.getenv("SIGNAL_FREE_RESPONSE_CHATS", "")
-        if isinstance(raw, (list, tuple, set)):
-            return {str(item).strip() for item in raw if str(item).strip()}
-        if raw is None:
-            return set()
-        return set(_parse_comma_list(str(raw)))
-
-    def _bot_identity_values(self) -> set:
-        identities = {
-            self._account_normalized,
-            self.account.strip() if self.account else "",
-            getattr(self, "_account_uuid", ""),
-        }
-        if self._account_normalized:
-            identities.add(self._recipient_uuid_by_number.get(self._account_normalized, ""))
-        return {str(value).strip() for value in identities if str(value).strip()}
-
-    def _message_mentions_bot(self, data_message: dict) -> bool:
-        identities = self._bot_identity_values()
-        if not identities:
-            return False
-
-        mentions = data_message.get("mentions") or []
-        for mention in mentions:
-            if not isinstance(mention, dict):
-                continue
-            mention_values = {
-                mention.get("number"),
-                mention.get("uuid"),
-                mention.get("recipient"),
-                mention.get("aci"),
-                mention.get("pni"),
-            }
-            if any(str(value).strip() in identities for value in mention_values if value):
-                return True
-
-        text = data_message.get("message") or ""
-        if text and mentions:
-            text = _render_mentions(text, mentions)
-        return any(f"@{identity}" in text for identity in identities)
-
-    def _message_replies_to_bot(self, data_message: dict) -> bool:
-        quote_data = data_message.get("quote") or {}
-        if not isinstance(quote_data, dict):
-            return False
-
-        identities = self._bot_identity_values()
-        if not identities:
-            return False
-
-        author_values = {
-            quote_data.get("author"),
-            quote_data.get("authorNumber"),
-            quote_data.get("authorUuid"),
-            quote_data.get("authorAci"),
-            quote_data.get("authorPni"),
-        }
-        return any(str(value).strip() in identities for value in author_values if value)
-
-    def _should_process_group_message(self, text: str, data_message: dict, group_id: str) -> bool:
-        stripped_text = (text or "").lstrip()
-        if stripped_text.startswith("/"):
-            return True
-
-        free_response_chats = self._signal_free_response_chats()
-        if "*" in free_response_chats or group_id in free_response_chats:
-            return True
-
-        if not self._signal_require_mention():
-            return True
-
-        if self._message_mentions_bot(data_message):
-            return True
-
-        return (
-            self._signal_reply_to_bot_bypasses_mention()
-            and self._message_replies_to_bot(data_message)
-        )
-
-    def _clean_bot_mention_text(self, text: str, data_message: dict) -> str:
-        if not text:
-            return text or ""
-        identities = self._bot_identity_values()
-        if not identities:
-            return text
-
-        cleaned = text
-        for identity in sorted(identities, key=len, reverse=True):
-            cleaned = re.sub(
-                rf"^@{re.escape(identity)}\s*",
-                "",
-                cleaned,
-            ).lstrip()
-        return cleaned
-
-    async def _resolve_account_uuid(self) -> Optional[str]:
-        cached = getattr(self, "_account_uuid", None)
-        if cached:
-            return cached
-
-        try:
-            accounts = await self._rpc("listAccounts", {"account": self.account})
-            if isinstance(accounts, list):
-                for account in accounts:
-                    if not isinstance(account, dict):
-                        continue
-                    if account.get("number") == self._account_normalized:
-                        service_id = account.get("uuid") or account.get("serviceId")
-                        if service_id:
-                            self._account_uuid = service_id
-                            return service_id
-        except Exception:
-            pass
-
-        try:
-            groups = await self._rpc("listGroups", {"account": self.account})
-            if isinstance(groups, list):
-                for group in groups:
-                    members = group.get("members") if isinstance(group, dict) else None
-                    if not isinstance(members, list):
-                        continue
-                    for member in members:
-                        if not isinstance(member, dict):
-                            continue
-                        if member.get("number") == self._account_normalized:
-                            service_id = member.get("uuid") or member.get("serviceId")
-                            if service_id:
-                                self._account_uuid = service_id
-                                return service_id
-        except Exception:
-            pass
-
-        return None
 
     def _remember_recipient_identifiers(self, number: Optional[str], service_id: Optional[str]) -> None:
         """Cache any number↔UUID mapping observed from Signal envelopes."""

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  normalizeSessionTitle,
-  titleFromSessionInfoPayload,
-} from "./chat-title";
+import { normalizeSessionTitle, titleFromSessionInfoPayload } from "./chat-title";
 
 describe("normalizeSessionTitle", () => {
   it("trims non-empty session titles", () => {
@@ -21,9 +18,7 @@ describe("normalizeSessionTitle", () => {
 
 describe("titleFromSessionInfoPayload", () => {
   it("returns undefined when the payload has no title field", () => {
-    expect(
-      titleFromSessionInfoPayload({ model: "test/model" }),
-    ).toBeUndefined();
+    expect(titleFromSessionInfoPayload({ model: "test/model" })).toBeUndefined();
     expect(titleFromSessionInfoPayload(null)).toBeUndefined();
   });
 
@@ -33,8 +28,8 @@ describe("titleFromSessionInfoPayload", () => {
   });
 
   it("returns the normalized title when present", () => {
-    expect(
-      titleFromSessionInfoPayload({ title: "  Live session title " }),
-    ).toBe("Live session title");
+    expect(titleFromSessionInfoPayload({ title: "  Live session title " })).toBe(
+      "Live session title",
+    );
   });
 });

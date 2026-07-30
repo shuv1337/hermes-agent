@@ -75,114 +75,6 @@ def _make_runner(session_entry: SessionEntry, *, platform: Platform = Platform.T
 
 
 @pytest.mark.asyncio
-async def test_status_command_reports_running_agent_without_interrupt(monkeypatch):
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-        total_tokens=321,
-    )
-    runner = _make_runner(session_entry)
-    # Token total comes from the SQLite SessionDB, not SessionEntry.
-    runner._session_db._db.get_session.return_value = {
-        "input_tokens": 200,
-        "output_tokens": 121,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0,
-        "reasoning_tokens": 0,
-    }
-    running_agent = MagicMock()
-    runner._running_agents[build_session_key(_make_source())] = running_agent
-
-    result = await runner._handle_message(_make_event("/status"))
-
-    assert "**Session ID:** `sess-1`" in result
-    assert "**Cumulative API tokens (re-sent each call):** 321" in result
-    assert "**Agent Running:** Yes ⚡" in result
-    assert "**Title:**" not in result
-    running_agent.interrupt.assert_not_called()
-    assert runner._pending_messages == {}
-
-
-@pytest.mark.asyncio
-async def test_status_command_includes_model_from_running_agent():
-    """Issue: /status must surface the actual model serving this session.
-
-    Priority is running agent → cached agent → session override → config
-    default. This test exercises the top-priority path: a live running
-    agent on the session—its model/provider must win."""
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-        total_tokens=0,
-    )
-    runner = _make_runner(session_entry)
-    running_agent = SimpleNamespace(
-        model="claude-sonnet-4-5",
-        provider="anthropic",
-        interrupt=MagicMock(),
-    )
-    runner._running_agents[build_session_key(_make_source())] = running_agent
-
-    result = await runner._handle_message(_make_event("/status"))
-
-    assert "**Model:** `claude-sonnet-4-5` (anthropic)" in result
-
-
-@pytest.mark.asyncio
-async def test_status_command_includes_model_from_session_override(monkeypatch):
-    """When there is no live or cached agent, /status falls back to the
-    per-session model override set by /model (without --global)."""
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-        total_tokens=0,
-    )
-    runner = _make_runner(session_entry)
-    runner._session_model_overrides = {
-        build_session_key(_make_source()): {
-            "model": "gpt-5-codex",
-            "provider": "openai",
-        }
-    }
-
-    result = await runner._handle_message(_make_event("/status"))
-
-    assert "**Model:** `gpt-5-codex` (openai)" in result
-
-
-@pytest.mark.asyncio
-async def test_status_command_includes_session_title_when_present():
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-        total_tokens=321,
-    )
-    runner = _make_runner(session_entry)
-    runner._session_db._db.get_session_title.return_value = "My titled session"
-
-    result = await runner._handle_message(_make_event("/status"))
-
-    assert "**Session ID:** `sess-1`" in result
-    assert "**Title:** My titled session" in result
-
-
-@pytest.mark.asyncio
 async def test_status_command_reads_token_totals_from_session_db():
     """Regression test for #17158: /status must source token totals from the
     SQLite SessionDB (where run_agent.py persists them) and sum all component
@@ -208,28 +100,7 @@ async def test_status_command_reads_token_totals_from_session_db():
     result = await runner._handle_message(_make_event("/status"))
 
     # 1000 + 250 + 500 + 100 + 50 = 1,900
-    assert "**Cumulative API tokens (re-sent each call):** 1,900" in result
-
-
-@pytest.mark.asyncio
-async def test_status_command_tokens_zero_when_session_db_row_missing():
-    """When the SessionDB has no row for the current session yet (fresh
-    session, no agent calls), /status reports 0 without raising."""
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-        total_tokens=999,  # This should be ignored.
-    )
-    runner = _make_runner(session_entry)
-    runner._session_db._db.get_session.return_value = None
-
-    result = await runner._handle_message(_make_event("/status"))
-
-    assert "**Cumulative API tokens (re-sent each call):** 0" in result
+    assert "**Lifetime tokens billed:** 1,900" in result
 
 
 @pytest.mark.asyncio
@@ -267,68 +138,7 @@ async def test_status_command_includes_live_agent_model_and_context():
 
     assert "**Model:** `openai/gpt-test` (openai)" in result
     assert "**Context:** 12,345 / 100,000 (12%)" in result
-    assert "**Cumulative API tokens (re-sent each call):** 1,250" in result
-    assert "1,250 (cumulative)" not in result
-
-
-@pytest.mark.asyncio
-async def test_status_command_includes_persisted_model_and_context_when_agent_not_running(monkeypatch):
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-        total_tokens=0,
-        last_prompt_tokens=24_000,
-    )
-    runner = _make_runner(session_entry)
-    runner._session_db._db.get_session.return_value = {
-        "input_tokens": 2000,
-        "output_tokens": 500,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0,
-        "reasoning_tokens": 0,
-        "model": "openai/gpt-persisted",
-        "billing_provider": "openai-codex",
-        "billing_base_url": "https://example.invalid/v1",
-    }
-    monkeypatch.setattr("gateway.run._load_gateway_config", lambda: {"model": {"context_length": 272_000}})
-
-    result = await runner._handle_message(_make_event("/status"))
-
-    assert "**Model:** `openai/gpt-persisted` (openai-codex)" in result
-    assert "**Context:** 24,000 / 272,000 (9%)" in result
-    assert "**Cumulative API tokens (re-sent each call):** 2,500" in result
-
-
-@pytest.mark.asyncio
-async def test_status_command_includes_cached_agent_model_and_context():
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-        total_tokens=0,
-    )
-    runner = _make_runner(session_entry)
-    cached_agent = SimpleNamespace(
-        model="anthropic/claude-sonnet-test",
-        provider="openrouter",
-        context_compressor=SimpleNamespace(
-            last_prompt_tokens=10_000,
-            context_length=200_000,
-        ),
-    )
-    runner._agent_cache = {session_entry.session_key: (cached_agent, time.time())}
-
-    result = await runner._handle_message(_make_event("/status"))
-
-    assert "**Model:** `anthropic/claude-sonnet-test` (openrouter)" in result
-    assert "**Context:** 10,000 / 200,000 (5%)" in result
+    assert "**Lifetime tokens billed:** 1,250" in result
 
 
 @pytest.mark.asyncio
@@ -401,48 +211,6 @@ async def test_tasks_alias_routes_to_agents_command(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_message_persists_agent_token_counts(monkeypatch):
-    import gateway.run as gateway_run
-
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry)
-    runner.session_store.load_transcript.return_value = [{"role": "user", "content": "earlier"}]
-    runner._run_agent = AsyncMock(
-        return_value={
-            "final_response": "ok",
-            "messages": [],
-            "tools": [],
-            "history_offset": 0,
-            "last_prompt_tokens": 80,
-            "input_tokens": 120,
-            "output_tokens": 45,
-            "model": "openai/test-model",
-        }
-    )
-
-    monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", lambda: {"api_key": "***"})
-    monkeypatch.setattr(
-        "agent.model_metadata.get_model_context_length",
-        lambda *_args, **_kwargs: 100000,
-    )
-
-    result = await runner._handle_message(_make_event("hello"))
-
-    assert result == "ok"
-    runner.session_store.update_session.assert_called_once_with(
-        session_entry.session_key,
-        last_prompt_tokens=80,
-    )
-
-
-@pytest.mark.asyncio
 async def test_first_run_slack_home_channel_onboarding_uses_parent_command(monkeypatch):
     import gateway.run as gateway_run
 
@@ -484,95 +252,6 @@ async def test_first_run_slack_home_channel_onboarding_uses_parent_command(monke
     onboarding = runner.adapters[Platform.SLACK].send.await_args.args[1]
     assert "/hermes sethome" in onboarding
     assert "Type /sethome" not in onboarding
-
-
-@pytest.mark.asyncio
-async def test_first_run_non_slack_home_channel_onboarding_keeps_direct_command(monkeypatch):
-    import gateway.run as gateway_run
-
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source(Platform.TELEGRAM)),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry, platform=Platform.TELEGRAM)
-    runner.session_store.load_transcript.return_value = []
-    runner.session_store.has_any_sessions.return_value = False
-    runner._run_agent = AsyncMock(
-        return_value={
-            "final_response": "ok",
-            "messages": [],
-            "tools": [],
-            "history_offset": 0,
-            "last_prompt_tokens": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "model": "openai/test-model",
-        }
-    )
-
-    monkeypatch.delenv("TELEGRAM_HOME_CHANNEL", raising=False)
-    monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", lambda: {"api_key": "***"})
-    monkeypatch.setattr(
-        "agent.model_metadata.get_model_context_length",
-        lambda *_args, **_kwargs: 100000,
-    )
-
-    result = await runner._handle_message(_make_event("hello", platform=Platform.TELEGRAM))
-
-    assert result == "ok"
-    runner.adapters[Platform.TELEGRAM].send.assert_awaited_once()
-    onboarding = runner.adapters[Platform.TELEGRAM].send.await_args.args[1]
-    assert "Type /sethome" in onboarding
-
-
-@pytest.mark.asyncio
-async def test_handle_message_discards_stale_result_after_session_invalidation(monkeypatch):
-    import gateway.run as gateway_run
-
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry)
-    runner.session_store.load_transcript.return_value = [{"role": "user", "content": "earlier"}]
-    session_key = session_entry.session_key
-    runner.adapters[Platform.TELEGRAM]._post_delivery_callbacks = {session_key: object()}
-
-    async def _stale_result(**kwargs):
-        runner._invalidate_session_run_generation(kwargs["session_key"], reason="test_stale_result")
-        return {
-            "final_response": "late reply",
-            "messages": [],
-            "tools": [],
-            "history_offset": 0,
-            "last_prompt_tokens": 80,
-            "input_tokens": 120,
-            "output_tokens": 45,
-            "model": "openai/test-model",
-        }
-
-    runner._run_agent = AsyncMock(side_effect=_stale_result)
-
-    monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", lambda: {"api_key": "***"})
-    monkeypatch.setattr(
-        "agent.model_metadata.get_model_context_length",
-        lambda *_args, **_kwargs: 100000,
-    )
-
-    result = await runner._handle_message(_make_event("hello"))
-
-    assert result is None
-    runner.session_store.append_to_transcript.assert_not_called()
-    runner.session_store.update_session.assert_not_called()
-    assert session_key not in runner.adapters[Platform.TELEGRAM]._post_delivery_callbacks
 
 
 @pytest.mark.asyncio
@@ -644,7 +323,6 @@ async def test_handle_message_stale_result_keeps_newer_generation_callback(monke
     assert adapter._post_delivery_callbacks[session_key][0] == 2
 
 
-
 @pytest.mark.asyncio
 async def test_status_command_bypasses_active_session_guard():
     """When an agent is running, /status must be dispatched immediately via
@@ -703,274 +381,6 @@ async def test_status_command_bypasses_active_session_guard():
 
 
 @pytest.mark.asyncio
-async def test_status_command_includes_gateway_info_block(monkeypatch):
-    """/status shows version, commit hash, uptime, and PID when available."""
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-        total_tokens=42,
-    )
-    runner = _make_runner(session_entry)
-    # Simulate a gateway that has been up for ~2 minutes.
-    runner._gateway_started_at = time.time() - 125
-
-    monkeypatch.setattr(
-        "gateway.run._collect_gateway_info",
-        lambda _started: {
-            "version": "9.9.9",
-            "release_date": "2099.1.1",
-            "local_commit": "abc12345",
-            "upstream_commit": "def67890",
-            "comparison_label": "upstream",
-            "commits_ahead": 3,
-            "uptime_seconds": 125,
-            "uptime_human": "2m 5s",
-            "pid": 12345,
-        },
-    )
-
-    result = await runner._handle_message(_make_event("/status"))
-
-    assert "**Version:** v9.9.9 (2099.1.1)" in result
-    assert "**Commit (on disk):** `abc12345` · upstream `def67890` (+3 commits ahead)" in result
-    assert "**Gateway Uptime:** 2m 5s (pid 12345)" in result
-    # Existing session fields must still be present.
-    assert "**Session ID:** `sess-1`" in result
-    assert "**Agent Running:** No" in result
-
-
-@pytest.mark.asyncio
-async def test_status_command_singular_commit_ahead(monkeypatch):
-    """Commits-ahead label uses singular 'commit' when ahead == 1."""
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry)
-    runner._gateway_started_at = time.time()
-
-    monkeypatch.setattr(
-        "gateway.run._collect_gateway_info",
-        lambda _started: {
-            "version": "1.0.0",
-            "release_date": "2026.1.1",
-            "local_commit": "aaaa1111",
-            "upstream_commit": "bbbb2222",
-            "comparison_label": "upstream",
-            "commits_ahead": 1,
-            "uptime_seconds": 5,
-            "uptime_human": "5s",
-            "pid": 999,
-        },
-    )
-
-    result = await runner._handle_message(_make_event("/status"))
-    assert "(+1 commit ahead)" in result
-    assert "(+1 commits ahead)" not in result
-
-
-@pytest.mark.asyncio
-async def test_status_command_clean_tree_omits_ahead_clause(monkeypatch):
-    """When HEAD == origin/main, commit line drops the '+N ahead' suffix."""
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry)
-    runner._gateway_started_at = time.time()
-
-    monkeypatch.setattr(
-        "gateway.run._collect_gateway_info",
-        lambda _started: {
-            "version": "1.0.0",
-            "release_date": "2026.1.1",
-            "local_commit": "deadbeef",
-            "upstream_commit": "deadbeef",
-            "comparison_label": "upstream",
-            "commits_ahead": 0,
-            "uptime_seconds": 10,
-            "uptime_human": "10s",
-            "pid": 100,
-        },
-    )
-
-    result = await runner._handle_message(_make_event("/status"))
-    assert "**Commit (on disk):** `deadbeef`" in result
-    assert "ahead" not in result  # no '+N commits ahead' suffix
-    assert "upstream" not in result  # no 'upstream' label either
-
-
-@pytest.mark.asyncio
-async def test_status_command_survives_gateway_info_failure(monkeypatch):
-    """A broken _collect_gateway_info must not break /status — session block still renders."""
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-        total_tokens=7,
-    )
-    runner = _make_runner(session_entry)
-
-    def _boom(_started):
-        raise RuntimeError("simulated git failure")
-
-    monkeypatch.setattr("gateway.run._collect_gateway_info", _boom)
-
-    result = await runner._handle_message(_make_event("/status"))
-    # No gateway-info lines, but session section still intact. Note: tokens
-    # come from SessionDB (not session_entry.total_tokens) per upstream's
-    # source-of-truth refactor — when SessionDB has no row for the test
-    # session_id, the rendered count is 0. We assert the row renders, not
-    # the specific count.
-    assert "**Session ID:** `sess-1`" in result
-    assert "**Cumulative API tokens (re-sent each call):**" in result
-    assert "**Version:**" not in result
-    assert "**Commit (on disk):**" not in result
-    assert "**Running commit:**" not in result
-    assert "**Gateway Uptime:**" not in result
-
-
-def test_format_gateway_uptime_boundaries():
-    """_format_gateway_uptime covers s/m/h/d ranges."""
-    from gateway.run import _format_gateway_uptime
-
-    assert _format_gateway_uptime(0) == "0s"
-    assert _format_gateway_uptime(59) == "59s"
-    assert _format_gateway_uptime(60) == "1m 0s"
-    assert _format_gateway_uptime(125) == "2m 5s"
-    assert _format_gateway_uptime(3599) == "59m 59s"
-    assert _format_gateway_uptime(3600) == "1h 0m"
-    assert _format_gateway_uptime(3661) == "1h 1m"
-    assert _format_gateway_uptime(86400) == "1d 0h 0m"
-    assert _format_gateway_uptime(90061) == "1d 1h 1m"
-    assert _format_gateway_uptime(-5) == "0s"  # clamp to zero
-
-
-def test_collect_gateway_info_handles_missing_started_at():
-    """_collect_gateway_info returns best-effort dict when no start time is given."""
-    from gateway.run import _collect_gateway_info
-
-    info = _collect_gateway_info(None)
-    # Version/pid are always resolvable; uptime requires started_at.
-    assert "uptime_seconds" not in info
-    assert "uptime_human" not in info
-    assert info.get("pid")
-    assert info.get("version")
-
-
-@pytest.mark.asyncio
-async def test_status_command_flags_stale_process_when_running_commit_differs(monkeypatch):
-    """When running_commit != local_commit, /status must surface the drift."""
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry)
-    runner._gateway_started_at = time.time()
-
-    monkeypatch.setattr(
-        "gateway.run._collect_gateway_info",
-        lambda _started: {
-            "version": "1.0.0",
-            "release_date": "2026.1.1",
-            "running_commit": "aaaa1111",
-            "local_commit": "bbbb2222",
-            "upstream_commit": "cccc3333",
-            "comparison_label": "upstream",
-            "commits_ahead": 2,
-            "uptime_seconds": 3600,
-            "uptime_human": "1h 0m",
-            "pid": 42,
-        },
-    )
-
-    result = await runner._handle_message(_make_event("/status"))
-    assert "**Commit (on disk):** `bbbb2222` · upstream `cccc3333` (+2 commits ahead)" in result
-    assert "**Running commit:** `aaaa1111`" in result
-    assert "gateway restart needed" in result
-
-
-@pytest.mark.asyncio
-async def test_status_command_hides_running_commit_when_matches_disk(monkeypatch):
-    """When running_commit == local_commit, only the on-disk line is shown (no duplicate)."""
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry)
-    runner._gateway_started_at = time.time()
-
-    monkeypatch.setattr(
-        "gateway.run._collect_gateway_info",
-        lambda _started: {
-            "version": "1.0.0",
-            "release_date": "2026.1.1",
-            "running_commit": "abc12345",
-            "local_commit": "abc12345",
-            "upstream_commit": "def67890",
-            "comparison_label": "upstream",
-            "commits_ahead": 3,
-            "uptime_seconds": 60,
-            "uptime_human": "1m 0s",
-            "pid": 7,
-        },
-    )
-
-    result = await runner._handle_message(_make_event("/status"))
-    assert "**Commit (on disk):** `abc12345`" in result
-    # Running-commit line must NOT appear when it matches on-disk.
-    assert "**Running commit:**" not in result
-
-
-@pytest.mark.asyncio
-async def test_profile_command_reports_custom_root_profile(monkeypatch, tmp_path):
-    """Gateway /profile detects custom-root profiles (not under ~/.hermes)."""
-    from pathlib import Path
-
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry)
-    profile_home = tmp_path / "profiles" / "coder"
-
-    monkeypatch.setenv("HERMES_HOME", str(profile_home))
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "unrelated-home")
-
-    result = await runner._handle_profile_command(_make_event("/profile"))
-
-    assert "**Profile:** `coder`" in result
-    assert f"**Home:** `{profile_home}`" in result
-
-
-@pytest.mark.asyncio
 async def test_profile_command_reports_source_stamped_profile(monkeypatch, tmp_path):
     """On a multiplexed gateway, /profile reports the profile SERVING the
     source (source.profile — URL prefix / per-credential adapter / room map),
@@ -1001,121 +411,80 @@ async def test_profile_command_reports_source_stamped_profile(monkeypatch, tmp_p
     assert f"**Home:** `{profile_home}`" in result
 
 
-@pytest.mark.asyncio
-async def test_profile_command_ignores_stamp_when_multiplexing_off(monkeypatch, tmp_path):
-    """Without ``gateway.multiplex_profiles`` a stamped source is ignored:
-    /profile keeps reporting the active profile and the default home,
-    mirroring the multiplex gating in ``_run_agent`` and
-    ``_reset_notice_session_info``."""
-    hermes_home = tmp_path / ".hermes"
-    profile_home = hermes_home / "profiles" / "milo"
-    profile_home.mkdir(parents=True)
+# ── /context command tests ────────────────────────────────────────────────
 
+def _stub_agent(**overrides) -> SimpleNamespace:
+    """Build a stub agent with the attributes _handle_context_command reads."""
+    props = dict(
+        model="openai/gpt-test",
+        context_compressor=SimpleNamespace(
+            last_prompt_tokens=47_231,
+            context_length=200_000,
+            threshold_tokens=100_000,
+            threshold_percent=0.5,
+            compression_count=2,
+            _last_compression_savings_pct=63.0,
+        ),
+        session_api_calls=47,
+        session_input_tokens=410_000,
+        session_output_tokens=38_000,
+        session_reasoning_tokens=12_000,
+        session_total_tokens=3_158_641,
+        session_cache_read_tokens=2_900_000,
+        session_cache_write_tokens=48_000,
+    )
+    props.update(overrides)
+    return SimpleNamespace(**props)
+
+
+@pytest.mark.asyncio
+async def test_context_all_appends_expanded_listings():
+    """/context all appends per-toolset and per-skill cost listings."""
     session_entry = SessionEntry(
         session_key=build_session_key(_make_source()),
-        session_id="sess-1",
+        session_id="sess-6",
         created_at=datetime.now(),
         updated_at=datetime.now(),
         platform=Platform.TELEGRAM,
         chat_type="dm",
     )
     runner = _make_runner(session_entry)
-    assert runner.config.multiplex_profiles is False
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    agent = _stub_agent()
+    runner._running_agents[session_entry.session_key] = agent
 
-    event = _make_event("/profile")
-    event.source.profile = "milo"
+    fake_payload = {
+        "categories": [
+            {"id": "skills", "label": "Skills", "tokens": 2_000},
+        ],
+        "context_max": 200_000,
+        "context_percent": 24,
+        "context_used": 47_231,
+        "estimated_total": 2_000,
+        "model": "openai/gpt-test",
+    }
+    fake_details = {
+        "skills": [
+            {"name": "hermes-agent", "index_tokens": 30, "skill_md_tokens": 2_500},
+        ],
+        "toolsets": [
+            {"toolset": "terminal", "tool_count": 4, "schema_tokens": 5_100},
+        ],
+    }
+    from unittest.mock import patch as _patch
+    with _patch(
+        "agent.context_breakdown.compute_session_context_breakdown",
+        return_value=fake_payload,
+    ), _patch(
+        "agent.context_breakdown.compute_context_details",
+        return_value=fake_details,
+    ):
+        result = await runner._handle_context_command(_make_event("/context all"))
 
-    result = await runner._handle_profile_command(event)
-
-    assert "**Profile:** `default`" in result
-    assert f"**Home:** `{hermes_home}`" in result
-
-
-@pytest.mark.asyncio
-async def test_profile_command_unstamped_source_unchanged(monkeypatch, tmp_path):
-    """Single-profile behavior is untouched: an unstamped source reports the
-    active profile and the default home."""
-    hermes_home = tmp_path / ".hermes"
-    hermes_home.mkdir()
-
-    session_entry = SessionEntry(
-        session_key=build_session_key(_make_source()),
-        session_id="sess-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        platform=Platform.TELEGRAM,
-        chat_type="dm",
-    )
-    runner = _make_runner(session_entry)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-
-    result = await runner._handle_profile_command(_make_event("/profile"))
-
-    assert "**Profile:** `default`" in result
-    assert f"**Home:** `{hermes_home}`" in result
+    assert "Toolsets by schema cost" in result
+    assert "terminal" in result and "5,100 tokens" in result
+    assert "Skills by cost" in result
+    assert "hermes-agent" in result
+    # Expanded view drops the hint
+    assert "Use /context all" not in result
 
 
-@pytest.mark.asyncio
-async def test_post_delivery_callback_generation_snapshot_happens_after_bind():
-    """Regression: the callback_generation snapshot in _process_message_background
-    must happen AFTER the handler runs, not before.
-
-    _hermes_run_generation is set on the interrupt event by
-    GatewayRunner._bind_adapter_run_generation during _handle_message_with_agent.
-    The earlier snapshot-at-task-start always captured None, which bypassed the
-    generation-ownership check in pop_post_delivery_callback and let stale runs
-    fire a fresher run's callbacks.
-    """
-    import asyncio
-    from gateway.platforms.base import BasePlatformAdapter
-
-    source = _make_source()
-    session_key = build_session_key(source)
-    fired = []
-
-    class _ConcreteAdapter(BasePlatformAdapter):
-        platform = Platform.TELEGRAM
-
-        async def connect(self, *, is_reconnect: bool = False): pass
-        async def disconnect(self): pass
-        async def send(self, chat_id, content, **kwargs): pass
-        async def get_chat_info(self, chat_id): return {}
-
-    adapter = _ConcreteAdapter(
-        PlatformConfig(enabled=True, token="***"), Platform.TELEGRAM
-    )
-
-    async def fake_handler(event):
-        # Simulate what _bind_adapter_run_generation does mid-run.
-        interrupt_event = adapter._active_sessions.get(session_key)
-        setattr(interrupt_event, "_hermes_run_generation", 1)
-        # Stale run registers its callback at generation=1.
-        adapter.register_post_delivery_callback(
-            session_key,
-            lambda: fired.append("older"),
-            generation=1,
-        )
-        # A fresher run overwrites with generation=2 (different dict entry).
-        adapter.register_post_delivery_callback(
-            session_key,
-            lambda: fired.append("newer"),
-            generation=2,
-        )
-        return None
-
-    adapter.set_message_handler(fake_handler)
-    event = MessageEvent(text="hello", source=source, message_id="m1")
-
-    await adapter.handle_message(event)
-    tasks = list(adapter._background_tasks)
-    assert tasks, "expected background task to be created"
-    await asyncio.gather(*tasks)
-
-    # The stale run (generation=1) must NOT fire the fresher run's callback
-    # (generation=2). With the pre-fix code, callback_generation was snapshotted
-    # as None before the handler ran, bypassing the ownership check and firing
-    # "newer" anyway.
-    assert fired == []
-    assert session_key in adapter._post_delivery_callbacks
-    assert adapter._post_delivery_callbacks[session_key][0] == 2

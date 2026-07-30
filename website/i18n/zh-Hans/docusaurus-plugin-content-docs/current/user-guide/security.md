@@ -31,7 +31,7 @@ Hermes Agent 采用纵深防御安全模型。本页涵盖所有安全边界—�
 ```yaml
 approvals:
   mode: smart     # smart | manual | off
-  timeout: 60     # 等待用户响应的秒数（默认：60）
+  timeout: 300    # 等待用户响应的秒数（默认：300）
 ```
 
 | 模式 | 行为 |
@@ -105,7 +105,7 @@ YOLO 模式会禁用会话中**所有**危险命令安全检查——**但硬性
 
 ```yaml
 approvals:
-  timeout: 60  # 秒（默认：60）
+  timeout: 300  # 秒（默认：300）
 ```
 
 ### 触发审批的条件
@@ -144,7 +144,7 @@ approvals:
 | `gateway run` 配合 `&`/`disown`/`nohup`/`setsid` | 防止在服务管理器外启动 gateway |
 
 :::info
-**容器绕过**：在 `docker`、`singularity`、`modal` 或 `daytona` 后端运行时，危险命令检查会被**跳过**，因为容器本身就是安全边界。容器内的破坏性命令不会危害宿主机。
+**容器绕过**：在 `docker`、`singularity`、`modal`、`daytona` 或 `vercel_sandbox` 后端运行时，危险命令检查会被**跳过**，因为容器本身就是安全边界。容器内的破坏性命令不会危害宿主机。
 :::
 
 ### 审批流程（CLI）
@@ -340,7 +340,7 @@ terminal:
 - **临时模式**（`container_persistent: false`）：工作区使用 tmpfs——清理后所有内容丢失
 
 :::tip
-对于生产 gateway 部署，使用 `docker`、`modal` 或 `daytona` 后端，将 Agent 命令与宿主机系统隔离。这样可以完全消除危险命令审批的需要。
+对于生产 gateway 部署，使用 `docker`、`modal`、`daytona` 或 `vercel_sandbox` 后端，将 Agent 命令与宿主机系统隔离。这样可以完全消除危险命令审批的需要。
 :::
 
 :::warning
@@ -357,6 +357,7 @@ terminal:
 | **singularity** | 容器 | ❌ 跳过 | HPC 环境 |
 | **modal** | 云沙箱 | ❌ 跳过 | 可扩展的云隔离 |
 | **daytona** | 云沙箱 | ❌ 跳过 | 持久化云工作区 |
+| **vercel_sandbox** | 云微虚拟机 | ❌ 跳过 | 带快照持久化的云执行 |
 
 ## 环境变量透传 {#environment-variable-passthrough}
 
@@ -573,7 +574,7 @@ Tirith 的判定与审批流程集成：安全命令直接通过，可疑和被�
 4. **安全存储密钥** — 将 API 密钥保存在具有适当文件权限的 `~/.hermes/.env` 中
 5. **启用 DM 配对** — 尽可能使用配对码，而非硬编码用户 ID
 6. **审查命令允许列表** — 定期审计 config.yaml 中的 `command_allowlist`
-7. **设置 `terminal.cwd`** — 不要让 Agent 在敏感目录中操作
+7. **设置 `MESSAGING_CWD`** — 不要让 Agent 在敏感目录中操作
 8. **以非 root 用户运行** — 切勿以 root 身份运行 gateway
 9. **监控日志** — 检查 `~/.hermes/logs/` 中的未授权访问尝试
 10. **保持更新** — 定期运行 `hermes update` 以获取安全补丁

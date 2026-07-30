@@ -58,6 +58,46 @@ export function mediaMarkdownHref(path: string): string {
   return `#media:${encodeURIComponent(path)}`
 }
 
+export function isInlineMediaSrc(path: string): boolean {
+  return /^(?:https?|data):/i.test(path)
+}
+
+function isFileMediaPath(path: string): boolean {
+  return /^(?:file:|\/|~\/|[a-z]:[\\/]|\\\\)/i.test(path)
+}
+
+export async function resolveMediaDisplaySrc(path: string): Promise<string> {
+  if (isInlineMediaSrc(path) || !isFileMediaPath(path)) {
+    return path
+  }
+
+  if (window.hermesDesktop && isRemoteGateway()) {
+    return gatewayMediaDataUrl(path)
+  }
+
+  if (!window.hermesDesktop?.readFileDataUrl) {
+    return mediaExternalUrl(path)
+  }
+
+  return window.hermesDesktop.readFileDataUrl(filePathFromMediaPath(path))
+}
+
+// Audio/video need a seekable source instead of a whole-file data URL. Keep
+// remote URLs untouched, route gateway-local files through the authenticated
+// download endpoint, and reserve the Electron protocol for files on this
+// desktop machine.
+export async function resolveMediaPlaybackSrc(path: string): Promise<string> {
+  if (isInlineMediaSrc(path)) {
+    return path
+  }
+
+  if (window.hermesDesktop && ['audio', 'video'].includes(mediaKind(path))) {
+    return isRemoteGateway() ? mediaExternalUrl(path) : mediaStreamUrl(path)
+  }
+
+  return resolveMediaDisplaySrc(path)
+}
+
 // Resolve a media path to a URL the shell can open. Remote mode rewrites
 // gateway-local paths to an authenticated /api/files/download URL (the file
 // lives on the gateway, not this disk); local mode keeps the file:// form.
@@ -84,28 +124,6 @@ export function mediaExternalUrl(path: string): string {
 // URL size cap and supports seeking. `path` may be a plain path or `file://…`.
 export function mediaStreamUrl(path: string): string {
   return `hermes-media://stream/${encodeURIComponent(filePathFromMediaPath(path))}`
-}
-
-// Resolve an attachment to the source consumed by <audio>/<video>. The custom
-// protocol can only read files on the Desktop machine, so remote gateway paths
-// must go through the authenticated FS bridge instead. Returning a data URL is
-// bounded by the bridge's 16 MB cap, but it gives normal TTS/audio attachments
-// working authenticated playback instead of asking the Mac to open a Linux
-// path that cannot exist locally.
-export async function mediaPlaybackUrl(path: string): Promise<string> {
-  if (/^(?:https?|data):/i.test(path)) {
-    return path
-  }
-
-  if (typeof window !== 'undefined' && window.hermesDesktop && isRemoteGateway()) {
-    return gatewayMediaDataUrl(path)
-  }
-
-  if (typeof window !== 'undefined' && window.hermesDesktop && ['audio', 'video'].includes(mediaKind(path))) {
-    return mediaStreamUrl(path)
-  }
-
-  return mediaExternalUrl(path)
 }
 
 export function mediaPathFromMarkdownHref(href?: string): string | null {

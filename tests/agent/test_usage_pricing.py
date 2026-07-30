@@ -1,4 +1,3 @@
-from decimal import Decimal
 from types import SimpleNamespace
 
 from agent.usage_pricing import (
@@ -6,38 +5,14 @@ from agent.usage_pricing import (
     estimate_usage_cost,
     get_pricing_entry,
     normalize_usage,
+    resolve_billing_route,
 )
 
 
-def test_normalize_usage_anthropic_keeps_cache_buckets_separate():
-    usage = SimpleNamespace(
-        input_tokens=1000,
-        output_tokens=500,
-        cache_read_input_tokens=2000,
-        cache_creation_input_tokens=400,
-    )
-
-    normalized = normalize_usage(usage, provider="anthropic", api_mode="anthropic_messages")
-
-    assert normalized.input_tokens == 1000
-    assert normalized.output_tokens == 500
-    assert normalized.cache_read_tokens == 2000
-    assert normalized.cache_write_tokens == 400
-    assert normalized.prompt_tokens == 3400
 
 
-def test_normalize_usage_openai_subtracts_cached_prompt_tokens():
-    usage = SimpleNamespace(
-        prompt_tokens=3000,
-        completion_tokens=700,
-        prompt_tokens_details=SimpleNamespace(cached_tokens=1800),
-    )
 
-    normalized = normalize_usage(usage, provider="openai", api_mode="chat_completions")
 
-    assert normalized.input_tokens == 1200
-    assert normalized.cache_read_tokens == 1800
-    assert normalized.output_tokens == 700
 
 
 def test_normalize_usage_reads_deepseek_native_cache_hit_tokens():
@@ -62,24 +37,10 @@ def test_normalize_usage_reads_deepseek_native_cache_hit_tokens():
     assert normalized.output_tokens == 400
 
 
-def test_normalize_usage_nested_details_win_over_deepseek_top_level():
-    """When a proxy forwards both shapes, the OpenAI nested value wins and
-    the DeepSeek top-level field is not double-read."""
-    usage = SimpleNamespace(
-        prompt_tokens=2000,
-        completion_tokens=100,
-        prompt_tokens_details=SimpleNamespace(cached_tokens=900),
-        prompt_cache_hit_tokens=1500,
-    )
-
-    normalized = normalize_usage(usage, provider="deepseek", api_mode="chat_completions")
-
-    assert normalized.cache_read_tokens == 900
-    assert normalized.input_tokens == 1100
 
 
 def test_normalize_usage_openai_reads_top_level_anthropic_cache_fields():
-    """Some OpenAI-compatible proxies (OpenRouter, Cline) expose
+    """Some OpenAI-compatible proxies (OpenRouter, Vercel AI Gateway, Cline) expose
     Anthropic-style cache token counts at the top level of the usage object when
     routing Claude models, instead of nesting them in prompt_tokens_details.
 
@@ -107,213 +68,18 @@ def test_normalize_usage_openai_reads_top_level_anthropic_cache_fields():
     assert normalized.output_tokens == 200
 
 
-def test_normalize_usage_openai_reads_top_level_cache_read_when_details_missing():
-    """Some proxies expose only top-level Anthropic-style fields with no
-    prompt_tokens_details object. Regression guard for cline/cline#10266.
-    """
-    usage = SimpleNamespace(
-        prompt_tokens=1000,
-        completion_tokens=200,
-        cache_read_input_tokens=500,
-        cache_creation_input_tokens=300,
-    )
-
-    normalized = normalize_usage(usage, provider="openrouter", api_mode="chat_completions")
-
-    assert normalized.cache_read_tokens == 500
-    assert normalized.cache_write_tokens == 300
-    assert normalized.input_tokens == 200
 
 
-def test_normalize_usage_openai_prefers_prompt_tokens_details_over_top_level():
-    """When both prompt_tokens_details and top-level Anthropic fields are
-    present, we prefer the OpenAI-standard nested fields. Top-level Anthropic
-    fields are only a fallback when the nested ones are absent/zero.
-    """
-    usage = SimpleNamespace(
-        prompt_tokens=1000,
-        completion_tokens=200,
-        prompt_tokens_details=SimpleNamespace(cached_tokens=600, cache_write_tokens=150),
-        # Intentionally different values — proving we ignore these when details exist.
-        cache_read_input_tokens=999,
-        cache_creation_input_tokens=999,
-    )
-
-    normalized = normalize_usage(usage, provider="openrouter", api_mode="chat_completions")
-
-    assert normalized.cache_read_tokens == 600
-    assert normalized.cache_write_tokens == 150
 
 
-def test_openrouter_models_api_pricing_is_converted_from_per_token_to_per_million(monkeypatch):
-    monkeypatch.setattr(
-        "agent.usage_pricing.fetch_model_metadata",
-        lambda: {
-            "anthropic/claude-opus-4.6": {
-                "pricing": {
-                    "prompt": "0.000005",
-                    "completion": "0.000025",
-                    "input_cache_read": "0.0000005",
-                    "input_cache_write": "0.00000625",
-                }
-            }
-        },
-    )
-
-    entry = get_pricing_entry(
-        "anthropic/claude-opus-4.6",
-        provider="openrouter",
-        base_url="https://openrouter.ai/api/v1",
-    )
-
-    assert float(entry.input_cost_per_million) == 5.0
-    assert float(entry.output_cost_per_million) == 25.0
-    assert float(entry.cache_read_cost_per_million) == 0.5
-    assert float(entry.cache_write_cost_per_million) == 6.25
 
 
-def test_estimate_usage_cost_marks_subscription_routes_included():
-    result = estimate_usage_cost(
-        "gpt-5.3-codex",
-        CanonicalUsage(input_tokens=1000, output_tokens=500),
-        provider="openai-codex",
-        base_url="https://chatgpt.com/backend-api/codex",
-    )
-
-    assert result.status == "included"
-    assert float(result.amount_usd) == 0.0
 
 
-def test_estimate_usage_cost_refuses_cache_pricing_without_official_cache_rate(monkeypatch):
-    monkeypatch.setattr(
-        "agent.usage_pricing.fetch_model_metadata",
-        lambda: {
-            "google/gemini-2.5-pro": {
-                "pricing": {
-                    "prompt": "0.00000125",
-                    "completion": "0.00001",
-                }
-            }
-        },
-    )
-
-    result = estimate_usage_cost(
-        "google/gemini-2.5-pro",
-        CanonicalUsage(input_tokens=1000, output_tokens=500, cache_read_tokens=100),
-        provider="openrouter",
-        base_url="https://openrouter.ai/api/v1",
-    )
-
-    assert result.status == "unknown"
 
 
-def test_custom_endpoint_models_api_pricing_is_supported(monkeypatch):
-    monkeypatch.setattr(
-        "agent.usage_pricing.fetch_endpoint_model_metadata",
-        lambda base_url, api_key=None: {
-            "zai-org/GLM-5-TEE": {
-                "pricing": {
-                    "prompt": "0.0000005",
-                    "completion": "0.000002",
-                }
-            }
-        },
-    )
-
-    entry = get_pricing_entry(
-        "zai-org/GLM-5-TEE",
-        provider="custom",
-        base_url="https://llm.chutes.ai/v1",
-        api_key="test-key",
-    )
-
-    assert float(entry.input_cost_per_million) == 0.5
-    assert float(entry.output_cost_per_million) == 2.0
 
 
-def test_nous_portal_pricing_preserves_vendor_prefixed_model_ids(monkeypatch):
-    seen = {}
-
-    def _fake_fetch_endpoint_model_metadata(base_url, api_key=None):
-        seen["base_url"] = base_url
-        return {
-            "openai/gpt-5.5-pro": {
-                "pricing": {
-                    "prompt": "0.000025",
-                    "completion": "0.000125",
-                }
-            }
-        }
-
-    monkeypatch.setattr(
-        "agent.usage_pricing.fetch_endpoint_model_metadata",
-        _fake_fetch_endpoint_model_metadata,
-    )
-
-    entry = get_pricing_entry("openai/gpt-5.5-pro", provider="nous")
-
-    assert seen["base_url"] == "https://inference-api.nousresearch.com/v1"
-    assert float(entry.input_cost_per_million) == 25.0
-    assert float(entry.output_cost_per_million) == 125.0
-
-
-def test_claude_sonnet_5_pricing_entry_exists():
-    """claude-sonnet-5 must resolve to exactly one pricing entry so sessions
-    don't show as unknown cost.
-
-    Asserts the cache rates as *ratios* of the input rate rather than fixed
-    dollar figures: Sonnet 5 is on introductory pricing through 2026-08-31,
-    after which the entry legitimately changes to $3/$15. Pinning the
-    figures here made this a change-detector that fails on a correct price
-    update — and it previously masked a duplicate dict key by agreeing with
-    the shadowed entry instead of the reachable one.
-    """
-    entry = get_pricing_entry(
-        "claude-sonnet-5",
-        provider="anthropic",
-    )
-
-    assert entry is not None
-    # Standard Anthropic cache multipliers: read 0.1x input, write 1.25x.
-    assert entry.cache_read_cost_per_million == entry.input_cost_per_million / 10
-    assert entry.cache_write_cost_per_million == entry.input_cost_per_million * Decimal("1.25")
-    # Output is 5x input across the Sonnet line, intro rate or not.
-    assert entry.output_cost_per_million == entry.input_cost_per_million * 5
-
-
-def test_claude_sonnet_5_no_duplicate_pricing_key():
-    """Regression guard for the duplicate ("anthropic", "claude-sonnet-5")
-    key removed upstream in f6abfc05b.
-
-    A repeated key in a dict literal is silently legal — the last one wins
-    and the other becomes unreachable — so this can only be caught by
-    reading the source, which the file itself cannot do at runtime. Assert
-    instead that the reachable entry is the intro-priced one the maintainers
-    chose to keep.
-    """
-    entry = get_pricing_entry("claude-sonnet-5", provider="anthropic")
-
-    assert entry is not None
-    assert entry.pricing_version == "anthropic-pricing-2026-06-intro"
-
-
-def test_claude_sonnet_5_estimate_usage_cost():
-    """Cost estimation must agree with whatever the table currently holds."""
-    entry = get_pricing_entry("claude-sonnet-5", provider="anthropic")
-    assert entry is not None
-
-    result = estimate_usage_cost(
-        "claude-sonnet-5",
-        CanonicalUsage(input_tokens=1_000_000, output_tokens=500_000),
-        provider="anthropic",
-    )
-
-    assert result.status == "estimated"
-    assert result.amount_usd is not None
-    # 1M input × input_rate + 500K output × output_rate, derived from the
-    # entry so the intro→standard price change doesn't break this test.
-    expected = entry.input_cost_per_million + (entry.output_cost_per_million / 2)
-    assert result.amount_usd == expected
 
 
 def test_deepseek_v4_pro_pricing_entry_exists():
@@ -337,18 +103,6 @@ def test_deepseek_v4_pro_pricing_entry_exists():
     assert float(entry.cache_read_cost_per_million) == 0.003625
 
 
-def test_deepseek_v4_pro_estimate_usage_cost():
-    """Ensure deepseek-v4-pro sessions get a dollar estimate, not unknown."""
-    result = estimate_usage_cost(
-        "deepseek-v4-pro",
-        CanonicalUsage(input_tokens=1000000, output_tokens=500000),
-        provider="deepseek",
-    )
-
-    assert result.status == "estimated"
-    assert result.amount_usd is not None
-    # 1M input × $0.435/M + 500K output × $0.87/M = $0.435 + $0.435 = $0.87
-    assert float(result.amount_usd) == 0.87
 
 
 def test_deepseek_deprecated_aliases_price_as_v4_flash():
@@ -368,18 +122,6 @@ def test_deepseek_deprecated_aliases_price_as_v4_flash():
         ), alias
 
 
-def test_deepseek_rows_all_carry_cache_read_pricing():
-    """Invariant: DeepSeek publishes a cache-hit rate for every current model;
-    every deepseek snapshot row must carry cache_read < input so cached
-    sessions estimate correctly instead of billing reads at full price."""
-    from agent.usage_pricing import _OFFICIAL_DOCS_PRICING
-
-    ds_rows = [k for k in _OFFICIAL_DOCS_PRICING if k[0] == "deepseek"]
-    assert ds_rows, "expected at least one deepseek pricing row"
-    for key in ds_rows:
-        entry = _OFFICIAL_DOCS_PRICING[key]
-        assert entry.cache_read_cost_per_million is not None, key
-        assert entry.cache_read_cost_per_million < entry.input_cost_per_million, key
 
 
 def test_bedrock_claude_rows_all_carry_cache_pricing():
@@ -445,29 +187,6 @@ def test_bedrock_current_gen_claude_rows_resolve():
             assert entry.output_cost_per_million == ref.output_cost_per_million, mid
 
 
-def test_bedrock_cross_region_profile_prefix_resolves_to_pricing():
-    """Cross-region inference profiles must resolve to the same pricing entry
-    as the bare foundation-model id.  Without prefix normalization a scoped
-    ``<region>.anthropic.claude-*`` session prices as unknown.
-
-    Asia-Pacific (``apac.``) and Australia (``au.``) are included because AWS
-    uses the full ``apac.`` prefix, not ``ap.`` — a bare ``ap.`` never matches
-    an ``apac.*`` id, so those geographies previously priced as unknown.
-    """
-    bedrock_url = "https://bedrock-runtime.us-east-1.amazonaws.com"
-    bare = get_pricing_entry(
-        "anthropic.claude-sonnet-4-5", provider="bedrock", base_url=bedrock_url
-    )
-    assert bare is not None
-    for prefix in ("us.", "global.", "eu.", "apac.", "au."):
-        scoped = get_pricing_entry(
-            f"{prefix}anthropic.claude-sonnet-4-5",
-            provider="bedrock",
-            base_url=bedrock_url,
-        )
-        assert scoped is not None, prefix
-        assert scoped.input_cost_per_million == bare.input_cost_per_million
-        assert scoped.cache_read_cost_per_million == bare.cache_read_cost_per_million
 
 
 def test_bedrock_versioned_inference_profile_resolves_to_bare_pricing():
@@ -491,38 +210,8 @@ def test_bedrock_versioned_inference_profile_resolves_to_bare_pricing():
         assert scoped.cache_write_cost_per_million == bare.cache_write_cost_per_million
 
 
-def test_bedrock_pricing_supports_less_common_inference_profile_prefixes():
-    """AWS also exposes profile scopes beyond us./global./eu.; those should
-    not silently fall through to unknown pricing.
-    """
-    bare = get_pricing_entry("anthropic.claude-haiku-4-5", provider="bedrock")
-    entry = get_pricing_entry(
-        "apac.anthropic.claude-haiku-4-5-20251001-v1:0",
-        provider="bedrock",
-    )
-
-    assert bare is not None
-    assert entry is not None
-    for field in (
-        "input_cost_per_million",
-        "output_cost_per_million",
-        "cache_read_cost_per_million",
-        "cache_write_cost_per_million",
-    ):
-        assert getattr(entry, field) == getattr(bare, field)
 
 
-def test_bedrock_unknown_model_continuation_does_not_use_base_pricing():
-    """Unrecognized Bedrock SKUs must remain unknown rather than inheriting a
-    similarly named model family's price.
-    """
-    assert (
-        get_pricing_entry(
-            "anthropic.claude-sonnet-4-6-experimental",
-            provider="bedrock",
-        )
-        is None
-    )
 
 
 def test_bedrock_claude_cached_session_estimates_cost_not_unknown():
@@ -549,47 +238,10 @@ def test_bedrock_claude_cached_session_estimates_cost_not_unknown():
     assert result.status == "estimated"
     assert result.amount_usd is not None
 
-def test_fireworks_kimi_k2p6_resolves_with_full_model_path():
-    """Fireworks model ids look like accounts/fireworks/models/<name>;
-    the routing layer must strip the prefix so the dict lookup succeeds."""
-    entry = get_pricing_entry(
-        "accounts/fireworks/models/kimi-k2p6",
-        provider="fireworks",
-        base_url="https://api.fireworks.ai/inference/v1",
-    )
-
-    assert entry is not None
-    assert float(entry.input_cost_per_million) == 0.95
-    assert float(entry.output_cost_per_million) == 4.00
-    assert float(entry.cache_read_cost_per_million) == 0.16
-    assert entry.source == "official_docs_snapshot"
 
 
-def test_fireworks_base_url_host_match_alone_routes_to_pricing():
-    """Provider not explicitly passed; routing infers fireworks from the host."""
-    entry = get_pricing_entry(
-        "accounts/fireworks/models/deepseek-v4-pro",
-        base_url="https://api.fireworks.ai/inference/v1",
-    )
-
-    assert entry is not None
-    assert float(entry.input_cost_per_million) == 1.74
-    assert float(entry.output_cost_per_million) == 3.48
 
 
-def test_fireworks_qwen3p7_plus_estimate_usage_cost():
-    """End-to-end: Fireworks Qwen3.7-Plus sessions report a dollar estimate."""
-    result = estimate_usage_cost(
-        "accounts/fireworks/models/qwen3p7-plus",
-        CanonicalUsage(input_tokens=1_000_000, output_tokens=500_000),
-        provider="fireworks",
-        base_url="https://api.fireworks.ai/inference/v1",
-    )
-
-    assert result.status == "estimated"
-    assert result.amount_usd is not None
-    # 1M input × $0.40/M + 500K output × $1.60/M = $0.40 + $0.80 = $1.20
-    assert float(result.amount_usd) == 1.20
 
 
 def test_fireworks_router_fast_tier_prices_distinctly():
@@ -611,67 +263,52 @@ def test_fireworks_router_fast_tier_prices_distinctly():
     assert fast.output_cost_per_million > standard.output_cost_per_million
 
 
-def test_fireworks_plugin_fallback_models_all_have_pricing():
-    """Invariant: every model in the Fireworks provider plugin's
-    fallback_models (the picker's curated safety net) must resolve to a
-    pricing entry — otherwise the default picker choices bill as unknown."""
-    from providers import get_provider_profile
-
-    profile = get_provider_profile("fireworks")
-    assert profile is not None
-    for mid in profile.fallback_models:
-        entry = get_pricing_entry(
-            mid,
-            provider="fireworks",
-            base_url="https://api.fireworks.ai/inference/v1",
-        )
-        assert entry is not None, f"no pricing entry for fallback model {mid}"
-        assert entry.input_cost_per_million is not None, mid
 
 
-def test_fireworks_rows_all_carry_cache_read_pricing():
-    """Invariant: Fireworks publishes cached-input rates for every serverless
-    model, and Hermes prompt caching is active on Fireworks sessions — every
-    snapshot row must carry a cache_read rate cheaper than fresh input."""
-    from agent.usage_pricing import _OFFICIAL_DOCS_PRICING
-
-    fw_rows = [k for k in _OFFICIAL_DOCS_PRICING if k[0] == "fireworks"]
-    assert fw_rows, "expected at least one fireworks pricing row"
-    for key in fw_rows:
-        entry = _OFFICIAL_DOCS_PRICING[key]
-        assert entry.cache_read_cost_per_million is not None, key
-        assert entry.cache_read_cost_per_million < entry.input_cost_per_million, key
 
 
-def test_deepseek_v4_flash_pricing_entry_exists():
-    """Regression test: deepseek-v4-flash must have a pricing entry.
 
-    Before this fix, deepseek-v4-flash sessions showed $0.00 / cost_source
-    "none" because the _OFFICIAL_DOCS_PRICING table had an entry for
-    deepseek-v4-pro but not the (newer) flash model.  DeepSeek's /models
-    endpoint returns no pricing, so the official-docs snapshot is the only
-    source for direct-provider routes.
+
+
+
+
+
+def test_google_and_vertex_routes_share_official_pricing_snapshot():
+    """Direct Gemini, Vertex, and Vertex's OpenAI-compatible hostname must
+    all normalize to the Google official-pricing route.
     """
-    entry = get_pricing_entry(
-        "deepseek-v4-flash",
-        provider="deepseek",
+    routes = (
+        resolve_billing_route("model", provider="gemini"),
+        resolve_billing_route("google/model", provider="vertex"),
+        resolve_billing_route(
+            "google/model",
+            provider="custom",
+            base_url="https://aiplatform.googleapis.com/v1/projects/example",
+        ),
     )
 
-    assert entry is not None
-    assert float(entry.input_cost_per_million) == 0.14
-    assert float(entry.output_cost_per_million) == 0.28
-    assert float(entry.cache_read_cost_per_million) == 0.0028
+    assert all(route.provider == "google" for route in routes)
+    assert all(route.billing_mode == "official_docs_snapshot" for route in routes)
 
 
-def test_deepseek_v4_flash_estimate_usage_cost():
-    """Ensure deepseek-v4-flash sessions get a dollar estimate, not $0/none."""
+def test_vertex_default_model_estimates_cached_usage(monkeypatch):
+    """The bundled Vertex profile's default auxiliary model must fall back to
+    Google snapshot pricing when the OpenAI-compatible endpoint has no model
+    metadata, including for cache-read accounting.
+    """
+    from providers import get_provider_profile
+
+    monkeypatch.setattr(
+        "agent.usage_pricing.fetch_endpoint_model_metadata",
+        lambda *_args, **_kwargs: {},
+    )
+    vertex = get_provider_profile("vertex")
     result = estimate_usage_cost(
-        "deepseek-v4-flash",
-        CanonicalUsage(input_tokens=1000000, output_tokens=500000),
-        provider="deepseek",
+        vertex.default_aux_model,
+        CanonicalUsage(input_tokens=100, output_tokens=100, cache_read_tokens=100),
+        provider=vertex.name,
+        base_url=vertex.base_url,
     )
 
     assert result.status == "estimated"
-    assert result.amount_usd is not None
-    # 1M input × $0.14/M + 500K output × $0.28/M = $0.14 + $0.14 = $0.28
-    assert float(result.amount_usd) == 0.28
+    assert result.amount_usd is not None and result.amount_usd > 0

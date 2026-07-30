@@ -21,7 +21,7 @@ Git **worktrees** 是为每个 agent 提供独立检出（checkout）而无需�
 Hermes 将**当前工作目录**视为项目根目录：
 
 - CLI：运行 `hermes` 或 `hermes chat` 时所在的目录
-- Messaging gateway：由 `config.yaml` 中的 `terminal.cwd` 设置的目录
+- Messaging gateway：由 `MESSAGING_CWD` 设置的目录
 
 如果在**同一检出**中运行多个 agent，它们的变更可能相互干扰：
 

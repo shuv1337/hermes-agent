@@ -127,10 +127,16 @@ def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
 
     1. Genuinely-global vars (``_is_global_env``) always read ``os.environ`` —
        they are deployment settings, not profile secrets.
-    2. When a secret scope is installed (multiplexed turn), read from it; an
-       absent key returns ``default``. The scope is authoritative — we do NOT
-       fall through to ``os.environ``, because in a multiplexer ``os.environ``
-       may hold another profile's value.
+    2. When a secret scope is installed (multiplexed turn), read from it. Under
+       multiplexing the scope is authoritative — an absent key returns
+       ``default`` and we do NOT fall through to ``os.environ``, because in a
+       multiplexer ``os.environ`` may hold another profile's value. When
+       multiplexing is OFF, a scope miss falls through to ``os.environ``:
+       single-profile deployments legitimately provide credentials via the
+       process environment (systemd ``Environment=``, secret-manager wrappers
+       like ``pass-cli run`` / ``op run``, plain shell exports) rather than
+       ``<home>/.env``, and the scope — installed unconditionally around e.g.
+       every cron job — must stay a ``.env`` overlay, not a blindfold.
     3. No scope installed:
        - multiplex INACTIVE (default deployment): read ``os.environ`` —
          identical to the legacy ``os.getenv`` behavior every caller had before.
@@ -144,6 +150,17 @@ def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
     scope = _SECRET_SCOPE.get()
     if scope is not None:
         val = scope.get(name)
+        if val is not None:
+            return val
+        if _MULTIPLEX_ACTIVE:
+            return default
+        # Multiplex off: the scope is an overlay over the process environment,
+        # not an isolation boundary — there is no other profile to leak from.
+        # Without this fallthrough, credentials injected only into the process
+        # environment vanish inside any set_secret_scope(...) block (the cron
+        # scheduler installs one around every job), so cron jobs send a
+        # placeholder API key and 401 while interactive turns keep working.
+        val = os.environ.get(name)
         return val if val is not None else default
 
     if _MULTIPLEX_ACTIVE:
@@ -194,82 +211,68 @@ def load_env_file(env_path: Path) -> Dict[str, str]:
     return secrets
 
 
-def _merge_external_secrets_into_scope(
+def _load_external_secrets_into_scope(
     scope: Dict[str, str], hermes_home: Path
 ) -> None:
-    """Layer Bitwarden / 1Password / etc. secrets into a profile scope.
-
-    Multiplex mode installs this scope as the *sole* credential authority for
-    a turn (``get_secret`` does not fall through to ``os.environ``). External
-    vault secrets are applied into ``os.environ`` at process start by
-    ``load_hermes_dotenv``, but never into the profile ``.env`` file — so
-    without this merge, vault-only tokens (e.g. ``TELEGRAM_BOT_TOKEN`` from
-    Bitwarden) are invisible under multiplex and the platform never enables.
-
-    Precedence matches startup load: profile ``.env`` wins over vault values
-    unless the source is configured with ``override_existing: true``. Fail-open
-    on any error so a misconfigured vault cannot block gateway startup.
-    """
+    """Load a profile's configured vaults without mutating process env."""
     try:
-        from hermes_cli.env_loader import _load_secrets_config
         from agent.secret_sources.registry import apply_all
+        from hermes_cli.env_loader import _load_secrets_config
+
+        config = _load_secrets_config(hermes_home)
     except Exception:
         return
-
-    try:
-        cfg = _load_secrets_config(Path(hermes_home))
-    except Exception:
-        return
-    if not cfg:
+    if not config:
         return
 
-    # Bootstrap tokens (BWS_ACCESS_TOKEN, OP_SERVICE_ACCOUNT_TOKEN, …) live in
-    # the profile .env and must be visible to source fetchers. Seed a private
-    # environ from the scope, then fall back to process env for any missing
-    # bootstrap key so secondary profiles can reuse the default's vault login
-    # when they share the same secrets project.
-    environ: Dict[str, str] = dict(scope)
-    for bootstrap_key in (
+    # Source clients need their bootstrap credentials, which may come from
+    # this profile's .env or from the process-level gateway environment.
+    environ = dict(scope)
+    for key in (
         "BWS_ACCESS_TOKEN",
         "BWS_SERVER_URL",
         "OP_SERVICE_ACCOUNT_TOKEN",
         "OP_CONNECT_HOST",
         "OP_CONNECT_TOKEN",
     ):
-        if not environ.get(bootstrap_key):
-            parent = os.environ.get(bootstrap_key)
-            if parent:
-                environ[bootstrap_key] = parent
+        if not environ.get(key) and os.environ.get(key):
+            environ[key] = os.environ[key]
 
     try:
-        apply_all(cfg, Path(hermes_home), environ=environ)
+        apply_all(config, hermes_home, environ=environ)
     except Exception:
         return
 
-    # Copy vault-applied keys back. apply_all already honored override_existing
-    # against the seeded scope; only take keys that are now present.
     for key, value in environ.items():
-        if not isinstance(key, str) or not isinstance(value, str):
-            continue
-        if _is_global_env(key):
-            continue
-        scope[key] = value
+        if isinstance(key, str) and isinstance(value, str) and not _is_global_env(key):
+            scope[key] = value
 
 
 def build_profile_secret_scope(hermes_home: Path) -> Dict[str, str]:
-    """Build a profile's secret mapping from its ``<home>/.env`` (+ vaults).
+    """Build a profile's secret mapping from its ``<home>/.env`` and vaults.
 
     Returns a fresh dict (safe to install via ``set_secret_scope``). Genuinely
     global vars are intentionally NOT copied in — ``get_secret`` reads those
     from ``os.environ`` directly, so the scope holds only profile secrets.
-
-    External secret sources configured under ``secrets:`` in the profile's
-    ``config.yaml`` (Bitwarden, 1Password, …) are merged in after the ``.env``
-    parse so multiplex gateways see the same credentials as single-profile
-    mode. Without that merge, vault-only platform tokens never enable their
-    adapters under ``gateway.multiplex_profiles``.
     """
-    scope = load_env_file(Path(hermes_home) / ".env")
-    _merge_external_secrets_into_scope(scope, Path(hermes_home))
-    return scope
+    home = Path(hermes_home)
+    secrets = load_env_file(home / ".env")
 
+    try:
+        from hermes_cli.env_loader import get_secret_source_values
+        external_secrets = get_secret_source_values(home)
+    except Exception:
+        external_secrets = {}
+
+    for key, value in external_secrets.items():
+        if _is_global_env(key):
+            continue
+        secrets[key] = value
+
+    # Multiplex startup can build a secondary profile's scope before the
+    # regular dotenv path has populated its per-home snapshot. Fetch into a
+    # private mapping so vault-only credentials remain profile-isolated.
+    if not external_secrets:
+        _load_external_secrets_into_scope(secrets, home)
+
+    return secrets

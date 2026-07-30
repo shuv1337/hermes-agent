@@ -12,18 +12,12 @@ import {
 import type { SessionRuntimeInfo } from '@/types/hermes'
 
 interface CwdActionsOptions {
-  activeSessionId: string | null
   activeSessionIdRef: MutableRefObject<string | null>
   onSessionRuntimeInfo?: (info: Pick<SessionRuntimeInfo, 'branch' | 'cwd'>) => void
   requestGateway: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
 }
 
-export function useCwdActions({
-  activeSessionId,
-  activeSessionIdRef,
-  onSessionRuntimeInfo,
-  requestGateway
-}: CwdActionsOptions) {
+export function useCwdActions({ activeSessionIdRef, onSessionRuntimeInfo, requestGateway }: CwdActionsOptions) {
   const { t } = useI18n()
   const copy = t.desktop
 
@@ -51,18 +45,21 @@ export function useCwdActions({
     [activeSessionIdRef, requestGateway]
   )
 
-  // Returns how the change landed: 'applied' (live), 'staged' (older backend —
-  // persisted for the next session but not the active one), or null (rejected /
-  // empty). Callers like the /cwd command use this to phrase their feedback.
   const changeSessionCwd = useCallback(
-    async (cwd: string): Promise<'applied' | 'staged' | null> => {
+    async (cwd: string) => {
       const trimmed = cwd.trim()
 
       if (!trimmed) {
-        return null
+        return
       }
 
-      if (!activeSessionId) {
+      // Ref, not the closure-captured prop: this hook's consumers are memoized
+      // on a stable actions object, so the prop can still name the previously
+      // focused chat. Re-anchoring the wrong session's workspace would point
+      // that agent's terminal/file tools at another conversation's project.
+      const sessionId = activeSessionIdRef.current
+
+      if (!sessionId) {
         setCurrentCwd(trimmed)
         const workspaceGeneration = setNewChatWorkspaceTarget(trimmed)
 
@@ -73,7 +70,7 @@ export function useCwdActions({
           })
 
           if ($newChatWorkspaceTargetGeneration.get() !== workspaceGeneration || activeSessionIdRef.current) {
-            return null
+            return
           }
 
           // Adopt the backend's normalized cwd so the persisted workspace and
@@ -90,27 +87,25 @@ export function useCwdActions({
           }
         }
 
-        return 'applied'
+        return
       }
 
       try {
         const info = await requestGateway<SessionRuntimeInfo>('session.cwd.set', {
-          session_id: activeSessionId,
+          session_id: sessionId,
           cwd: trimmed
         })
 
         setCurrentCwd(info.cwd || trimmed)
         setCurrentBranch(info.branch || '')
         onSessionRuntimeInfo?.({ branch: info.branch || '', cwd: info.cwd || trimmed })
-
-        return 'applied'
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
 
         if (!message.includes('unknown method')) {
           notifyError(err, copy.cwdChangeFailed)
 
-          return null
+          return
         }
 
         setCurrentCwd(trimmed)
@@ -120,11 +115,9 @@ export function useCwdActions({
           title: copy.cwdStagedTitle,
           message: copy.cwdStagedMessage
         })
-
-        return 'staged'
       }
     },
-    [activeSessionId, activeSessionIdRef, copy, onSessionRuntimeInfo, requestGateway]
+    [activeSessionIdRef, copy, onSessionRuntimeInfo, requestGateway]
   )
 
   return { changeSessionCwd, refreshProjectBranch }

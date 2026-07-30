@@ -148,7 +148,9 @@ export function buildScheduleString(state: ScheduleBuilderState): string {
 }
 
 /** Parse schedules emitted by buildScheduleString; unknown strings stay custom. */
-export function parseScheduleString(schedule: string): ScheduleBuilderState {
+export function parseScheduleString(
+  schedule: string,
+): ScheduleBuilderState {
   const trimmed = schedule.trim();
   if (!trimmed) return { ...DEFAULT_SCHEDULE_STATE };
 
@@ -180,11 +182,7 @@ export function parseScheduleString(schedule: string): ScheduleBuilderState {
   const parsedCron = parseSimpleCronExpression(trimmed);
   if (parsedCron) {
     if (parsedCron.mode === "daily") {
-      return {
-        ...DEFAULT_SCHEDULE_STATE,
-        mode: "daily",
-        timeOfDay: parsedCron.time,
-      };
+      return { ...DEFAULT_SCHEDULE_STATE, mode: "daily", timeOfDay: parsedCron.time };
     }
     if (parsedCron.mode === "weekly") {
       return {
@@ -214,12 +212,7 @@ export function parseScheduleString(schedule: string): ScheduleBuilderState {
  */
 function parseSimpleCronExpression(
   expr: string,
-): {
-  mode: "daily" | "weekly" | "monthly";
-  time: string;
-  weekdays?: Weekday[];
-  dayOfMonth?: number;
-} | null {
+): { mode: "daily" | "weekly" | "monthly"; time: string; weekdays?: Weekday[]; dayOfMonth?: number } | null {
   const parts = expr.trim().split(/\s+/);
   if (parts.length !== 5) return null;
   const [minField, hourField, domField, monField, dowField] = parts;
@@ -282,9 +275,7 @@ function parseSimpleCronExpression(
   return null;
 }
 
-function parseTimeOfDay(
-  value: string,
-): { hour: number; minute: number } | null {
+function parseTimeOfDay(value: string): { hour: number; minute: number } | null {
   if (!value || !/^\d{1,2}:\d{2}$/.test(value)) return null;
   const [hh, mm] = value.split(":");
   const hour = parseInt(hh, 10);

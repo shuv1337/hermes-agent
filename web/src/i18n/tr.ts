@@ -118,8 +118,7 @@ export const tr: Translations = {
     runningRemote: "Çalışıyor (uzak)",
     startFailed: "Başlatma başarısız",
     starting: "Başlatılıyor",
-    startedInBackground:
-      "Arka planda başlatıldı — ilerleme için günlüklere bakın",
+    startedInBackground: "Arka planda başlatıldı — ilerleme için günlüklere bakın",
     stopped: "Durduruldu",
     updateHermes: "Hermes'i Güncelle",
     updatingHermes: "Hermes güncelleniyor…",
@@ -130,8 +129,14 @@ export const tr: Translations = {
     title: "Oturumlar",
     history: "Geçmiş",
     overview: "Genel bakış",
+    filterChats: "Sohbetler",
+    filterAutomation: "Otomasyon",
+    filterAll: "Tümü",
+    sourceFilter: "Oturum kaynağı",
+    anySource: "Herhangi bir kaynak",
     searchPlaceholder: "Mesaj içeriğinde ara...",
     noSessions: "Henüz oturum yok",
+    noSessionsInFilter: "Bu filtrede oturum yok",
     noMatch: "Aramanızla eşleşen oturum yok",
     startConversation: "Burada görmek için bir konuşma başlatın",
     noMessages: "Mesaj yok",
@@ -288,8 +293,7 @@ export const tr: Translations = {
     nameRequired: "Ad gereklidir",
     nameRule:
       "Yalnızca küçük harfler, rakamlar, _ ve - kullanılabilir; harf veya rakamla başlamalı; en fazla 64 karakter.",
-    invalidName: "Geçersiz profil adı",
-    cloneFrom: "Profilden yapılandırmayı klonla",
+    invalidName: "Geçersiz profil adı",    cloneFrom: "Profilden yapılandırmayı klonla",
     cloneFromNone: "Hiçbiri (boş)",
     allProfiles: "Profiller",
     noProfiles: "Profil bulunamadı.",
@@ -327,11 +331,9 @@ export const tr: Translations = {
     inactive: "pasif",
     installBtn: "Yükle",
     installHeading: "GitHub / Git URL'sinden yükle",
-    installHint:
-      "owner/repo kısayolunu veya tam https:// ya da git@ klon URL'sini kullanın.",
+    installHint: "owner/repo kısayolunu veya tam https:// ya da git@ klon URL'sini kullanın.",
     memoryProviderLabel: "Bellek sağlayıcısı",
-    missingEnvWarn:
-      "Eklenti çalışmadan önce bunları Anahtarlar bölümünde ayarlayın:",
+    missingEnvWarn: "Eklenti çalışmadan önce bunları Anahtarlar bölümünde ayarlayın:",
     noDashboardTab: "Pano sekmesi yok",
     openTab: "Aç",
     orphanHeading: "Yalnızca pano uzantıları (eşleşen agent plugin.yaml yok)",
@@ -342,11 +344,9 @@ export const tr: Translations = {
       "config.yaml'a memory.provider (boş = yerleşik) ve context.engine yazar. Bir sonraki oturumda etkili olur.",
     refreshDashboard: "Pano uzantılarını yeniden tara",
     removeConfirm: "Bu eklenti ~/.hermes/plugins/ içinden kaldırılsın mı?",
-    removeHint:
-      "Yalnızca ~/.hermes/plugins altındaki kullanıcı tarafından yüklenmiş eklentiler kaldırılabilir.",
+    removeHint: "Yalnızca ~/.hermes/plugins altındaki kullanıcı tarafından yüklenmiş eklentiler kaldırılabilir.",
     rescanHeading: "SPA eklenti kayıt defteri",
-    rescanHint:
-      "Diske dosya ekledikten sonra yeniden tarayın, böylece pano kenar çubuğu yeni manifestleri algılar.",
+    rescanHint: "Diske dosya ekledikten sonra yeniden tarayın, böylece pano kenar çubuğu yeni manifestleri algılar.",
     runtimeHeading: "Ağ geçidi çalışma zamanı (YAML eklentileri)",
     saveProviders: "Sağlayıcı ayarlarını kaydet",
     savedProviders: "Sağlayıcı ayarları kaydedildi.",
@@ -366,8 +366,7 @@ export const tr: Translations = {
     all: "Tümü",
     categories: "Kategoriler",
     filters: "Filtreler",
-    noSkills:
-      "Yetenek bulunamadı. Yetenekler ~/.hermes/skills/ adresinden yüklenir",
+    noSkills: "Yetenek bulunamadı. Yetenekler ~/.hermes/skills/ adresinden yüklenir",
     noSkillsMatch: "Aramanız veya filtrenizle eşleşen yetenek yok.",
     skillCount: "{count} yetenek{s}",
     resultCount: "{count} sonuç{s}",
@@ -388,10 +387,8 @@ export const tr: Translations = {
     importConfig: "Yapılandırmayı JSON'dan içe aktar",
     resetDefaults: "Varsayılanlara sıfırla",
     resetScopeTooltip: "{scope} varsayılanlara sıfırla",
-    confirmResetScope:
-      "{scope} ayarlarının tümü varsayılanlara sıfırlansın mı? Bu yalnızca formu günceller — değişiklikler Kaydet'e basılana kadar config.yaml'a yazılmaz.",
-    resetScopeToast:
-      "{scope} varsayılanlara sıfırlandı — gözden geçirip kalıcı kılmak için Kaydet'e basın",
+    confirmResetScope: "{scope} ayarlarının tümü varsayılanlara sıfırlansın mı? Bu yalnızca formu günceller — değişiklikler Kaydet'e basılana kadar config.yaml'a yazılmaz.",
+    resetScopeToast: "{scope} varsayılanlara sıfırlandı — gözden geçirip kalıcı kılmak için Kaydet'e basın",
     rawYaml: "Ham YAML Yapılandırması",
     searchResults: "Arama Sonuçları",
     fields: "alan{s}",
@@ -423,8 +420,7 @@ export const tr: Translations = {
   },
 
   env: {
-    changesNote:
-      "Değişiklikler diske hemen kaydedilir. Aktif oturumlar yeni anahtarları otomatik olarak alır.",
+    changesNote: "Değişiklikler diske hemen kaydedilir. Aktif oturumlar yeni anahtarları otomatik olarak alır.",
     confirmClearMessage:
       "Bu değişken için saklanan değer .env dosyanızdan kaldırılacak. Bu işlem arayüzden geri alınamaz.",
     confirmClearTitle: "Bu anahtar temizlensin mi?",
@@ -444,15 +440,13 @@ export const tr: Translations = {
     showValue: "Gerçek değeri göster",
     hideValue: "Değeri gizle",
     customTitle: "Özel Anahtarlar",
-    customHint:
-      ".env dosyanızda saklanan ve Hermes'in tanımadığı rastgele ortam değişkenleri. Bunları beceriler, MCP sunucuları veya kendi araçlarınız için ortam değişkenleri eklemek için kullanın.",
+    customHint: ".env dosyanızda saklanan ve Hermes'in tanımadığı rastgele ortam değişkenleri. Bunları beceriler, MCP sunucuları veya kendi araçlarınız için ortam değişkenleri eklemek için kullanın.",
     customConfigured: "{count} özel anahtar ayarlandı",
     addCustomKey: "Özel anahtar ekle",
     customKeyName: "Değişken adı",
     customKeyNamePlaceholder: "örn. MY_SERVICE_API_KEY",
     add: "Ekle",
-    invalidKeyName:
-      "Yalnızca harf, rakam ve alt çizgi kullanın (bir harf veya alt çizgi ile başlamalıdır).",
+    invalidKeyName: "Yalnızca harf, rakam ve alt çizgi kullanın (bir harf veya alt çizgi ile başlamalıdır).",
   },
 
   oauth: {
@@ -479,18 +473,15 @@ export const tr: Translations = {
     exchangingCode: "Kod, jetonlarla değiştiriliyor…",
     connectedClosing: "Bağlandı! Kapatılıyor…",
     loginFailed: "Giriş başarısız.",
-    sessionExpired:
-      "Oturum süresi doldu. Yeni bir giriş başlatmak için Yeniden Dene'ye tıklayın.",
+    sessionExpired: "Oturum süresi doldu. Yeni bir giriş başlatmak için Yeniden Dene'ye tıklayın.",
     reOpenAuth: "Kimlik doğrulama sayfasını yeniden aç",
     reOpenVerification: "Doğrulama sayfasını yeniden aç",
     submitCode: "Kodu gönder",
     pasteCode: "Yetkilendirme kodunu yapıştırın (#state ekiyle de olabilir)",
     waitingAuth: "Tarayıcıda yetkilendirmeniz bekleniyor…",
     enterCodePrompt: "Yeni bir sekme açıldı. İstenirse bu kodu girin:",
-    pkceStep1:
-      "claude.ai için yeni bir sekme açıldı. Giriş yapın ve Yetkilendir'e tıklayın.",
-    pkceStep2:
-      "Yetkilendirmeden sonra gösterilen yetkilendirme kodunu kopyalayın.",
+    pkceStep1: "claude.ai için yeni bir sekme açıldı. Giriş yapın ve Yetkilendir'e tıklayın.",
+    pkceStep2: "Yetkilendirmeden sonra gösterilen yetkilendirme kodunu kopyalayın.",
     pkceStep3: "Aşağıya yapıştırıp gönderin.",
     flowLabels: {
       pkce: "Tarayıcı girişi (PKCE)",
@@ -608,10 +599,11 @@ export const tr: Translations = {
       copy_button: "Görseli kopyala",
       copied: "Kopyalandı ✓",
       download_button: "PNG indir",
-      hint: "X'te paylaş, yeni sekmede önceden doldurulmuş bir gönderi açar. 1200×630 rozetin eklenmesini istiyorsan önce Görseli kopyala'ya tıkla — X, görseli doğrudan tweet düzenleyiciye yapıştırmana izin verir. PNG indir, dosyayı her yerde kullanmak üzere kaydeder.",
+      hint:
+        "X'te paylaş, yeni sekmede önceden doldurulmuş bir gönderi açar. 1200×630 rozetin eklenmesini istiyorsan önce Görseli kopyala'ya tıkla — X, görseli doğrudan tweet düzenleyiciye yapıştırmana izin verir. PNG indir, dosyayı her yerde kullanmak üzere kaydeder.",
       clipboard_unsupported:
         "Bu tarayıcıda panoya görsel kopyalama desteklenmiyor — bunun yerine İndir'i kullanın.",
-      tweet_text: 'Just unlocked {tier_part}"{name}" in Hermes Agent ☤',
+      tweet_text: "Just unlocked {tier_part}\"{name}\" in Hermes Agent ☤",
     },
   },
   kanban: {
@@ -711,8 +703,7 @@ export const tr: Translations = {
     noProfile: "(profil yok)",
     showAllAttempts: "Tüm denemeleri göster",
     sendingUpdates: "Güncellemeler şuraya gönderiliyor",
-    sendNotifications:
-      "completed / blocked / gave_up bildirimlerini şuraya gönder",
+    sendNotifications: "completed / blocked / gave_up bildirimlerini şuraya gönder",
     archiveBoardConfirm:
       "'{name}' panosu arşivlensin mi? boards/_archived/ dizinine taşınacak, böylece daha sonra kurtarabilirsiniz. Bu panodaki görevler artık UI'nin hiçbir yerinde görünmeyecek.",
     archiveBoardTitle: "Bu panoyu arşivle",
@@ -720,10 +711,8 @@ export const tr: Translations = {
     taskCreatedWarning: "Görev oluşturuldu, ancak: ",
     moveFailed: "Taşıma başarısız: ",
     bulkFailed: "Toplu: ",
-    completionBlockedHallucination:
-      "⚠ Tamamlanma engellendi — hayalet kart ID'leri",
-    suspectedHallucinatedReferences:
-      "⚠ Metin hayalet kart ID'lerine atıfta bulundu",
+    completionBlockedHallucination: "⚠ Tamamlanma engellendi — hayalet kart ID'leri",
+    suspectedHallucinatedReferences: "⚠ Metin hayalet kart ID'lerine atıfta bulundu",
     pickProfileFirst: "Önce bir profil seçin.",
     unblockedMessage: "{id} engeli kaldırıldı. Görev sonraki tick için hazır.",
     unblockFailed: "Engel kaldırma başarısız: ",
@@ -748,8 +737,7 @@ export const tr: Translations = {
     columnHelp: {
       triage: "Ham fikirler — bir specifier şartnameyi detaylandıracak",
       todo: "Bağımlılıklar bekleniyor veya atanmamış",
-      scheduled:
-        "Bilinen bir zaman gecikmesi veya zamanlanmış takip bekleniyor",
+      scheduled: "Bilinen bir zaman gecikmesi veya zamanlanmış takip bekleniyor",
       ready: "Bağımlılıklar karşılandı; dispatch için bir profil atayın",
       running: "Bir worker tarafından alındı — yürütülüyor",
       blocked: "Worker insan girdisi istedi",

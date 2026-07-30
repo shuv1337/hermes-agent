@@ -566,7 +566,7 @@ scp ~/.hermes/mcp-tokens/my-oauth-server{,.client}.json \
   │   ├── state.db, sessions/, memories/   （运行时状态）
   │   └── mcp-tokens/                      （MCP 服务器的 OAuth token）
   ├── home/                                ──►  /home/hermes    (rw)
-  └── workspace/                           （terminal.cwd）
+  └── workspace/                           （MESSAGING_CWD）
       ├── SOUL.md                          （来自 documents 选项）
       └── （Agent 创建的文件）
 
@@ -786,7 +786,7 @@ nix build .#checks.x86_64-linux.config-roundtrip    # 合并脚本保留用户�
 | `group` | `str` | `"hermes"` | 系统组 |
 | `createUser` | `bool` | `true` | 自动创建用户/组 |
 | `stateDir` | `str` | `"/var/lib/hermes"` | 状态目录（`HERMES_HOME` 的父目录） |
-| `workingDirectory` | `str` | `"${stateDir}/workspace"` | Agent 工作目录（`terminal.cwd`） |
+| `workingDirectory` | `str` | `"${stateDir}/workspace"` | Agent 工作目录（`MESSAGING_CWD`） |
 | `addToSystemPackages` | `bool` | `false` | 将 `hermes` CLI 添加到系统 PATH 并在系统范围内设置 `HERMES_HOME` |
 
 ### 配置
@@ -873,7 +873,7 @@ nix build .#checks.x86_64-linux.config-roundtrip    # 合并脚本保留用户�
 │   ├── cron/
 │   └── logs/
 ├── home/                            # Agent HOME
-└── workspace/                       # terminal.cwd
+└── workspace/                       # MESSAGING_CWD
     ├── SOUL.md                      # 来自 documents 选项
     └── （Agent 创建的文件）
 ```

@@ -19,13 +19,18 @@ from typing import Optional
 from agent.runtime_cwd import resolve_agent_cwd
 from agent.skill_utils import (
     EXCLUDED_SKILL_DIRS,
+    ORG_ACTIVE_MARKER,
+    ORG_MIRROR_DIR_NAME,
+    ORG_PROVENANCE_FILE,
     SKILL_SUPPORT_DIRS,
     extract_skill_conditions,
     extract_skill_description,
     get_all_skills_dirs,
     get_disabled_skill_names,
     iter_skill_index_files,
+    org_id_of_path,
     parse_frontmatter,
+    read_active_org_id,
     skill_matches_environment,
     skill_matches_platform,
     skill_matches_platform_list,
@@ -182,7 +187,7 @@ MEMORY_GUIDANCE = (
 
 SESSION_SEARCH_GUIDANCE = (
     "When the user references something from a past conversation or you suspect "
-    "relevant cross-session context exists, use session_search to look up it before "
+    "relevant cross-session context exists, use session_search to look it up before "
     "asking them to repeat themselves."
 )
 
@@ -191,8 +196,14 @@ SKILLS_GUIDANCE = (
     "or discovering a non-trivial workflow, save the approach as a "
     "skill with skill_manage so you can reuse it next time.\n"
     "When using a skill and finding it outdated, incomplete, or wrong, "
-    "patch it immediately with skill_manage (patch) — don't wait to be asked. "
-    "Skills that aren't maintained become liabilities."
+    "patch it immediately with the patch action of skill_manage — don't wait to be asked. "
+    "Skills that aren't maintained become liabilities.\n"
+    "\n"
+    "## Skill Safety Rule\n"
+    "1. **UNAVAILABLE** — If a skill placeholder contains `[SKILL_PRUNED]`, the skill content was lost in compression and is inaccessible.\n"
+    "2. **RELOAD** — Before performing any action that depends on a skill, re-check its content with `skill_view(name='...')` if it shows `[SKILL_PRUNED]`.\n"
+    "3. **WAIT** — If a skill is loading or was just pruned, wait for the reload confirmation before proceeding.\n"
+    "4. **DEDUP** — After reloading a pruned skill, **ignore any remaining `[SKILL_PRUNED]` markers for that same skill** — they are historical artifacts from previous compactions and do not need further action."
 )
 
 KANBAN_GUIDANCE = (
@@ -561,16 +572,18 @@ def computer_use_guidance(platform_name: Optional[str] = None) -> str:
         "Background delivery is the DEFAULT and the co-work path, but it is "
         "the first rung, not the only one. Read each action's structured "
         "result and climb only when the driver tells you to:\n"
-        "- `effect: 'confirmed'` + `verified: true` — the driver read the "
-        "result back. Done.\n"
+        "- `effect: 'confirmed'` (or `verified: true`) — done, even if an "
+        "advisory escalation is also present. Never repeat successful input.\n"
         "- `effect: 'unverifiable'` — the input was delivered but the driver "
-        "can't confirm it. Re-capture and check the screenshot/tree yourself "
-        "before deciding it worked.\n"
-        "- `effect: 'suspected_noop'`, `code: 'background_unavailable'`, or an "
-        "`escalation.recommended` field — the action did NOT land. Follow "
-        "`escalation.recommended`:\n"
+        "can't confirm it. Get fresh state and check it before any retry; an "
+        "escalation recommendation does not override this rule.\n"
+        "- `effect: 'suspected_noop'` or a structured refusal such as "
+        "`code: 'background_unavailable'` — escalation is allowed. Follow "
+        "the recommended rung when present:\n"
         "  - `'px'` → re-issue addressing the target by `coordinate=[x,y]` "
         "read off the screenshot instead of `element`.\n"
+        "  - `'page'` → use the exact-bound typed browser page rung below "
+        "before native foreground escalation. Do not start a legacy page workflow.\n"
         "  - `'foreground'` (or a pixel click still didn't land) → re-issue "
         "the SAME action with `delivery_mode='foreground'`. This briefly "
         "raises the window; it needs its own approval and is only appropriate "
@@ -580,6 +593,21 @@ def computer_use_guidance(platform_name: Optional[str] = None) -> str:
         "as a prediction from the app being Electron/Chromium/GTK. Do not "
         "silently retry the same rung expecting a different result, and do "
         "not conclude 'cua-driver can't drive this app' — climb the ladder.\n\n"
+        "## Typed browser page rung\n"
+        "For `recommended='page'` or supported browser PAGE content, use the namespaced "
+        "`cua_browser_*` actions: bind with `cua_browser_state` using the exact "
+        "native `(pid, window_id)`, require `binding_quality='exact'` and "
+        "`mutation_allowed=true`, select its opaque `tab_id`, then take a "
+        "fresh semantic snapshot before using a current `ref`. After every "
+        "typed mutation, call `cua_browser_state` again before another action. "
+        "Input defaults to trusted; `input_route='dom_event'` is an explicit "
+        "downgrade, never an automatic retry. Use native capture/input for "
+        "browser chrome, OS permission prompts, native dialogs, and unsupported "
+        "targets. Browser setup is a separately approved action; attaching an "
+        "existing profile is enforced by cua-driver's immutable permission "
+        "mode: standard requires a certified protected host and fails closed "
+        "when Hermes has none; explicit Hermes YOLO uses a private unrestricted "
+        "daemon after the user's launch/session risk acceptance.\n\n"
         "## Background mode rules\n"
         "- Do NOT use `raise_window=true` on `focus_app` unless the user "
         "explicitly asked you to bring a window to front. Input routing to "
@@ -667,7 +695,7 @@ PLATFORM_HINTS = {
         "freely. Tables are NOT supported — prefer bullet lists or labeled "
         "key:value pairs. "
         "You can send media files natively: to deliver a file to the user, "
-        "include MEDIA:/path/to/file in your response. The file "
+        "include the `MEDIA:` marker immediately followed by the file's absolute path. The file "
         "will be sent as a native WhatsApp attachment — images (.jpg, .png, "
         ".webp) appear as photos, videos (.mp4, .mov) play inline, and other "
         "files arrive as downloadable documents. You can also include image "
@@ -680,7 +708,7 @@ PLATFORM_HINTS = {
         "to WhatsApp's native syntax (*bold*, ~strike~, etc.) — feel free "
         "to write in markdown. Tables are NOT supported — prefer bullet "
         "lists or labeled key:value pairs. "
-        "You can send media files natively: include MEDIA:/path/to/file "
+        "You can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path "
         "in your response. Images (.jpg, .png) become photo attachments, "
         "videos (.mp4) play inline, audio (.mp3, .ogg) sends as voice/audio "
         "messages, other files arrive as documents. Image URLs in markdown "
@@ -697,21 +725,21 @@ PLATFORM_HINTS = {
         "`inline code`, ```code blocks```, [links](url), and ## headers. "
         "Prefer bullet lists and labeled key:value pairs for structured data. "
         "You can send media files natively: to deliver a file to the user, "
-        "include MEDIA:/path/to/file in your response. Images "
+        "include the `MEDIA:` marker immediately followed by the file's absolute path. Images "
         "(.png, .jpg, .webp) appear as photos, audio (.ogg) sends as voice "
         "bubbles, and videos (.mp4) play inline. You can also include image "
         "URLs in markdown format ![alt](url) and they will be sent as native photos."
     ),
     "discord": (
         "You are in a Discord server or group chat communicating with your user. "
-        "You can send media files natively: include MEDIA:/path/to/file "
+        "You can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path "
         "in your response. Images (.png, .jpg, .webp) are sent as photo "
         "attachments, audio as file attachments. You can also include image URLs "
         "in markdown format ![alt](url) and they will be sent as attachments."
     ),
     "slack": (
         "You are in a Slack workspace communicating with your user. "
-        "You can send media files natively: include MEDIA:/path/to/file "
+        "You can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path "
         "in your response. Images (.png, .jpg, .webp) are uploaded as photo "
         "attachments, audio as file attachments. You can also include image URLs "
         "in markdown format ![alt](url) and they will be uploaded as attachments."
@@ -724,7 +752,7 @@ PLATFORM_HINTS = {
         "lists ('- item') freely (they render as • bullets). Tables are NOT "
         "supported — prefer bullet lists or labeled key:value pairs. "
         "You can send media files natively: to deliver a file to the user, "
-        "include MEDIA:/path/to/file in your response. Images "
+        "include the `MEDIA:` marker immediately followed by the file's absolute path. Images "
         "(.png, .jpg, .webp) appear as photos, audio as attachments, and other "
         "files arrive as downloadable documents. You can also include image "
         "URLs in markdown format ![alt](url) and they will be sent as photos."
@@ -733,7 +761,7 @@ PLATFORM_HINTS = {
         "You are communicating via email. Write clear, well-structured responses "
         "suitable for email. Use plain text formatting (no markdown). "
         "Keep responses concise but complete. You can send file attachments — "
-        "include MEDIA:/path/to/file in your response. The subject line "
+        "include the `MEDIA:` marker immediately followed by the file's absolute path. The subject line "
         "is preserved for threading. Do not include greetings or sign-offs unless "
         "contextually appropriate."
     ),
@@ -748,7 +776,7 @@ PLATFORM_HINTS = {
         "You are a CLI AI Agent. Try not to use markdown but simple text "
         "renderable inside a terminal. "
         "File delivery: there is no attachment channel — the user reads your "
-        "response directly in their terminal. Do NOT emit MEDIA:/path tags "
+        "response directly in their terminal. Do NOT emit `MEDIA:` file markers "
         "(those are only intercepted on messaging platforms like Telegram, "
         "Discord, Slack, etc.; on the CLI they render as literal text). "
         "When referring to a file you created or changed, just state its "
@@ -776,7 +804,7 @@ PLATFORM_HINTS = {
         "surface, not a terminal. Use markdown freely: it renders with full "
         "GitHub flavor (tables, code blocks with syntax highlighting, math "
         "via $...$, task lists, blockquote callouts). "
-        "You can deliver files natively — include MEDIA:/path/to/file "
+        "You can deliver files natively — include the `MEDIA:` marker immediately followed by the file's absolute path "
         "in your response. Images (.png, .jpg, .webp) appear inline, audio and "
         "video play inline, and other files arrive as download links. You can "
         "also include image URLs in markdown format ![alt](url) and they "
@@ -791,14 +819,14 @@ PLATFORM_HINTS = {
         "You are chatting via iMessage (BlueBubbles). iMessage does not render "
         "markdown formatting — use plain text. Keep responses concise as they "
         "appear as text messages. You can send media files natively: include "
-        "MEDIA:/path/to/file in your response. Images (.jpg, .png, "
+        "the `MEDIA:` marker immediately followed by the file's absolute path. Images (.jpg, .png, "
         ".heic) appear as photos and other files arrive as attachments."
     ),
     "mattermost": (
         "You are in a Mattermost workspace communicating with your user. "
         "Mattermost renders standard Markdown — headings, bold, italic, code "
         "blocks, and tables all work. "
-        "You can send media files natively: include MEDIA:/path/to/file "
+        "You can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path "
         "in your response. Images (.jpg, .png, .webp) are uploaded as photo "
         "attachments, audio and video as file attachments. "
         "Image URLs in markdown format ![alt](url) are rendered as inline previews automatically."
@@ -818,7 +846,7 @@ PLATFORM_HINTS = {
         "LINKS: prefer [descriptive link text](url) over bare URLs. When "
         "referencing something with an associated URL (events, sources, "
         "people), make the name a clickable link.\n\n"
-        "You can send media files natively: include MEDIA:/path/to/file "
+        "You can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path "
         "in your response. Images (.jpg, .png, .webp) are sent as inline photos, "
         "audio (.ogg, .mp3) as voice/audio messages, video (.mp4) inline, "
         "and other files as downloadable attachments."
@@ -827,14 +855,14 @@ PLATFORM_HINTS = {
         "You are in a Feishu (Lark) workspace communicating with your user. "
         "Feishu renders Markdown in messages — bold, italic, code blocks, and "
         "links are supported. "
-        "You can send media files natively: include MEDIA:/path/to/file "
+        "You can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path "
         "in your response. Images (.jpg, .png, .webp) are uploaded and displayed "
         "inline, audio files as voice messages, and other files as attachments."
     ),
     "weixin": (
         "You are on Weixin/WeChat. Markdown formatting is supported, so you may use it when "
         "it improves readability, but keep the message compact and chat-friendly. You can send media files natively: "
-        "include MEDIA:/path/to/file in your response. Images are sent as native "
+        "include the `MEDIA:` marker immediately followed by the file's absolute path. Images are sent as native "
         "photos, videos play inline when supported, and other files arrive as downloadable "
         "documents. You can also include image URLs in markdown format ![alt](url) and they "
         "will be downloaded and sent as native media when possible."
@@ -842,7 +870,7 @@ PLATFORM_HINTS = {
     "wecom": (
         "You are on WeCom (企业微信 / Enterprise WeChat). Markdown formatting is supported. "
         "You CAN send media files natively — to deliver a file to the user, include "
-        "MEDIA:/path/to/file in your response. The file will be sent as a native "
+        "the `MEDIA:` marker immediately followed by the file's absolute path. The file will be sent as a native "
         "WeCom attachment: images (.jpg, .png, .webp) are sent as photos (up to 10 MB), "
         "other files (.pdf, .docx, .xlsx, .md, .txt, etc.) arrive as downloadable documents "
         "(up to 20 MB), and videos (.mp4) play inline. Voice messages are supported but "
@@ -853,7 +881,7 @@ PLATFORM_HINTS = {
     ),
     "qqbot": (
         "You are on QQ, a popular Chinese messaging platform. QQ supports markdown formatting "
-        "and emoji. You can send media files natively: include MEDIA:/path/to/file in "
+        "and emoji. You can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path in "
         "your response. Images are sent as native photos, and other files arrive as downloadable "
         "documents."
     ),
@@ -861,7 +889,7 @@ PLATFORM_HINTS = {
         "You are on Yuanbao (腾讯元宝), a Chinese AI assistant platform. "
         "Markdown formatting is supported (code blocks, tables, bold/italic). "
         "You CAN send media files natively — to deliver a file to the user, include "
-        "MEDIA:/path/to/file in your response. The file will be sent as a native "
+        "the `MEDIA:` marker immediately followed by the file's absolute path. The file will be sent as a native "
         "Yuanbao attachment: images (.jpg, .png, .webp, .gif) are sent as photos, "
         "and other files (.pdf, .docx, .txt, .zip, etc.) arrive as downloadable documents "
         "(max 50 MB). You can also include image URLs in markdown format ![alt](url) and "
@@ -884,19 +912,26 @@ PLATFORM_HINTS = {
         "You're responding through an API server. The rendering layer is unknown — "
         "assume plain text. No markdown formatting (no asterisks, bullets, headers, "
         "code fences). Treat this like a conversation, not a document. Keep responses "
-        "brief and natural."
+        "brief and natural. "
+        "File/media delivery: images referenced with the `MEDIA:` marker followed by an absolute path "
+        "(.png/.jpg/.jpeg/.gif/.webp/.bmp, up to 5MB) are inlined as base64 data "
+        "URLs in responses on the chat, completions, and responses endpoints. "
+        "Non-image files are NOT intercepted anywhere, and the runs endpoint "
+        "intercepts nothing — a MEDIA: tag there renders as literal text exposing "
+        "a raw host filesystem path. For those cases, state the plain file path "
+        "in your response text instead of a MEDIA: tag."
     ),
     "webui": (
         "You are in the Hermes WebUI, a browser-based chat interface. "
         "Full Markdown rendering is supported — headings, bold, italic, code "
         "blocks, tables, math (LaTeX), and Mermaid diagrams all render natively. "
-        "To display local or remote media/files inline, include "
-        "MEDIA:/path/to/file or MEDIA:https://... in your response. "
+        "To display local or remote media/files inline, prefix an absolute local path "
+        "or HTTPS URL with the `MEDIA:` marker in your response. "
         "Local file paths must be absolute. Images, audio (with playback speed "
         "controls), video, PDFs, HTML, CSV, diffs/patches, and Excalidraw files "
         "render as rich previews. Do not use Markdown image syntax like "
         "![alt](/path) for local files; local paths are not served that way. "
-        "Use MEDIA:/absolute/path instead."
+        "Use the `MEDIA:` marker with an absolute path instead."
     ),
 }
 
@@ -946,7 +981,7 @@ WSL_ENVIRONMENT_HINT = (
 # misleading — the agent should only see the machine it can actually touch.
 _REMOTE_TERMINAL_BACKENDS = frozenset({
     "docker", "singularity", "modal", "daytona", "ssh",
-    "managed_modal",
+    "vercel_sandbox", "managed_modal",
 })
 
 
@@ -960,6 +995,7 @@ _BACKEND_FALLBACK_DESCRIPTIONS: dict[str, str] = {
     "modal": "a Modal sandbox (Linux)",
     "managed_modal": "a managed Modal sandbox (Linux)",
     "daytona": "a Daytona workspace (Linux)",
+    "vercel_sandbox": "a Vercel sandbox (Linux)",
     "ssh": "a remote host reached over SSH (likely Linux)",
 }
 
@@ -1034,7 +1070,7 @@ def _probe_remote_backend(env_type: str) -> str | None:
             }
 
         container_config = None
-        if env_type in {"docker", "singularity", "modal", "daytona"}:
+        if env_type in {"docker", "singularity", "modal", "daytona", "vercel_sandbox"}:
             container_config = {
                 "container_cpu": config.get("container_cpu", 1),
                 "container_memory": config.get("container_memory", 5120),
@@ -1124,7 +1160,7 @@ def build_environment_hints() -> str:
       and a Windows-only note that `terminal` shells out to bash, not
       PowerShell).
     - For **remote / sandbox** terminal backends (docker, singularity,
-      modal, daytona, ssh): host info is **suppressed**
+      modal, daytona, ssh, vercel_sandbox): host info is **suppressed**
       because the agent's tools can't touch the host — only the backend
       matters. A live probe inside the backend reports its OS, user, $HOME,
       and cwd. Falls back to a static summary if the probe fails.
@@ -1211,10 +1247,10 @@ def build_environment_hints() -> str:
     extra = (os.getenv("HERMES_ENVIRONMENT_HINT") or "").strip()
     if not extra:
         try:
-            from hermes_cli.config import load_config
+            from hermes_cli.config import load_config_readonly
 
             extra = str(
-                (load_config().get("agent", {}) or {}).get("environment_hint", "")
+                (load_config_readonly().get("agent", {}) or {}).get("environment_hint", "")
             ).strip()
         except Exception as e:
             logger.debug("Could not read agent.environment_hint from config: %s", e)
@@ -1265,9 +1301,9 @@ def _get_context_file_max_chars(context_length: Optional[int] = None) -> int:
       3. ``CONTEXT_FILE_MAX_CHARS`` (20K) as the upstream-compatible fallback.
     """
     try:
-        from hermes_cli.config import load_config
+        from hermes_cli.config import load_config_readonly
 
-        val = load_config().get("context_file_max_chars")
+        val = load_config_readonly().get("context_file_max_chars")
         if isinstance(val, (int, float)) and val > 0:
             return int(val)
     except Exception as e:
@@ -1310,7 +1346,9 @@ def drain_truncation_warnings() -> list:
 _SKILLS_PROMPT_CACHE_MAX = 8
 _SKILLS_PROMPT_CACHE: OrderedDict[tuple, str] = OrderedDict()
 _SKILLS_PROMPT_CACHE_LOCK = threading.Lock()
-_SKILLS_SNAPSHOT_VERSION = 1
+# v2: entries gained org provenance fields (org_id/org_author/rel_dir) for M2
+# org-shared skills; older snapshots are discarded and rebuilt.
+_SKILLS_SNAPSHOT_VERSION = 2
 
 
 def _skills_prompt_snapshot_path() -> Path:
@@ -1329,13 +1367,32 @@ def clear_skills_system_prompt_cache(*, clear_snapshot: bool = False) -> None:
 
 
 def _build_skills_manifest(skills_dir: Path) -> dict[str, list[int]]:
-    """Build an mtime/size manifest of all SKILL.md and DESCRIPTION.md files."""
+    """Build an mtime/size manifest of all SKILL.md and DESCRIPTION.md files.
+
+    Org mirrors (M2): only the ACTIVE org's mirror participates, and the
+    ``.active_org`` marker itself is included — so switching/leaving an org
+    invalidates the snapshot even when no SKILL.md changed.
+    """
     manifest: dict[str, list[int]] = {}
     skills_dir_str = str(skills_dir)
     base = os.path.join(skills_dir_str, "")
     prefix_len = len(base)
+    active_org = read_active_org_id(skills_dir)
+    org_root = os.path.join(skills_dir_str, ORG_MIRROR_DIR_NAME)
+    marker_path = os.path.join(org_root, ORG_ACTIVE_MARKER)
+    try:
+        st = os.stat(marker_path)
+        manifest[ORG_MIRROR_DIR_NAME + "/" + ORG_ACTIVE_MARKER] = [
+            int(st.st_mtime), int(st.st_size),
+        ]
+    except OSError:
+        pass
     for root, dirs, files in os.walk(skills_dir_str, followlinks=True):
         has_skill_md = "SKILL.md" in files
+        if root == skills_dir_str and ORG_MIRROR_DIR_NAME in dirs and active_org is None:
+            dirs.remove(ORG_MIRROR_DIR_NAME)
+        elif root == org_root:
+            dirs[:] = [d for d in dirs if d == active_org]
         dirs[:] = [
             d
             for d in dirs
@@ -1400,6 +1457,15 @@ def _build_snapshot_entry(
     """Build a serialisable metadata dict for one skill."""
     rel_path = skill_file.relative_to(skills_dir)
     parts = rel_path.parts
+
+    # M2 org mirror: strip the `_org/<org_id>/` prefix so category/name derive
+    # from the path WITHIN the mirror (same shape the org tree was built
+    # from), and record provenance for labeling + fail-loud collisions.
+    org_id: str | None = None
+    if len(parts) >= 3 and parts[0] == ORG_MIRROR_DIR_NAME:
+        org_id = parts[1]
+        parts = parts[2:]
+
     if len(parts) >= 2:
         skill_name = parts[-2]
         category = "/".join(parts[:-2]) if len(parts) > 2 else parts[0]
@@ -1411,7 +1477,7 @@ def _build_snapshot_entry(
     if isinstance(platforms, str):
         platforms = [platforms]
 
-    return {
+    entry = {
         "skill_name": skill_name,
         "category": category,
         "frontmatter_name": str(frontmatter.get("name", skill_name)),
@@ -1419,6 +1485,22 @@ def _build_snapshot_entry(
         "platforms": [str(p).strip() for p in platforms if str(p).strip()],
         "conditions": extract_skill_conditions(frontmatter),
     }
+    if org_id:
+        entry["org_id"] = org_id
+        # Author from the pull-time provenance sidecar (token-verified at
+        # push by the plane's author_mismatch guard). Best-effort.
+        try:
+            import json as _json
+
+            prov_path = (
+                skills_dir / ORG_MIRROR_DIR_NAME / org_id / ORG_PROVENANCE_FILE
+            )
+            prov = _json.loads(prov_path.read_text(encoding="utf-8"))
+            device = str(prov.get("author_device") or "")
+            entry["org_author"] = device or str(prov.get("author_user_id") or "")
+        except Exception:
+            entry["org_author"] = ""
+    return entry
 
 
 # =========================================================================
@@ -1554,6 +1636,10 @@ def build_skills_system_prompt(
 
     skills_by_category: dict[str, list[tuple[str, str]]] = {}
     category_descriptions: dict[str, str] = {}
+    # Unified visible-entry list (both paths) so the org labeling +
+    # fail-loud collision pass below runs identically for snapshot and scan.
+    visible_entries: list[dict] = []
+    skill_entries: list[dict] = []
 
     if snapshot is not None:
         # Fast path: use pre-parsed metadata from disk
@@ -1561,7 +1647,6 @@ def build_skills_system_prompt(
             if not isinstance(entry, dict):
                 continue
             skill_name = entry.get("skill_name") or ""
-            category = entry.get("category") or "general"
             frontmatter_name = entry.get("frontmatter_name") or skill_name
             platforms = entry.get("platforms") or []
             if not skill_matches_platform_list(platforms):
@@ -1574,16 +1659,13 @@ def build_skills_system_prompt(
                 available_toolsets,
             ):
                 continue
-            skills_by_category.setdefault(category, []).append(
-                (frontmatter_name, entry.get("description", ""))
-            )
+            visible_entries.append(entry)
         category_descriptions = {
             str(k): str(v)
             for k, v in (snapshot.get("category_descriptions") or {}).items()
         }
     else:
         # Cold path: full filesystem scan + write snapshot for next time
-        skill_entries: list[dict] = []
         for skill_file in iter_skill_index_files(skills_dir, "SKILL.md"):
             is_compatible, frontmatter, desc = _parse_skill_file(skill_file)
             entry = _build_snapshot_entry(skill_file, skills_dir, frontmatter, desc)
@@ -1599,10 +1681,38 @@ def build_skills_system_prompt(
                 available_toolsets,
             ):
                 continue
-            skills_by_category.setdefault(entry["category"], []).append(
-                (entry["frontmatter_name"], entry["description"])
-            )
+            visible_entries.append(entry)
 
+    # ── M2 org labeling + FAIL-LOUD collisions ─────────────────────────
+    # An org skill lists with an explicit provenance tag. When a personal and
+    # an org skill share a name, NEITHER silently wins: both list qualified
+    # (personal keeps the bare name is the wrong default — silent divergence
+    # from the org set; org winning silently shadows the user's own work) —
+    # so both entries carry a [name collision] flag and skill_view refuses
+    # the ambiguous bare name (its existing multi-candidate guard).
+    name_owners: dict[str, set[str]] = {}
+    for entry in visible_entries:
+        fm = entry.get("frontmatter_name") or entry.get("skill_name") or ""
+        kind = "org" if entry.get("org_id") else "personal"
+        name_owners.setdefault(fm, set()).add(kind)
+    for entry in visible_entries:
+        fm = entry.get("frontmatter_name") or entry.get("skill_name") or ""
+        desc = entry.get("description", "")
+        org_id = entry.get("org_id")
+        collided = len(name_owners.get(fm, set())) > 1
+        if org_id:
+            author = entry.get("org_author") or ""
+            tag = f"[org-shared{': by ' + author if author else ''}]"
+            desc = f"{tag} {desc}".strip()
+            category = f"org:{org_id}"
+        else:
+            category = entry.get("category") or "general"
+        if collided:
+            desc = f"[name collision — also exists {'personally' if org_id else 'in your org'}; load via category path] {desc}".strip()
+        skills_by_category.setdefault(category, []).append((fm, desc))
+
+    if snapshot is None:
+        # (continuation of the cold path below: category descriptions + write)
         # Read category-level DESCRIPTION.md files
         for desc_file in iter_skill_index_files(skills_dir, "DESCRIPTION.md"):
             try:
@@ -1739,7 +1849,7 @@ def build_skills_system_prompt(
             "skills, voice, gateway, plugins, or any feature — load the `hermes-agent` skill "
             "first. It has the actual commands (e.g. `hermes config set …`, `hermes tools`, "
             "`hermes setup`) so you don't have to guess or invent workarounds.\n"
-            "If a skill has issues, fix it with skill_manage (patch).\n"
+            "If a skill has issues, fix it with the patch action of skill_manage.\n"
             "After difficult/iterative tasks, offer to save as a skill. "
             "If a skill you loaded was missing steps, had wrong commands, or needed "
             "pitfalls you discovered, update it before finishing.\n"

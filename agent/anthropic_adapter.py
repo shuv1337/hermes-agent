@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 
 from hermes_constants import get_hermes_home
 from typing import Any, Dict, List, Optional, Tuple
-from utils import base_url_host_matches, normalize_proxy_env_vars
+from utils import base_url_host_matches, base_url_hostname, normalize_proxy_env_vars
 
 # NOTE: `import anthropic` is deliberately NOT at module top — the SDK pulls
 # ~220 ms of imports (anthropic.types, anthropic.lib.tools._beta_runner, etc.)
@@ -113,40 +113,12 @@ _NO_XHIGH_CLAUDE_SUBSTRINGS = (
     "claude-sonnet-4-6", "claude-sonnet-4.6",
 )
 
-# Claude models where *omitting* the ``thinking`` field still runs adaptive
-# thinking.  On 4.6/4.7/4.8 an absent ``thinking`` means no thinking, so
-# "reasoning off" needed no wire representation.  Opus 5 and Sonnet 5 flipped
-# that default: staying silent now spends thinking tokens against max_tokens
-# and can truncate a response the caller sized for answer text alone.  These
-# models need an explicit ``{"type": "disabled"}`` to actually turn it off.
-_THINKING_ON_BY_DEFAULT_CLAUDE_SUBSTRINGS = (
-    "claude-opus-5",
-    "claude-sonnet-5",
-)
-
-# Claude models where thinking cannot be switched off at all — an explicit
-# ``{"type": "disabled"}`` returns HTTP 400.  Omitting the field is the only
-# valid way to express "no preference" here, so these must NOT get the
-# explicit-disable treatment above.
-_THINKING_ALWAYS_ON_CLAUDE_SUBSTRINGS = (
-    "claude-fable",
-    "claude-mythos",
-)
-
 
 def _is_claude_model(model: str | None) -> bool:
     return "claude" in (model or "").lower()
 
 
-# Models that take fast mode via the native ``speed: "fast"`` request
-# parameter: Opus 4.6 and Opus 5. Opus 4.7 400s on the parameter.
-#
-# Opus 4.8 is deliberately absent — Hermes reaches 4.8 fast through the
-# separate ``anthropic/claude-opus-4.8-fast`` model ID rather than the
-# parameter (see d89e7a3cd and test_supports_fast_mode_predicate). Opus 5
-# has no such split model ID, so the parameter is the only route for it.
-# Matched after normalizing dots to hyphens.
-_FAST_MODE_SUPPORTED_SUBSTRINGS = ("opus-4-6", "opus-5")
+_FAST_MODE_SUPPORTED_SUBSTRINGS = ("opus-4-6", "opus-4.6")
 
 # ── Max output token limits per Anthropic model ───────────────────────
 # Source: Anthropic docs + Cline model catalog.  Anthropic's API requires
@@ -155,8 +127,6 @@ _FAST_MODE_SUPPORTED_SUBSTRINGS = ("opus-4-6", "opus-5")
 _ANTHROPIC_OUTPUT_LIMITS = {
     # Mythos-class named models (claude-fable-5, …) — 1M context, reasoning
     "claude-fable":      128_000,
-    # Claude Opus 5
-    "claude-opus-5":     128_000,
     # Claude Sonnet 5
     "claude-sonnet-5":   128_000,
     # Claude 4.8
@@ -328,42 +298,15 @@ def _forbids_sampling_params(model: str) -> bool:
     return not any(v in m for v in _LEGACY_MANUAL_THINKING_CLAUDE_SUBSTRINGS)
 
 
-def _requires_explicit_thinking_disable(model: str) -> bool:
-    """Return True when "reasoning off" must be sent as ``thinking.disabled``.
-
-    Only for Claude models that think by default when the field is absent
-    (Opus 5, Sonnet 5).  Fable/Mythos reject an explicit disable, and every
-    older Claude family treats an absent ``thinking`` as off already — both
-    are excluded so the emitted request is unchanged for them.
-
-    Unknown Claude models default to False.  Unlike the adaptive-thinking and
-    sampling-param gates, guessing wrong here is not symmetric: emitting a
-    disable a model rejects is an outright 400, whereas omitting it on a
-    thinks-by-default model costs tokens but still returns an answer.
-    """
-    if not _is_claude_model(model):
-        return False
-    m = model.lower().replace(".", "-")
-    if any(v in m for v in _THINKING_ALWAYS_ON_CLAUDE_SUBSTRINGS):
-        return False
-    return any(v in m for v in _THINKING_ON_BY_DEFAULT_CLAUDE_SUBSTRINGS)
-
-
 def _supports_fast_mode(model: str) -> bool:
-    """Return True for models that take fast mode via the ``speed`` parameter.
+    """Return True for models that support Anthropic Fast Mode (speed=fast).
 
-    Opus 4.6 and Opus 5. Sending ``speed: "fast"`` to Opus 4.7 returns HTTP
-    400, and Opus 4.8 routes fast mode through its own model ID instead, so
-    both stay False here. This guard prevents silently 400'ing when stale
-    config or older callers leave fast mode enabled across a model upgrade.
-
-    Fast mode is Claude-API only — Bedrock, Vertex, and Foundry reject it.
-    The caller pairs this with ``_is_third_party_anthropic_endpoint``.
+    Per Anthropic docs, fast mode is currently supported on Opus 4.6 only.
+    Sending ``speed: "fast"`` to any other Claude model (including Opus 4.7)
+    returns HTTP 400. This guard prevents silently 400'ing when stale config
+    or older callers leave fast mode enabled across a model upgrade.
     """
-    return any(
-        v in model.lower().replace(".", "-")
-        for v in _FAST_MODE_SUPPORTED_SUBSTRINGS
-    )
+    return any(v in model for v in _FAST_MODE_SUPPORTED_SUBSTRINGS)
 
 
 # Beta headers for enhanced features that are safe on ordinary/native Anthropic
@@ -425,7 +368,7 @@ def _detect_claude_code_version() -> str:
         try:
             result = _sp.run(
                 [cmd, "--version"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
                 # Output is like "2.1.74 (Claude Code)" or just "2.1.74"
@@ -603,15 +546,49 @@ def _is_deepseek_anthropic_endpoint(base_url: str | None) -> bool:
     return "/anthropic" in normalized.rstrip("/").lower()
 
 
+def _is_nous_portal_endpoint(base_url: str | None) -> bool:
+    """Return True for Nous Portal's Anthropic Messages route.
+
+    Portal serves its ``anthropic/*`` catalog natively at
+    ``https://inference-api.nousresearch.com/v1/messages``.  Portal-specific
+    behaviours key off this: Bearer JWT auth, verbatim catalog model ids,
+    and native thinking-signature replay.
+
+    Trusted hosts only:
+
+    1. Prod hostname ``inference-api.nousresearch.com``
+    2. The operator-set ``NOUS_INFERENCE_BASE_URL`` hostname (staging/preview)
+
+    Lookalikes such as ``inference-api.nousresearch.com.attacker.test`` are
+    rejected (hostname match, not substring).
+    """
+    if base_url_host_matches(base_url or "", "inference-api.nousresearch.com"):
+        return True
+    try:
+        from hermes_cli.auth import _nous_inference_env_override
+
+        override = _nous_inference_env_override()
+    except Exception:
+        return False
+    if not override:
+        return False
+    # Exact host equality (not subdomain) so the env override can't broaden
+    # into sibling hosts the operator did not set.
+    override_host = base_url_hostname(override)
+    return bool(override_host) and base_url_hostname(base_url or "") == override_host
+
+
 def _requires_bearer_auth(base_url: str | None) -> bool:
     """Return True for Anthropic-compatible providers that require Bearer auth.
 
     Some third-party /anthropic endpoints implement Anthropic's Messages API but
     require Authorization: Bearer instead of Anthropic's native x-api-key header.
     MiniMax's global and China Anthropic-compatible endpoints, Azure AI
-    Foundry's Anthropic-style endpoint, and Palantir Foundry's LLM proxy
-    follow this pattern.
+    Foundry's Anthropic-style endpoint, Palantir Foundry's LLM proxy, and Nous
+    Portal's Messages route follow this pattern.
     """
+    if _is_nous_portal_endpoint(base_url):
+        return True
     normalized = _normalize_base_url_text(base_url)
     if not normalized:
         return False
@@ -778,7 +755,11 @@ def _build_anthropic_client_with_bearer_hook(
     if common_betas:
         kwargs["default_headers"] = {"anthropic-beta": ",".join(common_betas)}
 
-    return _anthropic_sdk.Anthropic(**kwargs)
+    client = _anthropic_sdk.Anthropic(**kwargs)
+    # Same env-inference trap as build_anthropic_client: auth_token-only
+    # construction would otherwise also send ANTHROPIC_API_KEY as X-Api-Key.
+    client.api_key = None
+    return client
 
 
 def build_anthropic_client(
@@ -907,7 +888,16 @@ def build_anthropic_client(
         if common_betas:
             kwargs["default_headers"] = {"anthropic-beta": ",".join(common_betas)}
 
-    return _anthropic_sdk.Anthropic(**kwargs)
+    client = _anthropic_sdk.Anthropic(**kwargs)
+    # Bearer-only construction leaves ``api_key`` unset, so the SDK fills it
+    # from ``ANTHROPIC_API_KEY`` (Hermes loads that into the process env from
+    # ``~/.hermes/.env``). The result is dual auth —
+    # ``X-Api-Key: sk-ant-…`` *and* ``Authorization: Bearer <portal-jwt>`` —
+    # on every Portal / MiniMax / OAuth Messages request. Clear the env-filled
+    # key whenever we intentionally authenticated via auth_token alone.
+    if "auth_token" in kwargs and "api_key" not in kwargs:
+        client.api_key = None
+    return client
 
 
 def build_anthropic_bedrock_client(region: str):
@@ -971,7 +961,7 @@ def _read_claude_code_credentials_from_keychain() -> Optional[Dict[str, Any]]:
              "-s", "Claude Code-credentials",
              "-w"],
             capture_output=True,
-            text=True,
+            text=True, encoding='utf-8', errors='replace',
             timeout=5,
             stdin=subprocess.DEVNULL,
         )
@@ -1938,6 +1928,28 @@ def _content_parts_to_anthropic_blocks(parts: Any) -> List[Dict[str, Any]]:
     return out
 
 
+_EMPTY_TEXT_PLACEHOLDER = "(empty)"
+
+
+def _safe_text(text: Any) -> str:
+    """Return ``text`` if it's non-whitespace, else a non-whitespace placeholder.
+
+    The Anthropic Messages API rejects requests where a text content block is
+    empty or whitespace-only (HTTP 400 "text content blocks must contain
+    non-whitespace text"). When such a block gets stored in session history —
+    e.g. produced by context compression — it is replayed verbatim on every
+    subsequent turn, permanently wedging the session. Coercing to a
+    non-whitespace placeholder is self-healing: the next API call recovers.
+
+    Mirrors ``bedrock_adapter._safe_text`` (#9486); ref #69512.
+    """
+    if text is None:
+        return _EMPTY_TEXT_PLACEHOLDER
+    if not isinstance(text, str):
+        text = str(text)
+    return text if text.strip() else _EMPTY_TEXT_PLACEHOLDER
+
+
 def _sanitize_replay_block(b: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Strip output-only fields from a stored Anthropic content block so it is
     valid as REQUEST input on replay.
@@ -1955,7 +1967,18 @@ def _sanitize_replay_block(b: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     btype = b.get("type")
     if btype == "text":
-        out: Dict[str, Any] = {"type": "text", "text": b.get("text", "")}
+        text_val = b.get("text", "")
+        # Bedrock and strict Anthropic-compatible endpoints reject text
+        # blocks where "text" is empty or whitespace-only (#69512). Drop the
+        # blank block (the caller relocates any cache_control it carried and
+        # falls back to a non-whitespace placeholder when nothing survives)
+        # rather than coercing in place — a coerced "(empty)" block would be
+        # model-visible noise next to surviving thinking/tool_use blocks.
+        # Type-safe: captured blocks can carry text=None from an invalid
+        # upstream payload, which a bare .strip() would crash on.
+        if not isinstance(text_val, str) or not text_val.strip():
+            return None
+        out: Dict[str, Any] = {"type": "text", "text": text_val}
         # citations is input-valid ONLY when it's a non-empty list; the SDK
         # emits citations=None on responses, which the input schema rejects.
         cits = b.get("citations")
@@ -2043,9 +2066,17 @@ def _convert_assistant_message(m: Dict[str, Any]) -> Dict[str, Any]:
                 parsed_args = {}
             redacted_input_by_id[_sanitize_tool_id(tc.get("id", ""))] = parsed_args
         replayed: List[Dict[str, Any]] = []
+        _relocated_replay_cache_control = None
+        _dropped_blank_text = False
         for b in ordered_blocks:
             clean = _sanitize_replay_block(b)
             if clean is None:
+                if isinstance(b, dict) and b.get("type") == "text":
+                    _dropped_blank_text = True
+                if isinstance(b, dict) and isinstance(b.get("cache_control"), dict):
+                    # A dropped blank text block can still carry the cache
+                    # breakpoint marker -- relocate it rather than losing it.
+                    _relocated_replay_cache_control = b["cache_control"]
                 continue
             if clean.get("type") == "tool_use":
                 # Override raw (un-redacted) input with the redacted copy when
@@ -2055,20 +2086,90 @@ def _convert_assistant_message(m: Dict[str, Any]) -> Dict[str, Any]:
                 if redacted is not None:
                     clean["input"] = redacted
             replayed.append(clean)
+        # When every text block was blank and nothing cacheable survived
+        # (e.g. signed thinking + a blank text block, or a SOLE blank
+        # cache-marked block), emit the non-whitespace placeholder so the
+        # replayed message stays schema-valid (#69512) and a relocated cache
+        # marker still has a carrier instead of being silently lost.
+        _has_cacheable_replay = any(
+            isinstance(b, dict) and b.get("type") in {"text", "tool_use"}
+            for b in replayed
+        )
+        if not _has_cacheable_replay and (
+            _dropped_blank_text or _relocated_replay_cache_control is not None
+        ):
+            replayed.append({"type": "text", "text": _EMPTY_TEXT_PLACEHOLDER})
         if replayed:
+            if _relocated_replay_cache_control is not None:
+                _apply_assistant_cache_control_to_last_cacheable_block(
+                    replayed, _relocated_replay_cache_control
+                )
             _apply_assistant_cache_control_to_last_cacheable_block(
                 replayed, m.get("cache_control")
             )
+            # apply_anthropic_cache_control marks an assistant turn with
+            # non-empty text by writing cache_control INTO ``content`` (see
+            # _apply_cache_marker's list branch), not at the top level. This
+            # branch rebuilds the message from ordered_blocks and never reads
+            # ``content``, so that marker would be dropped -- and because
+            # _can_carry_marker already counted this message as a carrier, the
+            # breakpoint is burned rather than relocated. #56195 covered the
+            # complementary shape (blank content -> top-level marker); this is
+            # the interleaved thinking + preamble-text + tool_use shape.
+            _inline_cc = None
+            _msg_content = m.get("content")
+            if isinstance(_msg_content, list):
+                for _blk in _msg_content:
+                    if isinstance(_blk, dict) and isinstance(
+                        _blk.get("cache_control"), dict
+                    ):
+                        _inline_cc = _blk["cache_control"]
+                        break
+            if _inline_cc is not None:
+                _apply_assistant_cache_control_to_last_cacheable_block(
+                    replayed, _inline_cc
+                )
             return {"role": "assistant", "content": replayed}
 
     blocks = _extract_preserved_thinking_blocks(m)
+    # Cache markers dropped along with a blank block are relocated onto the
+    # last surviving cacheable block below (via
+    # _apply_assistant_cache_control_to_last_cacheable_block), rather than
+    # lost -- prompt_caching.py's _apply_cache_marker() sets cache_control
+    # directly on content[-1] for list content, so if that last part happens
+    # to be blank text, dropping it silently would lose the breakpoint.
+    _relocated_cache_control = None
     if content:
         if isinstance(content, list):
             converted_content = _convert_content_to_anthropic(content)
             if isinstance(converted_content, list):
-                blocks.extend(converted_content)
+                # Bedrock and strict Anthropic-compatible endpoints reject
+                # text blocks where "text" is empty or whitespace-only. The
+                # ordered-replay path enforces the same invariant via
+                # _sanitize_replay_block(). Type-safe against ANY invalid
+                # "text" value from an upstream payload -- None, or a
+                # truthy non-string like an int -- not just None: checking
+                # isinstance() first (rather than `blk.get("text") or ""`)
+                # means a non-string value is treated as blank/invalid
+                # instead of reaching .strip() and raising AttributeError.
+                for blk in converted_content:
+                    _blk_text = blk.get("text") if isinstance(blk, dict) else None
+                    if (
+                        isinstance(blk, dict)
+                        and blk.get("type") == "text"
+                        and (not isinstance(_blk_text, str) or not _blk_text.strip())
+                    ):
+                        if isinstance(blk.get("cache_control"), dict):
+                            _relocated_cache_control = blk["cache_control"]
+                        continue
+                    blocks.append(blk)
         else:
-            blocks.append({"type": "text", "text": str(content)})
+            # Scalar (non-list) content: a whitespace-only string is the
+            # same invalid-payload case as an empty list block -- drop it
+            # rather than emitting a blank text block.
+            text_str = str(content)
+            if text_str.strip():
+                blocks.append({"type": "text", "text": text_str})
     for tc in m.get("tool_calls", []):
         if not tc or not isinstance(tc, dict):
             continue
@@ -2084,9 +2185,6 @@ def _convert_assistant_message(m: Dict[str, Any]) -> Dict[str, Any]:
             "name": fn.get("name", ""),
             "input": parsed_args,
         })
-    _apply_assistant_cache_control_to_last_cacheable_block(
-        blocks, m.get("cache_control")
-    )
     # Kimi's /coding endpoint (Anthropic protocol) requires assistant
     # tool-call messages to carry reasoning_content when thinking is
     # enabled server-side.  Preserve it as a thinking block so Kimi
@@ -2112,10 +2210,26 @@ def _convert_assistant_message(m: Dict[str, Any]) -> Dict[str, Any]:
     )
     if isinstance(reasoning_content, str) and not _already_has_thinking:
         blocks.insert(0, {"type": "thinking", "thinking": reasoning_content})
-    # Anthropic rejects empty assistant content
-    effective = blocks or content
-    if not effective or effective == "":
-        effective = [{"type": "text", "text": "(empty)"}]
+    # Anthropic rejects empty assistant content. IMPORTANT: fall back only
+    # to the placeholder, never to the raw `content` variable -- `content`
+    # is the UNFILTERED original message content, and can itself be exactly
+    # the blank/whitespace-only payload the filtering above just removed
+    # (a sole blank text block, or scalar whitespace with no tool_calls).
+    # `blocks or content` there would silently restore the invalid provider
+    # payload this function exists to prevent (#69512).
+    effective = blocks if blocks else [{"type": "text", "text": _EMPTY_TEXT_PLACEHOLDER}]
+    # Applied here (after the empty-fallback resolution) rather than
+    # earlier against `blocks` directly, so a cache_control relocated from
+    # a dropped blank block that was the ONLY block still lands on the
+    # (empty) placeholder instead of being silently lost when blocks was
+    # empty at the point the marker would otherwise have been applied.
+    if _relocated_cache_control is not None:
+        _apply_assistant_cache_control_to_last_cacheable_block(
+            effective, _relocated_cache_control
+        )
+    _apply_assistant_cache_control_to_last_cacheable_block(
+        effective, m.get("cache_control")
+    )
     return {"role": "assistant", "content": effective}
 
 
@@ -2349,10 +2463,22 @@ def _manage_thinking_signatures(
     replayed assistant tool-call messages.  See hermes-agent#13848 (Kimi) and
     hermes-agent#16748 (DeepSeek).
 
+    Nous Portal's ``/v1/messages`` route is the exception among third-party
+    hosts: it proxies Claude to Anthropic/Vertex/Bedrock and validates the
+    same signed thinking blocks.  Sticky ``session_id`` keeps a conversation
+    on one upstream instance so those signatures stay warm — stripping them
+    here would 400 the first tool-loop turn ("thinking must be passed back").
+    Portal therefore takes the native Anthropic replay path below.
+
     Mutates ``result`` in place.
     """
     _THINKING_TYPES = frozenset(("thinking", "redacted_thinking"))
-    _is_third_party = _is_third_party_anthropic_endpoint(base_url)
+    # Portal speaks Anthropic's thinking contract end-to-end; do not treat it
+    # as a signature-blind proxy even though the host is not anthropic.com.
+    _is_third_party = (
+        _is_third_party_anthropic_endpoint(base_url)
+        and not _is_nous_portal_endpoint(base_url)
+    )
 
     last_assistant_idx = None
     for i in range(len(result) - 1, -1, -1):
@@ -2365,11 +2491,11 @@ def _manage_thinking_signatures(
             continue
 
         if _is_kimi_family_endpoint(base_url, model):
-            # Kimi does not enforce thinking signatures — replay as-is, but
-            # remove cache markers that are specific to Anthropic's cache API.
-            for b in m["content"]:
-                if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
-                    b.pop("cache_control", None)
+            # Kimi does not enforce signatures, but Anthropic cache markers
+            # are not part of its replay contract.
+            for block in m["content"]:
+                if isinstance(block, dict) and block.get("type") in _THINKING_TYPES:
+                    block.pop("cache_control", None)
         elif _is_deepseek_anthropic_endpoint(base_url):
             # DeepSeek: strip signed, preserve unsigned.
             new_content = []
@@ -2382,9 +2508,9 @@ def _manage_thinking_signatures(
                     continue
                 new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
-            for b in m["content"]:
-                if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
-                    b.pop("cache_control", None)
+            for block in m["content"]:
+                if isinstance(block, dict) and block.get("type") in _THINKING_TYPES:
+                    block.pop("cache_control", None)
         elif _is_third_party or idx != last_assistant_idx:
             # Third-party: strip ALL thinking blocks (signatures are proprietary).
             # Direct Anthropic: strip from non-latest assistant messages only.
@@ -2394,23 +2520,17 @@ def _manage_thinking_signatures(
             ]
             m["content"] = stripped or [{"type": "text", "text": "(thinking elided)"}]
         else:
-            # Latest assistant on direct Anthropic: pass thinking blocks
-            # through BYTE-EXACT. Opus 4.8+ rejects any mutation of
-            # ``thinking`` / ``redacted_thinking`` blocks on the latest
-            # assistant message with HTTP 400 "`thinking` or
-            # `redacted_thinking` blocks in the latest assistant message
-            # cannot be modified." That includes downgrading unsigned
-            # blocks to text AND removing ``cache_control`` keys. We only
-            # drop a block when the validator is guaranteed to reject it,
-            # leaving the rest UNTOUCHED.
+            # Latest assistant on direct Anthropic: preserve valid blocks
+            # byte-exact. Opus 4.8+ rejects any mutation, including removing
+            # cache_control or converting unsigned thinking into text.
             #
-            # Exception: if orphan-stripping (or another structural mutation)
-            # removed a tool_use block from THIS turn, every thinking signature
-            # on it was computed against the original turn content and is now
-            # dead. Anthropic rejects the turn either way — replaying the signed
-            # block 400s with "cannot be modified", and a bare signed block with
-            # no following tool_use is also invalid. In that (and only that) case
-            # demote ALL thinking blocks on this turn to text so the turn replays
+            # Exception: if orphan-stripping (or another structural mutation) removed
+            # a tool_use block from THIS turn, every thinking signature on it was
+            # computed against the original turn content and is now dead.  Anthropic
+            # rejects the turn either way — replaying the signed block 400s with
+            # "thinking blocks in the latest assistant message cannot be modified",
+            # and a bare signed block with no following tool_use is also invalid.
+            # Demote ALL thinking blocks on this turn to text so the turn replays
             # cleanly and the model can re-plan from the surviving tool results.
             signature_dead = bool(m.get("_thinking_signature_invalidated"))
             new_content = []
@@ -2424,17 +2544,13 @@ def _manage_thinking_signatures(
                         new_content.append({"type": "text", "text": thinking_text})
                     continue
                 if b.get("type") == "redacted_thinking":
-                    # Redacted blocks need 'data' to validate; drop otherwise.
                     if b.get("data"):
                         new_content.append(b)
                     continue
                 if not b.get("signature"):
-                    # Unsigned thinking would be rejected; drop the whole
-                    # block rather than downgrade-to-text (which counts as
-                    # a modification under the Opus 4.8+ contract).
+                    # Anthropic cannot validate this block. Dropping it is the
+                    # only option that does not fabricate modified reasoning.
                     continue
-                # Signed: pass through with ALL keys intact, including any
-                # cache_control marker. Stripping it counts as a modification.
                 new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
 
@@ -2475,6 +2591,24 @@ def _evict_old_screenshots(result: List[Dict[str, Any]]) -> None:
                     else {"type": "text", "text": "[screenshot removed to save context]"}
                     for b in inner
                 ]
+
+
+def _ensure_leading_user_turn(result: List[Dict[str, Any]]) -> None:
+    """Anthropic requires messages[0] to have role=user.
+
+    After a second context compaction on the auto path the summary can be
+    emitted as role=assistant with nothing in front of it (the system prompt
+    lives outside messages[] or is extracted into the separate ``system``
+    param), so messages[0] ends up assistant and the Messages API rejects
+    the request with HTTP 400 — often masked by a misleading
+    "tool_use ids were found without tool_result blocks" error (#52160).
+
+    Mirror the Bedrock Converse adapter, which unconditionally prepends a
+    minimal user turn when the first message is not user
+    (convert_messages_to_converse).
+    """
+    if result and result[0].get("role") != "user":
+        result.insert(0, {"role": "user", "content": [{"type": "text", "text": " "}]})
 
 
 def convert_messages_to_anthropic(
@@ -2535,6 +2669,7 @@ def convert_messages_to_anthropic(
 
     _strip_orphaned_tool_blocks(result)
     result = _merge_consecutive_roles(result)
+    _ensure_leading_user_turn(result)
     _manage_thinking_signatures(result, base_url, model)
     _evict_old_screenshots(result)
 
@@ -2589,16 +2724,21 @@ def build_anthropic_kwargs(
     thinking block signatures are stripped (they are Anthropic-proprietary).
 
     When *fast_mode* is True, adds ``extra_body["speed"] = "fast"`` and the
-    fast-mode beta header for ~2.5x faster output throughput on Opus 4.6 and
-    Opus 5. Currently only supported on native Anthropic endpoints (not
-    third-party compatible ones).
+    fast-mode beta header for ~2.5x faster output throughput on Opus 4.6.
+    Currently only supported on native Anthropic endpoints (not third-party
+    compatible ones).
     """
     system, anthropic_messages = convert_messages_to_anthropic(
         messages, base_url=base_url, model=model
     )
     anthropic_tools = convert_tools_to_anthropic(tools) if tools else []
 
-    model = normalize_model_name(model, preserve_dots=preserve_dots)
+    # Nous Portal routes on its own catalog ids (``anthropic/claude-opus-4.8``);
+    # normalizing to the bare Anthropic slug would make the model unresolvable
+    # there. Skipping the call preserves the prefix AND the dots, so
+    # ``preserve_dots`` stays irrelevant for Portal.
+    if not _is_nous_portal_endpoint(base_url):
+        model = normalize_model_name(model, preserve_dots=preserve_dots)
     # effective_max_tokens = output cap for this call (≠ total context window)
     # Use the resolver helper so non-positive values (negative ints,
     # fractional floats, NaN, non-numeric) fail locally with a clear error
@@ -2743,15 +2883,6 @@ def build_anthropic_kwargs(
                 # Anthropic requires temperature=1 when thinking is enabled on older models
                 kwargs["temperature"] = 1
                 kwargs["max_tokens"] = max(effective_max_tokens, budget + 4096)
-        elif _requires_explicit_thinking_disable(model):
-            # Opus 5 / Sonnet 5 think by default, so staying silent here would
-            # quietly ignore the caller's "reasoning off" and bill for thinking
-            # tokens out of max_tokens. Say it on the wire instead.
-            #
-            # Deliberately no ``output_config`` alongside this: Opus 5 rejects
-            # a disable paired with xhigh/max effort, and the server default
-            # (high) is within the allowed range.
-            kwargs["thinking"] = {"type": "disabled"}
 
     # ── Strip sampling params on 4.7+ ─────────────────────────────────
     # Opus 4.7 rejects any non-default temperature/top_p/top_k with a 400.
@@ -2762,10 +2893,10 @@ def build_anthropic_kwargs(
         for _sampling_key in ("temperature", "top_p", "top_k"):
             kwargs.pop(_sampling_key, None)
 
-    # ── Fast mode (Opus 4.6 / Opus 5) ────────────────────────────────
+    # ── Fast mode (Opus 4.6 only) ────────────────────────────────────
     # Adds extra_body.speed="fast" + the fast-mode beta header for ~2.5x
-    # output speed. Opus 4.7 400s on the speed parameter, and Opus 4.8 uses
-    # a separate model ID rather than this parameter.
+    # output speed. Per Anthropic docs, fast mode is only supported on
+    # Opus 4.6 — Opus 4.7 and other models 400 on the speed parameter.
     # Only for native Anthropic endpoints — third-party providers would
     # reject the unknown beta header and speed parameter.
     if (
@@ -2846,6 +2977,8 @@ def create_anthropic_message(
     *,
     log_prefix: str = "",
     prefer_stream: bool = True,
+    on_stream_event=None,
+    on_response=None,
 ) -> Any:
     """Create an Anthropic message, aggregating via stream when available.
 
@@ -2855,6 +2988,20 @@ def create_anthropic_message(
     crash on ``.content``.  Prefer ``messages.stream().get_final_message()`` to
     match the main turn path, falling back to ``create()`` only for providers
     that explicitly do not support streaming, such as restricted Bedrock roles.
+
+    ``on_stream_event``: optional callable invoked once per streamed event
+    (best-effort, exceptions swallowed). Lets callers report forward progress
+    to liveness watchdogs — e.g. the auxiliary compression path ticking its
+    progress hook so a slow-but-generating summary model isn't treated as
+    hung. Only fires on the streaming path; the ``create()`` fallback has no
+    events to report.
+
+    ``on_response``: optional callable invoked once with the underlying httpx
+    response before the message is aggregated (best-effort, exceptions
+    swallowed). Response *headers* carry out-of-band provider state that the
+    parsed ``Message`` drops — Nous Portal's ``x-nous-credits-*`` balance family
+    in particular. Only fires on the streaming path, which is the one the main
+    turn loop takes.
     """
     sanitize_anthropic_kwargs(api_kwargs, log_prefix=log_prefix)
 
@@ -2865,6 +3012,26 @@ def create_anthropic_message(
         stream_kwargs.pop("stream", None)
         try:
             with stream_fn(**stream_kwargs) as stream:
+                if callable(on_response):
+                    try:
+                        on_response(getattr(stream, "response", None))
+                    except Exception:
+                        logger.debug(
+                            "%son_response callback failed",
+                            log_prefix, exc_info=True,
+                        )
+                if callable(on_stream_event):
+                    # Consume the event stream manually so each event can
+                    # tick the caller's progress callback; get_final_message
+                    # then returns the accumulated snapshot.
+                    for _event in stream:
+                        try:
+                            on_stream_event(_event)
+                        except Exception:
+                            logger.debug(
+                                "%son_stream_event callback failed",
+                                log_prefix, exc_info=True,
+                            )
                 return stream.get_final_message()
         except Exception as exc:
             if not _is_stream_unavailable_error(exc):
