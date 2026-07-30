@@ -1185,7 +1185,7 @@ class TestRoleAlternation:
 
 class TestThinkingBlockSignatureManagement:
     """Tests for the thinking block handling strategy:
-    strip from old turns, preserve latest signed, downgrade unsigned."""
+    strip from old turns, preserve latest signed, drop unsigned."""
 
 
 
@@ -1223,8 +1223,8 @@ class TestThinkingBlockSignatureManagement:
         blocks = result[0]["content"]
         assert not any(b.get("type") == "redacted_thinking" for b in blocks)
 
-    def test_cache_control_stripped_from_thinking_blocks(self):
-        """cache_control markers are removed from thinking/redacted_thinking blocks."""
+    def test_latest_signed_thinking_is_preserved_byte_exact(self):
+        """Latest direct-Anthropic thinking retains cache metadata."""
         messages = [
             {
                 "role": "assistant",
@@ -1245,9 +1245,32 @@ class TestThinkingBlockSignatureManagement:
         ]
         _, result = convert_messages_to_anthropic(messages)
         assistant = next(m for m in result if m["role"] == "assistant")
-        for block in assistant["content"]:
-            if block.get("type") in {"thinking", "redacted_thinking"}:
-                assert "cache_control" not in block
+        thinking = next(
+            block for block in assistant["content"] if block.get("type") == "thinking"
+        )
+        assert thinking == {
+            "type": "thinking",
+            "thinking": "Reasoning.",
+            "signature": "sig_1",
+            "cache_control": {"type": "ephemeral"},
+        }
+
+    def test_latest_unsigned_thinking_is_dropped_not_downgraded(self):
+        messages = [
+            {
+                "role": "assistant",
+                "content": "Response.",
+                "reasoning_details": [
+                    {"type": "thinking", "thinking": "Unsigned reasoning."},
+                ],
+            },
+        ]
+
+        _, result = convert_messages_to_anthropic(messages)
+
+        blocks = next(m for m in result if m["role"] == "assistant")["content"]
+        assert not any(block.get("type") == "thinking" for block in blocks)
+        assert not any(block.get("text") == "Unsigned reasoning." for block in blocks)
 
 
 
