@@ -31,6 +31,7 @@ from agent.prompt_builder import (
     GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     MEMORY_GUIDANCE,
     SESSION_SEARCH_GUIDANCE,
+    SKILLS_GUIDANCE,
     PLATFORM_HINTS,
     WSL_ENVIRONMENT_HINT,
 )
@@ -664,7 +665,9 @@ class TestPromptBuilderConstants:
         ), "CLI hint should explicitly discourage MEDIA: tags."
         # Messaging hints should still advertise MEDIA: positively (sanity
         # check that this test is calibrated correctly).
-        assert "include MEDIA:" in PLATFORM_HINTS["telegram"]
+        telegram_hint = PLATFORM_HINTS["telegram"]
+        assert "include" in telegram_hint.lower()
+        assert "MEDIA:" in telegram_hint
 
 
 
@@ -863,6 +866,29 @@ class TestBuildSkillsSystemPromptConditional:
 # =========================================================================
 
 
+ANTHROPIC_OAUTH_BLOCKED_LITERALS = (
+    "skill_manage(action='patch')",
+    "use session_search to recall",
+    "MEDIA:/path/to/file",
+    "MEDIA:/absolute/path",
+    "MEDIA:/absolute/path/to/file",
+)
+
+
+class TestAnthropicOAuthBlocklistGuard:
+    def test_guidance_excludes_known_blocked_literals(self):
+        rendered = "\n".join(
+            (MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE)
+            + tuple(PLATFORM_HINTS.values())
+        )
+        for literal in ANTHROPIC_OAUTH_BLOCKED_LITERALS:
+            assert literal not in rendered
+
+    def test_media_hints_keep_delivery_marker(self):
+        for platform in ("telegram", "discord", "slack", "desktop", "webui"):
+            assert "MEDIA:" in PLATFORM_HINTS[platform]
+
+
 class TestToolUseEnforcementGuidance:
     def test_guidance_mentions_tool_calls(self):
         assert "tool call" in TOOL_USE_ENFORCEMENT_GUIDANCE.lower()
@@ -919,5 +945,3 @@ class TestParallelToolCallGuidance:
 # =========================================================================
 # Budget warning history stripping
 # =========================================================================
-
-
