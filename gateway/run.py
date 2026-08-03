@@ -2389,6 +2389,106 @@ _CONVERSATION_SCOPED_STATE: tuple = (
 _UNSET = object()
 
 
+def _format_gateway_uptime(seconds: float) -> str:
+    """Human-readable uptime supporting days/hours/minutes/seconds.
+
+    Extends ``tools.process_registry.format_uptime_short`` (which tops out at
+    ``h m``) so the gateway can report multi-day lifetimes cleanly in
+    /status output.
+    """
+    s = max(0, int(seconds))
+    if s < 60:
+        return f"{s}s"
+    mins, secs = divmod(s, 60)
+    if mins < 60:
+        return f"{mins}m {secs}s"
+    hours, mins = divmod(mins, 60)
+    if hours < 24:
+        return f"{hours}h {mins}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h {mins}m"
+
+
+def _capture_boot_commit() -> Optional[str]:
+    """Resolve HEAD at gateway-module import time.
+
+    Pins the commit the running process was loaded from so /status can
+    distinguish on-disk HEAD (which may move after a pull) from the commit
+    this process is actually running (changes only on restart).
+    """
+    try:
+        from hermes_cli.banner import _git_short_hash, _resolve_repo_dir
+
+        repo_dir = _resolve_repo_dir()
+        if repo_dir is None:
+            return None
+        return _git_short_hash(repo_dir, "HEAD")
+    except Exception:
+        return None
+
+
+_BOOT_COMMIT: Optional[str] = _capture_boot_commit()
+
+
+def _collect_gateway_info(started_at: Optional[float]) -> dict:
+    """Gather gateway version/commit/uptime metadata for /status output.
+
+    Every lookup is wrapped so a failure in one field (e.g. git unreachable)
+    cannot break the whole /status response. Returns a dict with whichever
+    keys resolve cleanly:
+
+        - ``version`` / ``release_date`` — package metadata at import time
+        - ``running_commit`` — short hash captured at gateway-module import
+        - ``local_commit`` — short hash of HEAD on disk *at call time*
+        - ``upstream_commit`` / ``comparison_label`` / ``commits_ahead``
+        - ``uptime_seconds`` / ``uptime_human`` / ``pid``
+    """
+    info: dict = {}
+
+    try:
+        from hermes_cli import __release_date__ as _rd
+        from hermes_cli import __version__ as _v
+
+        info["version"] = _v
+        info["release_date"] = _rd
+    except Exception:
+        pass
+
+    if _BOOT_COMMIT:
+        info["running_commit"] = _BOOT_COMMIT
+
+    try:
+        from hermes_cli.banner import get_git_banner_state
+
+        git_state = get_git_banner_state()
+        if git_state:
+            info["local_commit"] = git_state.get("local")
+            info["upstream_commit"] = git_state.get("upstream")
+            info["comparison_label"] = git_state.get("base_label") or "upstream"
+            ahead = git_state.get("ahead") or 0
+            try:
+                info["commits_ahead"] = max(0, int(ahead))
+            except (TypeError, ValueError):
+                info["commits_ahead"] = 0
+    except Exception:
+        pass
+
+    if started_at:
+        try:
+            elapsed = max(0, int(time.time() - float(started_at)))
+            info["uptime_seconds"] = elapsed
+            info["uptime_human"] = _format_gateway_uptime(elapsed)
+        except Exception:
+            pass
+
+    try:
+        info["pid"] = os.getpid()
+    except Exception:
+        pass
+
+    return info
+
+
 def _resolve_runtime_agent_kwargs() -> dict:
     """Resolve provider credentials for gateway-created AIAgent instances.
 

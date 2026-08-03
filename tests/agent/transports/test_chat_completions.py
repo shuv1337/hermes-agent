@@ -84,6 +84,29 @@ class TestChatCompletionsBasic:
         msgs = [{"role": "user", "content": "hi"}]
         assert transport.convert_messages(msgs) is msgs
 
+    def test_convert_messages_strips_anthropic_reasoning_details(self, transport):
+        reasoning = [
+            {
+                "type": "thinking",
+                "thinking": "private reasoning",
+                "signature": "sig_1",
+            }
+        ]
+        msgs = [
+            {"role": "user", "content": "continue"},
+            {
+                "role": "assistant",
+                "content": "answer",
+                "reasoning_details": reasoning,
+            },
+        ]
+
+        result = transport.convert_messages(msgs)
+
+        assert "reasoning_details" not in result[1]
+        assert result[1]["content"] == "answer"
+        assert msgs[1]["reasoning_details"] is reasoning
+
     def test_convert_messages_strips_internal_scaffolding_markers(self, transport):
         """Hermes-internal ``_``-prefixed markers must never reach the wire.
 

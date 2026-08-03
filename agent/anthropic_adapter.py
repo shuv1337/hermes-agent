@@ -2512,9 +2512,11 @@ def _manage_thinking_signatures(
             continue
 
         if _is_kimi_family_endpoint(base_url, model):
-            # Kimi does not enforce thinking signatures — replay as-is
-            # (shared cleanup below still strips cache markers + the internal flag).
-            pass
+            # Kimi does not enforce signatures, but Anthropic cache markers
+            # are not part of its replay contract.
+            for block in m["content"]:
+                if isinstance(block, dict) and block.get("type") in _THINKING_TYPES:
+                    block.pop("cache_control", None)
         elif _is_deepseek_anthropic_endpoint(base_url):
             # DeepSeek: strip signed, preserve unsigned.
             new_content = []
@@ -2527,6 +2529,9 @@ def _manage_thinking_signatures(
                     continue
                 new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
+            for block in m["content"]:
+                if isinstance(block, dict) and block.get("type") in _THINKING_TYPES:
+                    block.pop("cache_control", None)
         elif _is_third_party or idx != last_assistant_idx:
             # Third-party: strip ALL thinking blocks (signatures are proprietary).
             # Direct Anthropic: strip from non-latest assistant messages only.
@@ -2536,8 +2541,9 @@ def _manage_thinking_signatures(
             ]
             m["content"] = stripped or [{"type": "text", "text": "(thinking elided)"}]
         else:
-            # Latest assistant on direct Anthropic: keep signed, downgrade unsigned
-            # to text so the reasoning isn't lost.
+            # Latest assistant on direct Anthropic: preserve valid blocks
+            # byte-exact. Opus 4.8+ rejects any mutation, including removing
+            # cache_control or converting unsigned thinking into text.
             #
             # Exception: if orphan-stripping (or another structural mutation) removed
             # a tool_use block from THIS turn, every thinking signature on it was
@@ -2559,23 +2565,15 @@ def _manage_thinking_signatures(
                         new_content.append({"type": "text", "text": thinking_text})
                     continue
                 if b.get("type") == "redacted_thinking":
-                    # Redacted blocks use 'data' for the signature payload —
-                    # drop the block when 'data' is missing (can't be validated).
                     if b.get("data"):
                         new_content.append(b)
-                elif b.get("signature"):
-                    new_content.append(b)
-                else:
-                    thinking_text = b.get("thinking", "")
-                    if thinking_text:
-                        new_content.append({"type": "text", "text": thinking_text})
+                    continue
+                if not b.get("signature"):
+                    # Anthropic cannot validate this block. Dropping it is the
+                    # only option that does not fabricate modified reasoning.
+                    continue
+                new_content.append(b)
             m["content"] = new_content or [{"type": "text", "text": "(empty)"}]
-
-        # Strip cache_control from any remaining thinking/redacted_thinking
-        # blocks — cache markers interfere with signature validation.
-        for b in m["content"]:
-            if isinstance(b, dict) and b.get("type") in _THINKING_TYPES:
-                b.pop("cache_control", None)
 
         # Drop the internal bookkeeping flag — it must never reach the API payload.
         m.pop("_thinking_signature_invalidated", None)

@@ -404,7 +404,17 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
             pass
         return None
 
-    upstream = _git_short_hash(repo_dir, "origin/main")
+    # Prefer the true Nous upstream remote when present (forks). origin/main on
+    # a fork is the fork's own main and makes "carried commits" meaningless.
+    base_ref = "origin/main"
+    base_label = "upstream"
+    upstream = _git_short_hash(repo_dir, "upstream/main")
+    if upstream:
+        base_ref = "upstream/main"
+    else:
+        upstream = _git_short_hash(repo_dir, "origin/main")
+        base_label = "origin"
+
     local = _git_short_hash(repo_dir, "HEAD")
     if not upstream or not local:
         # Live-git lookup failed (e.g. shallow clone without origin/main).
@@ -413,7 +423,12 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
             from hermes_cli.build_info import get_build_sha
             baked = get_build_sha(short=8)
             if baked:
-                return {"upstream": baked, "local": baked, "ahead": 0}
+                return {
+                    "upstream": baked,
+                    "local": baked,
+                    "ahead": 0,
+                    "base_label": "upstream",
+                }
         except Exception:
             pass
         return None
@@ -421,7 +436,7 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
     ahead = 0
     try:
         result = subprocess.run(
-            ["git", "rev-list", "--count", "origin/main..HEAD"],
+            ["git", "rev-list", "--count", f"{base_ref}..HEAD"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -434,7 +449,12 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
     except Exception:
         ahead = 0
 
-    return {"upstream": upstream, "local": local, "ahead": max(ahead, 0)}
+    return {
+        "upstream": upstream,
+        "local": local,
+        "ahead": max(ahead, 0),
+        "base_label": base_label,
+    }
 
 
 _RELEASE_URL_BASE = "https://github.com/NousResearch/hermes-agent/releases/tag"
@@ -495,12 +515,13 @@ def format_banner_version_label() -> str:
     upstream = state["upstream"]
     local = state["local"]
     ahead = int(state.get("ahead") or 0)
+    label = state.get("base_label") or "upstream"
 
     if ahead <= 0 or upstream == local:
-        return f"{base} · upstream {upstream}"
+        return f"{base} · {label} {upstream}"
 
     carried_word = "commit" if ahead == 1 else "commits"
-    return f"{base} · upstream {upstream} · local {local} (+{ahead} carried {carried_word})"
+    return f"{base} · {label} {upstream} · local {local} (+{ahead} carried {carried_word})"
 
 
 # =========================================================================

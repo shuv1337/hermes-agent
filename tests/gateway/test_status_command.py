@@ -488,3 +488,237 @@ async def test_context_all_appends_expanded_listings():
     assert "Use /context all" not in result
 
 
+
+
+@pytest.mark.asyncio
+async def test_status_command_includes_gateway_info_block(monkeypatch):
+    """/status shows version, commit hash, uptime, and PID when available."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+        total_tokens=42,
+    )
+    runner = _make_runner(session_entry)
+    runner._gateway_started_at = time.time() - 125
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "9.9.9",
+            "release_date": "2099.1.1",
+            "local_commit": "abc12345",
+            "upstream_commit": "def67890",
+            "comparison_label": "upstream",
+            "commits_ahead": 3,
+            "uptime_seconds": 125,
+            "uptime_human": "2m 5s",
+            "pid": 12345,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+
+    assert "**Version:** v9.9.9 (2099.1.1)" in result
+    assert "**Commit (on disk):** `abc12345` · upstream `def67890` (+3 commits ahead)" in result
+    assert "**Gateway Uptime:** 2m 5s (pid 12345)" in result
+    assert "**Session ID:** `sess-1`" in result
+    assert "**Agent Running:** No" in result
+
+
+@pytest.mark.asyncio
+async def test_status_command_singular_commit_ahead(monkeypatch):
+    """Commits-ahead label uses singular 'commit' when ahead == 1."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner._gateway_started_at = time.time()
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "1.0.0",
+            "release_date": "2026.1.1",
+            "local_commit": "aaaa1111",
+            "upstream_commit": "bbbb2222",
+            "comparison_label": "upstream",
+            "commits_ahead": 1,
+            "uptime_seconds": 5,
+            "uptime_human": "5s",
+            "pid": 999,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+    assert "(+1 commit ahead)" in result
+    assert "(+1 commits ahead)" not in result
+
+
+@pytest.mark.asyncio
+async def test_status_command_clean_tree_omits_ahead_clause(monkeypatch):
+    """When HEAD == comparison base, commit line drops the '+N ahead' suffix."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner._gateway_started_at = time.time()
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "1.0.0",
+            "release_date": "2026.1.1",
+            "local_commit": "deadbeef",
+            "upstream_commit": "deadbeef",
+            "comparison_label": "upstream",
+            "commits_ahead": 0,
+            "uptime_seconds": 10,
+            "uptime_human": "10s",
+            "pid": 100,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+    assert "**Commit (on disk):** `deadbeef`" in result
+    assert "ahead" not in result
+    assert "upstream `" not in result
+
+
+@pytest.mark.asyncio
+async def test_status_command_survives_gateway_info_failure(monkeypatch):
+    """A broken _collect_gateway_info must not break /status."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+        total_tokens=7,
+    )
+    runner = _make_runner(session_entry)
+
+    def _boom(_started):
+        raise RuntimeError("simulated git failure")
+
+    monkeypatch.setattr("gateway.run._collect_gateway_info", _boom)
+
+    result = await runner._handle_message(_make_event("/status"))
+    assert "**Session ID:** `sess-1`" in result
+    assert "**Lifetime tokens billed:**" in result
+    assert "**Version:**" not in result
+    assert "**Commit (on disk):**" not in result
+    assert "**Running commit:**" not in result
+    assert "**Gateway Uptime:**" not in result
+
+
+def test_format_gateway_uptime_boundaries():
+    """_format_gateway_uptime covers s/m/h/d ranges."""
+    from gateway.run import _format_gateway_uptime
+
+    assert _format_gateway_uptime(0) == "0s"
+    assert _format_gateway_uptime(59) == "59s"
+    assert _format_gateway_uptime(60) == "1m 0s"
+    assert _format_gateway_uptime(125) == "2m 5s"
+    assert _format_gateway_uptime(3599) == "59m 59s"
+    assert _format_gateway_uptime(3600) == "1h 0m"
+    assert _format_gateway_uptime(3661) == "1h 1m"
+    assert _format_gateway_uptime(86400) == "1d 0h 0m"
+    assert _format_gateway_uptime(90061) == "1d 1h 1m"
+    assert _format_gateway_uptime(-5) == "0s"
+
+
+def test_collect_gateway_info_handles_missing_started_at():
+    """_collect_gateway_info returns best-effort dict when no start time is given."""
+    from gateway.run import _collect_gateway_info
+
+    info = _collect_gateway_info(None)
+    assert "uptime_seconds" not in info
+    assert "uptime_human" not in info
+    assert info.get("pid")
+    assert info.get("version")
+
+
+@pytest.mark.asyncio
+async def test_status_command_flags_stale_process_when_running_commit_differs(monkeypatch):
+    """When running_commit != local_commit, /status must surface the drift."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner._gateway_started_at = time.time()
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "1.0.0",
+            "release_date": "2026.1.1",
+            "running_commit": "aaaa1111",
+            "local_commit": "bbbb2222",
+            "upstream_commit": "cccc3333",
+            "comparison_label": "upstream",
+            "commits_ahead": 2,
+            "uptime_seconds": 3600,
+            "uptime_human": "1h 0m",
+            "pid": 42,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+    assert "**Commit (on disk):** `bbbb2222` · upstream `cccc3333` (+2 commits ahead)" in result
+    assert "**Running commit:** `aaaa1111`" in result
+    assert "gateway restart needed" in result
+
+
+@pytest.mark.asyncio
+async def test_status_command_hides_running_commit_when_matches_disk(monkeypatch):
+    """When running_commit == local_commit, only the on-disk line is shown."""
+    session_entry = SessionEntry(
+        session_key=build_session_key(_make_source()),
+        session_id="sess-1",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        platform=Platform.TELEGRAM,
+        chat_type="dm",
+    )
+    runner = _make_runner(session_entry)
+    runner._gateway_started_at = time.time()
+
+    monkeypatch.setattr(
+        "gateway.run._collect_gateway_info",
+        lambda _started: {
+            "version": "1.0.0",
+            "release_date": "2026.1.1",
+            "running_commit": "abc12345",
+            "local_commit": "abc12345",
+            "upstream_commit": "def67890",
+            "comparison_label": "upstream",
+            "commits_ahead": 3,
+            "uptime_seconds": 60,
+            "uptime_human": "1m 0s",
+            "pid": 7,
+        },
+    )
+
+    result = await runner._handle_message(_make_event("/status"))
+    assert "**Commit (on disk):** `abc12345`" in result
+    assert "**Running commit:**" not in result
