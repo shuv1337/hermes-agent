@@ -426,5 +426,11 @@
   "artifactOpenLinkTitle": "링크를 여시겠습니까?",
   "artifactOpenLinkBody": "Hermes Go를 벗어나 브라우저에서 {url}을(를) 엽니다.",
   "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
-  "artifactOpenLinkAction": "브라우저에서 열기"
+  "artifactOpenLinkAction": "브라우저에서 열기",
+  "imageTapToLoad": "탭하여 {host}에서 이미지 불러오기",
+  "@imageTapToLoad": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedPrivateNetwork": "이미지 차단됨 — 사설 네트워크({host})",
+  "@imageBlockedPrivateNetwork": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedSource": "이미지 차단됨 — 지원되지 않는 소스",
+  "imageLoadFailed": "이미지를 불러올 수 없습니다"
 }

@@ -898,4 +898,20 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get artifactOpenLinkAction => 'فتح في المتصفح';
+
+  @override
+  String imageTapToLoad(String host) {
+    return 'اضغط لتحميل الصورة من $host';
+  }
+
+  @override
+  String imageBlockedPrivateNetwork(String host) {
+    return 'تم حظر الصورة — شبكة خاصة ($host)';
+  }
+
+  @override
+  String get imageBlockedSource => 'تم حظر الصورة — مصدر غير مدعوم';
+
+  @override
+  String get imageLoadFailed => 'تعذّر تحميل الصورة';
 }

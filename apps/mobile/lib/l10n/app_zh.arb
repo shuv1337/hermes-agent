@@ -426,5 +426,11 @@
   "artifactOpenLinkTitle": "打开链接？",
   "artifactOpenLinkBody": "这将在浏览器中打开 {url}，并离开 Hermes Go。",
   "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
-  "artifactOpenLinkAction": "在浏览器中打开"
+  "artifactOpenLinkAction": "在浏览器中打开",
+  "imageTapToLoad": "点按以从 {host} 加载图片",
+  "@imageTapToLoad": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedPrivateNetwork": "图片已拦截 — 私有网络（{host}）",
+  "@imageBlockedPrivateNetwork": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedSource": "图片已拦截 — 不支持的来源",
+  "imageLoadFailed": "无法加载图片"
 }

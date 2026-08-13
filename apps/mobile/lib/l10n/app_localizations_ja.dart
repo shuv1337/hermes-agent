@@ -890,4 +890,20 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get artifactOpenLinkAction => 'ブラウザで開く';
+
+  @override
+  String imageTapToLoad(String host) {
+    return 'タップして $host から画像を読み込む';
+  }
+
+  @override
+  String imageBlockedPrivateNetwork(String host) {
+    return '画像をブロックしました — プライベートネットワーク（$host）';
+  }
+
+  @override
+  String get imageBlockedSource => '画像をブロックしました — 未対応のソース';
+
+  @override
+  String get imageLoadFailed => '画像を読み込めませんでした';
 }

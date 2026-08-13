@@ -897,4 +897,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get artifactOpenLinkAction => 'Open in Browser';
+
+  @override
+  String imageTapToLoad(String host) {
+    return 'Tap to load image from $host';
+  }
+
+  @override
+  String imageBlockedPrivateNetwork(String host) {
+    return 'Image blocked — private network ($host)';
+  }
+
+  @override
+  String get imageBlockedSource => 'Image blocked — unsupported source';
+
+  @override
+  String get imageLoadFailed => 'Image couldn\'t be loaded';
 }

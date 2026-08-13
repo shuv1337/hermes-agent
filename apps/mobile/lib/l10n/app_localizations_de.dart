@@ -900,4 +900,20 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get artifactOpenLinkAction => 'Im Browser öffnen';
+
+  @override
+  String imageTapToLoad(String host) {
+    return 'Zum Laden des Bildes von $host tippen';
+  }
+
+  @override
+  String imageBlockedPrivateNetwork(String host) {
+    return 'Bild blockiert — privates Netzwerk ($host)';
+  }
+
+  @override
+  String get imageBlockedSource => 'Bild blockiert — nicht unterstützte Quelle';
+
+  @override
+  String get imageLoadFailed => 'Bild konnte nicht geladen werden';
 }

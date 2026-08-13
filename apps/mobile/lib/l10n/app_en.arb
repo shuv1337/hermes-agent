@@ -402,5 +402,16 @@
   "@artifactOpenLinkBody": {
     "placeholders": {"url": {"type": "String"}}
   },
-  "artifactOpenLinkAction": "Open in Browser"
+  "artifactOpenLinkAction": "Open in Browser",
+
+  "imageTapToLoad": "Tap to load image from {host}",
+  "@imageTapToLoad": {
+    "placeholders": {"host": {"type": "String"}}
+  },
+  "imageBlockedPrivateNetwork": "Image blocked — private network ({host})",
+  "@imageBlockedPrivateNetwork": {
+    "placeholders": {"host": {"type": "String"}}
+  },
+  "imageBlockedSource": "Image blocked — unsupported source",
+  "imageLoadFailed": "Image couldn't be loaded"
 }

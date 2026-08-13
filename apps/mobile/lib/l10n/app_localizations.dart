@@ -1695,6 +1695,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open in Browser'**
   String get artifactOpenLinkAction;
+
+  /// No description provided for @imageTapToLoad.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to load image from {host}'**
+  String imageTapToLoad(String host);
+
+  /// No description provided for @imageBlockedPrivateNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Image blocked — private network ({host})'**
+  String imageBlockedPrivateNetwork(String host);
+
+  /// No description provided for @imageBlockedSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Image blocked — unsupported source'**
+  String get imageBlockedSource;
+
+  /// No description provided for @imageLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Image couldn\'t be loaded'**
+  String get imageLoadFailed;
 }
 
 class _AppLocalizationsDelegate

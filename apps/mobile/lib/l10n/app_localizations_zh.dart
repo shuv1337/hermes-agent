@@ -887,4 +887,20 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get artifactOpenLinkAction => '在浏览器中打开';
+
+  @override
+  String imageTapToLoad(String host) {
+    return '点按以从 $host 加载图片';
+  }
+
+  @override
+  String imageBlockedPrivateNetwork(String host) {
+    return '图片已拦截 — 私有网络（$host）';
+  }
+
+  @override
+  String get imageBlockedSource => '图片已拦截 — 不支持的来源';
+
+  @override
+  String get imageLoadFailed => '无法加载图片';
 }

@@ -426,5 +426,11 @@
   "artifactOpenLinkTitle": "Abrir link?",
   "artifactOpenLinkBody": "Isso abrirá {url} no seu navegador, saindo do Hermes Go.",
   "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
-  "artifactOpenLinkAction": "Abrir no navegador"
+  "artifactOpenLinkAction": "Abrir no navegador",
+  "imageTapToLoad": "Toque para carregar a imagem de {host}",
+  "@imageTapToLoad": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedPrivateNetwork": "Imagem bloqueada — rede privada ({host})",
+  "@imageBlockedPrivateNetwork": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedSource": "Imagem bloqueada — origem não suportada",
+  "imageLoadFailed": "Não foi possível carregar a imagem"
 }

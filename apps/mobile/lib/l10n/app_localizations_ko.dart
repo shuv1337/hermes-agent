@@ -891,4 +891,20 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get artifactOpenLinkAction => '브라우저에서 열기';
+
+  @override
+  String imageTapToLoad(String host) {
+    return '탭하여 $host에서 이미지 불러오기';
+  }
+
+  @override
+  String imageBlockedPrivateNetwork(String host) {
+    return '이미지 차단됨 — 사설 네트워크($host)';
+  }
+
+  @override
+  String get imageBlockedSource => '이미지 차단됨 — 지원되지 않는 소스';
+
+  @override
+  String get imageLoadFailed => '이미지를 불러올 수 없습니다';
 }

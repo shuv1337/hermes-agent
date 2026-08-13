@@ -132,6 +132,21 @@ class GatewayAuthClient {
     return _isPrivateNetworkHost(host);
   }
 
+  /// True when [host] is loopback or sits in private/trusted network space
+  /// (RFC1918 LAN, link-local, CGNAT/tailnet, mDNS `.local`, MagicDNS
+  /// `.ts.net`, IPv6 ULA) — the same classification [validateBaseUrl] uses to
+  /// decide plain HTTP is acceptable.
+  ///
+  /// Exposed so other layers can recognise a LAN-flavoured target without
+  /// re-deriving the ranges. The Markdown image gate
+  /// (`features/sessions/message_markdown.dart`) uses it to refuse
+  /// tap-to-load for hosts the user cannot meaningfully vet.
+  static bool isPrivateOrLoopbackHost(String host) {
+    final h = _stripBrackets(host.trim().toLowerCase());
+    if (h.isEmpty) return false;
+    return _isLoopbackHost(h) || _isPrivateNetworkHost(h);
+  }
+
   static String _stripBrackets(String host) =>
       host.replaceAll('[', '').replaceAll(']', '');
 

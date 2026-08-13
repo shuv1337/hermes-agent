@@ -426,5 +426,11 @@
   "artifactOpenLinkTitle": "فتح الرابط؟",
   "artifactOpenLinkBody": "سيؤدي هذا إلى فتح {url} في متصفحك، مغادرًا Hermes Go.",
   "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
-  "artifactOpenLinkAction": "فتح في المتصفح"
+  "artifactOpenLinkAction": "فتح في المتصفح",
+  "imageTapToLoad": "اضغط لتحميل الصورة من {host}",
+  "@imageTapToLoad": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedPrivateNetwork": "تم حظر الصورة — شبكة خاصة ({host})",
+  "@imageBlockedPrivateNetwork": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedSource": "تم حظر الصورة — مصدر غير مدعوم",
+  "imageLoadFailed": "تعذّر تحميل الصورة"
 }

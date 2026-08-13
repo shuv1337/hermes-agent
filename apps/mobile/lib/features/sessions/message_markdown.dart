@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:hermes_mobile/core/network/gateway_auth.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
@@ -9,7 +10,12 @@ import 'package:url_launcher/url_launcher.dart';
 ///
 /// Code fences get a dark monospace block + copy button; inline `code` is
 /// pill-styled. Links open via [MarkdownStyleSheet] defaults + [onTapLink].
-class MessageMarkdown extends StatelessWidget {
+///
+/// Images never fetch on paint — see [markdownImageDisposition] and
+/// [_MarkdownImage]. Message bodies are written by an LLM and routinely
+/// contain text it pulled off the open web, so they are treated as
+/// attacker-influenced.
+class MessageMarkdown extends StatefulWidget {
   const MessageMarkdown({
     super.key,
     required this.data,
@@ -22,9 +28,23 @@ class MessageMarkdown extends StatelessWidget {
   final bool selectable;
 
   @override
+  State<MessageMarkdown> createState() => _MessageMarkdownState();
+}
+
+class _MessageMarkdownState extends State<MessageMarkdown> {
+  /// Which remote images the user has explicitly asked to load, for this
+  /// widget only. Held in the [State] rather than in the widget so it
+  /// survives the per-token rebuild storm of a streaming message, and dies
+  /// with the widget — it is never written to disk, so a granted load is not
+  /// carried across app launches.
+  final _ImageConsent _consent = _ImageConsent();
+
+  @override
   Widget build(BuildContext context) {
+    final data = widget.data;
+    final selectable = widget.selectable;
     final theme = Theme.of(context);
-    final fg = color ?? theme.colorScheme.onSurface;
+    final fg = widget.color ?? theme.colorScheme.onSurface;
     // NOTE: keyed off the *actual* rendered surface color, not
     // `theme.brightness`. Several built-in skins (midnight/ember/mono/
     // cyberpunk/slate — see hermes_skins.dart) have no `darkColors` and
@@ -131,6 +151,27 @@ class MessageMarkdown extends StatelessWidget {
           monoSize: (base.fontSize ?? 16) * 0.88,
         ),
       },
+      // Without this, `flutter_markdown_plus` falls back to
+      // `kDefaultImageBuilder`, which resolves http(s) with `Image.network`
+      // and *everything else* — `file:`, bare relative paths, unknown
+      // schemes — with `Image.file`. That makes
+      // `![](https://attacker.example/p.png)` in an agent-written message a
+      // zero-click beacon: the GET fires the moment the bubble paints,
+      // confirming the message was opened and leaking the device's public IP
+      // and User-Agent, and it can be aimed at the user's own LAN. Every
+      // image goes through the gate instead.
+      imageBuilder: (uri, title, alt) => _MarkdownImage(
+        uri: uri,
+        alt: alt,
+        consent: _consent,
+        fg: fg,
+        labelStyle:
+            theme.textTheme.bodySmall?.copyWith(
+              color: fg.withValues(alpha: 0.75),
+            ) ??
+            TextStyle(color: fg.withValues(alpha: 0.75), fontSize: 12),
+        borderColor: codeBorder,
+      ),
       onTapLink: (text, href, title) async {
         final uri = href == null ? null : Uri.tryParse(href);
         final safe =
@@ -164,6 +205,249 @@ class MessageMarkdown extends StatelessWidget {
     );
 
     return body;
+  }
+}
+
+/// What the renderer is allowed to do with a Markdown image source.
+///
+/// The rule is "no byte leaves the device because a message painted". A
+/// `data:` URI carries its own bytes, so it is the only source that renders
+/// straight away; everything else is inert until the user says otherwise,
+/// and some of it stays inert no matter what.
+enum MarkdownImageDisposition {
+  /// A self-contained `data:` image. Decoded from the URI itself — no
+  /// socket is opened — so it renders exactly as it did before the gate.
+  inline,
+
+  /// A public `http(s)` source. Never fetched on paint: the user gets an
+  /// inert placeholder naming the host and has to tap it before the request
+  /// happens.
+  askFirst,
+
+  /// An `http(s)` source pointed at loopback, RFC1918 LAN, link-local,
+  /// CGNAT/tailnet, mDNS `.local` or MagicDNS `.ts.net` space.
+  ///
+  /// DELIBERATELY NOT OFFERED, not even behind a tap. This is the
+  /// SSRF-flavoured case: `![](http://192.168.1.1/admin?reboot=1)` asks the
+  /// phone — which sits on the user's private network by design, because
+  /// that is where the gateway lives — to issue a request the user has no
+  /// way to evaluate. "Do you want to load an image from 192.168.1.1?" is
+  /// not a question anyone can answer correctly; the host name carries no
+  /// signal about what the request would *do*, unlike a public host where
+  /// "that's attacker.example" is a judgement a person can actually make.
+  /// A gateway-served image reaches the app through the authenticated
+  /// artifact pipeline instead, so nothing legitimate depends on this.
+  blockedPrivate,
+
+  /// Anything else — `file:`, bare relative paths, protocol-relative `//`,
+  /// `resource:`, unknown schemes, and non-image `data:` payloads. Inert,
+  /// and never handed to `Image.file` or a network fetch.
+  blocked,
+}
+
+/// Classifies an image source. Pure, so the rules are unit-testable without
+/// pumping a widget.
+MarkdownImageDisposition markdownImageDisposition(Uri uri) {
+  switch (uri.scheme) {
+    // `Uri` lower-cases the scheme during parsing, so `DATA:`/`HTTPS:` land
+    // here too.
+    case 'data':
+      final data = uri.data;
+      if (data == null) return MarkdownImageDisposition.blocked;
+      return data.mimeType.toLowerCase().startsWith('image/')
+          ? MarkdownImageDisposition.inline
+          : MarkdownImageDisposition.blocked;
+    case 'http':
+    case 'https':
+      if (uri.host.isEmpty) return MarkdownImageDisposition.blocked;
+      return GatewayAuthClient.isPrivateOrLoopbackHost(uri.host)
+          ? MarkdownImageDisposition.blockedPrivate
+          : MarkdownImageDisposition.askFirst;
+    default:
+      return MarkdownImageDisposition.blocked;
+  }
+}
+
+/// Per-view record of the remote images the user chose to load.
+///
+/// Scoped to one [MessageMarkdown] state: shared by every image in that
+/// message so a rebuild (or a re-parse triggered by the next streamed token)
+/// finds the grant still there, and gone as soon as the widget is.
+class _ImageConsent {
+  final Set<String> _granted = <String>{};
+
+  bool has(Uri uri) => _granted.contains(uri.toString());
+
+  void grant(Uri uri) => _granted.add(uri.toString());
+}
+
+/// Decoded `data:` image payloads, keyed by the URI text.
+///
+/// `MemoryImage` keys Flutter's image cache on the *identity* of the byte
+/// list, so handing `Image.memory` a freshly-decoded `Uint8List` on every
+/// rebuild would re-decode the picture on every streamed token. Reusing one
+/// instance keeps the cache hitting. Bounded, so a long transcript cannot
+/// grow it without limit; a miss only costs one base64 decode.
+final Map<String, Uint8List> _dataImageBytes = <String, Uint8List>{};
+const int _dataImageBytesLimit = 24;
+
+Uint8List? _decodeDataImage(Uri uri) {
+  final key = uri.toString();
+  final cached = _dataImageBytes[key];
+  if (cached != null) return cached;
+  final data = uri.data;
+  if (data == null) return null;
+  final Uint8List bytes;
+  try {
+    bytes = data.contentAsBytes();
+  } catch (_) {
+    return null; // Malformed payload — treated as an unusable source.
+  }
+  if (_dataImageBytes.length >= _dataImageBytesLimit) {
+    _dataImageBytes.remove(_dataImageBytes.keys.first);
+  }
+  _dataImageBytes[key] = bytes;
+  return bytes;
+}
+
+/// The image gate. Renders inline, inert-with-a-tap, or inert-full-stop
+/// according to [markdownImageDisposition].
+class _MarkdownImage extends StatefulWidget {
+  const _MarkdownImage({
+    required this.uri,
+    required this.alt,
+    required this.consent,
+    required this.fg,
+    required this.labelStyle,
+    required this.borderColor,
+  });
+
+  final Uri uri;
+  final String? alt;
+  final _ImageConsent consent;
+  final Color fg;
+  final TextStyle labelStyle;
+  final Color borderColor;
+
+  @override
+  State<_MarkdownImage> createState() => _MarkdownImageState();
+}
+
+class _MarkdownImageState extends State<_MarkdownImage> {
+  // Classified once per source rather than per build: a streaming message
+  // rebuilds on every token and the IPv4/host parsing is not free.
+  late MarkdownImageDisposition _disposition = markdownImageDisposition(
+    widget.uri,
+  );
+
+  @override
+  void didUpdateWidget(covariant _MarkdownImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.uri != widget.uri) {
+      _disposition = markdownImageDisposition(widget.uri);
+    }
+  }
+
+  /// Long hosts are trimmed so the label can't push a chat bubble wide, but
+  /// the *start* is kept — that is the part a user reads to spot
+  /// `attacker.example`.
+  String get _host {
+    final host = widget.uri.host;
+    return host.length <= 48 ? host : '${host.substring(0, 47)}…';
+  }
+
+  void _load() {
+    widget.consent.grant(widget.uri);
+    // The grant lives in the shared consent object, so this setState only
+    // has to repaint; the next re-parse of the streamed message will read it
+    // back and keep the image loaded.
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    switch (_disposition) {
+      case MarkdownImageDisposition.inline:
+        final bytes = _decodeDataImage(widget.uri);
+        if (bytes == null) {
+          return _placeholder(
+            icon: Icons.image_not_supported_outlined,
+            label: l10n.imageBlockedSource,
+          );
+        }
+        return Image.memory(
+          bytes,
+          errorBuilder: (context, error, stackTrace) => _placeholder(
+            icon: Icons.broken_image_outlined,
+            label: l10n.imageLoadFailed,
+          ),
+        );
+      case MarkdownImageDisposition.askFirst:
+        if (!widget.consent.has(widget.uri)) {
+          return _placeholder(
+            icon: Icons.download_outlined,
+            label: l10n.imageTapToLoad(_host),
+            onTap: _load,
+          );
+        }
+        return Image.network(
+          widget.uri.toString(),
+          errorBuilder: (context, error, stackTrace) => _placeholder(
+            icon: Icons.broken_image_outlined,
+            label: l10n.imageLoadFailed,
+          ),
+        );
+      case MarkdownImageDisposition.blockedPrivate:
+        return _placeholder(
+          icon: Icons.lock_outline,
+          label: l10n.imageBlockedPrivateNetwork(_host),
+        );
+      case MarkdownImageDisposition.blocked:
+        return _placeholder(
+          icon: Icons.image_not_supported_outlined,
+          label: l10n.imageBlockedSource,
+        );
+    }
+  }
+
+  Widget _placeholder({
+    required IconData icon,
+    required String label,
+    VoidCallback? onTap,
+  }) {
+    // `Wrap`, not `Row`: the markdown builder drops inline children into a
+    // `Wrap`, which hands them unbounded width — a `Flexible`/`Expanded`
+    // child would assert there.
+    final content = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: widget.borderColor),
+        color: widget.borderColor.withValues(alpha: 0.12),
+      ),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 7,
+        children: [
+          Icon(icon, size: 15, color: widget.fg.withValues(alpha: 0.7)),
+          Text(label, style: widget.labelStyle),
+        ],
+      ),
+    );
+    final described = Semantics(
+      label: widget.alt == null || widget.alt!.isEmpty
+          ? label
+          : '${widget.alt}. $label',
+      button: onTap != null,
+      child: content,
+    );
+    if (onTap == null) return described;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: described,
+    );
   }
 }
 

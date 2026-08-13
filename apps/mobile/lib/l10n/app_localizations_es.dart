@@ -904,4 +904,20 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get artifactOpenLinkAction => 'Abrir en el navegador';
+
+  @override
+  String imageTapToLoad(String host) {
+    return 'Toca para cargar la imagen de $host';
+  }
+
+  @override
+  String imageBlockedPrivateNetwork(String host) {
+    return 'Imagen bloqueada — red privada ($host)';
+  }
+
+  @override
+  String get imageBlockedSource => 'Imagen bloqueada — origen no admitido';
+
+  @override
+  String get imageLoadFailed => 'No se pudo cargar la imagen';
 }

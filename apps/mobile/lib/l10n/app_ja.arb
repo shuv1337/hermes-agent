@@ -426,5 +426,11 @@
   "artifactOpenLinkTitle": "リンクを開きますか？",
   "artifactOpenLinkBody": "Hermes Goを離れてブラウザで{url}を開きます。",
   "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
-  "artifactOpenLinkAction": "ブラウザで開く"
+  "artifactOpenLinkAction": "ブラウザで開く",
+  "imageTapToLoad": "タップして {host} から画像を読み込む",
+  "@imageTapToLoad": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedPrivateNetwork": "画像をブロックしました — プライベートネットワーク（{host}）",
+  "@imageBlockedPrivateNetwork": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedSource": "画像をブロックしました — 未対応のソース",
+  "imageLoadFailed": "画像を読み込めませんでした"
 }
