@@ -22,6 +22,7 @@ import 'package:uuid/uuid.dart';
 
 import 'package:hermes_mobile/core/demo/demo_agent_script.dart';
 import 'package:hermes_mobile/core/demo/demo_fixtures.dart';
+import 'package:hermes_mobile/core/demo/demo_workspace_files.dart';
 
 /// Username / password the demo gateway's `/auth/password-login` accepts.
 ///
@@ -69,6 +70,13 @@ class DemoGatewayServer {
   List<DemoJob> _jobs = const [];
   List<DemoSkillFixture> _skills = const [];
   List<DemoCommandFixture> _commands = const [];
+
+  /// The demo workspace's managed files, keyed by absolute path — what
+  /// `GET /api/files/read` serves. Seeded at boot like every other fixture
+  /// collection; the seeded "API latency review" session's `write_file` /
+  /// `patch` results name exactly these paths, so the artifact chips in that
+  /// transcript resolve.
+  Map<String, DemoWorkspaceFile> _files = const {};
   String _currentModel = DemoFixtures.defaultModel;
   String _currentProvider = DemoFixtures.defaultProvider;
   int _sessionSeq = 0;
@@ -109,6 +117,7 @@ class DemoGatewayServer {
     _jobs = DemoFixtures.buildJobs(_bootedAt);
     _skills = DemoFixtures.buildSkills();
     _commands = DemoFixtures.buildCommands();
+    _files = DemoWorkspaceFiles.buildIndex(_bootedAt);
     _currentModel = DemoFixtures.defaultModel;
     _currentProvider = DemoFixtures.defaultProvider;
     _sessionSeq = 0;
@@ -274,6 +283,9 @@ class DemoGatewayServer {
         segments[3] == 'chat' &&
         method == 'POST') {
       return _handleChat(request, Uri.decodeComponent(segments[2]));
+    }
+    if (method == 'GET' && path == '/api/files/read') {
+      return _handleReadFile(request);
     }
     if (method == 'GET' && path == '/api/model/options') {
       return _handleModelOptions(request);
@@ -514,6 +526,63 @@ class DemoGatewayServer {
       'reply': plan.finalText,
       'message': {'role': 'assistant', 'content': plan.finalText},
     });
+  }
+
+  /// `GET /api/files/read?path=<path>` — the managed-files surface the
+  /// artifact viewer reads through `DashboardClient.readManagedFile`.
+  ///
+  /// The success body is produced by [DemoWorkspaceFile.readJson] and matches
+  /// `hermes_cli/web_server.py:2413` field for field. The failure codes are
+  /// the ones the client branches on, in the same order the real handler
+  /// checks them, because each one drives a distinct state in the viewer:
+  ///
+  ///  * **422** — no `path` query parameter at all. FastAPI rejects a missing
+  ///    required query param before the handler body runs; mirrored here so a
+  ///    malformed request gets a malformed-request answer rather than a
+  ///    confusing 404.
+  ///  * **403** — the path escapes the workspace root, or names credential
+  ///    material ([DemoWorkspaceFiles.isSensitivePath]). The demo workspace
+  ///    seeds a real `.env` so this branch is reachable, not theoretical.
+  ///  * **404** — no such file. Every chip a reviewer can see resolves; this
+  ///    is reachable via [DemoWorkspaceFiles.absentPath] (see its doc for why
+  ///    no chip points at it).
+  ///  * **413** — over `_MANAGED_FILE_MAX_BYTES`. Implemented for contract
+  ///    fidelity; nothing seeded is remotely near 100 MB, and serving
+  ///    something that was would cost 100 MB of bundle.
+  Future<void> _handleReadFile(HttpRequest request) async {
+    final requested = request.uri.queryParameters['path'];
+    if (requested == null || requested.trim().isEmpty) {
+      return _respond(request, 422, {
+        'detail': [
+          {
+            'loc': ['query', 'path'],
+            'msg': 'field required',
+            'type': 'value_error.missing',
+          },
+        ],
+      });
+    }
+
+    final resolved = DemoWorkspaceFiles.resolve(requested);
+    if (resolved == null) {
+      return _respond(request, 403, {
+        'detail': 'Path outside managed files root',
+      });
+    }
+
+    final file = _files[resolved];
+    if (file == null) {
+      return _respond(request, 404, {'detail': 'File not found'});
+    }
+    if (DemoWorkspaceFiles.isSensitivePath(resolved)) {
+      return _respond(request, 403, {
+        'detail': 'Access to sensitive files is not allowed',
+      });
+    }
+    if (file.size > DemoWorkspaceFiles.maxBytes) {
+      return _respond(request, 413, {'detail': 'File is too large'});
+    }
+    return _respond(request, 200, file.readJson());
   }
 
   Future<void> _handleModelOptions(HttpRequest request) async {

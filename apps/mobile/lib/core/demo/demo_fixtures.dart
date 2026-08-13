@@ -11,6 +11,10 @@
 /// and seeds it once from the builders below.
 library;
 
+import 'dart:convert';
+
+import 'package:hermes_mobile/core/demo/demo_workspace_files.dart';
+
 /// One message in a seeded session transcript.
 ///
 /// Mirrors the wire shape `HermesMessage.fromJson` expects
@@ -407,6 +411,7 @@ class DemoFixtures {
 
   static List<DemoSession> buildSessions(DateTime now) {
     return [
+      _latencyReviewSession(now),
       _paymentsWebhookSession(now),
       _researchDigestSession(now),
       _flakyCiSession(now),
@@ -415,6 +420,173 @@ class DemoFixtures {
   }
 
   static String _iso(DateTime t) => t.toUtc().toIso8601String();
+
+  /// The session that produces the two openable artifacts.
+  ///
+  /// This is the *only* seeded session whose transcript contains a file the
+  /// app can open in the artifact viewer, and it exists specifically so that
+  /// feature is discoverable: an App Review reviewer (or anyone trying the
+  /// sandbox) sees a chip in the transcript, taps it, and the file renders.
+  /// Ordered first in [buildSessions] so it is the most recent session, and
+  /// therefore the one at the top of the drawer.
+  ///
+  /// The tool messages here are shaped to satisfy the *real*
+  /// `detectArtifactsInMessage` (`lib/features/artifacts/
+  /// artifact_detection.dart`) rather than the other way around — it only
+  /// recognizes a file from a `write_file`/`patch` tool result, read out of
+  /// that result's own structured fields (`resolved_path`, `path`,
+  /// `files_modified`, `files_created`) with a truthy `error` suppressing the
+  /// chip entirely. So each tool message's content is the literal JSON those
+  /// tools return (`tools/file_tools.py` `write_file` →
+  /// `WriteResult.to_dict()` plus the `resolved_path`/`files_modified` keys
+  /// the tool layer splats on top; `tools/file_operations.py`
+  /// `PatchResult.to_dict()` for the patch), not a prose summary. The paths
+  /// come from [DemoWorkspaceFiles] so the chip and the file the demo
+  /// gateway serves can never drift apart, and `bytes_written` is the real
+  /// byte length of the served content.
+  static DemoSession _latencyReviewSession(DateTime now) {
+    final started = now.subtract(const Duration(hours: 1, minutes: 20));
+    var t = started;
+    final files = DemoWorkspaceFiles.buildIndex(now);
+    final markdownPath = DemoWorkspaceFiles.latencyReviewMarkdownPath;
+    final htmlPath = DemoWorkspaceFiles.latencyReportHtmlPath;
+    final markdownBytes = files[markdownPath]?.size ?? 0;
+    final htmlBytes = files[htmlPath]?.size ?? 0;
+
+    var seq = 0;
+    DemoMessage msg(
+      String role,
+      String content, {
+      String? toolName,
+      Duration gap = const Duration(minutes: 2),
+    }) {
+      t = t.add(gap);
+      seq += 1;
+      return DemoMessage(
+        id: 'seed-latency-$seq-${t.microsecondsSinceEpoch}',
+        role: role,
+        content: content,
+        timestamp: _iso(t),
+        toolName: toolName,
+        toolCallId: toolName == null ? null : 'call_seed_latency_$seq',
+      );
+    }
+
+    final messages = [
+      msg(
+        'user',
+        'Go through last week\'s gateway access logs and work out why chat '
+            'requests got slower. Write it up as a markdown summary I can '
+            'read on my phone, plus a small HTML report I can send to the '
+            'team.',
+      ),
+      msg(
+        'tool',
+        '{"stdout": "logs/\\n  gateway-access.log      412M\\n'
+            '  gateway-access.log.1    398M\\n", "exit_code": 0}',
+        toolName: 'shell',
+        gap: const Duration(seconds: 40),
+      ),
+      msg(
+        'assistant',
+        'Logs are there — 810 MB across two files, seven days. Aggregating '
+            'by route and percentile now.\n\n'
+            'First pass: **p95 is up 41% week over week**, and it is only '
+            'the chat endpoint. Everything else is inside its usual band, '
+            'and the error rate never moved, so this is latency and not '
+            'failures. Splitting the slow endpoint by phase, prompt assembly '
+            'and the model call are both unchanged — the entire regression '
+            'is in transcript persistence, which went from 12 ms to 138 ms '
+            'mid-week.\n\n'
+            'Writing both files now.',
+        gap: const Duration(minutes: 3),
+      ),
+      msg(
+        'tool',
+        jsonEncode({
+          'bytes_written': markdownBytes,
+          'dirs_created': false,
+          'verified': true,
+          'resolved_path': markdownPath,
+          'files_modified': [markdownPath],
+        }),
+        toolName: 'write_file',
+        gap: const Duration(seconds: 25),
+      ),
+      msg(
+        'tool',
+        jsonEncode({
+          'bytes_written': htmlBytes,
+          'dirs_created': false,
+          'verified': true,
+          'resolved_path': htmlPath,
+          'files_modified': [htmlPath],
+        }),
+        toolName: 'write_file',
+        gap: const Duration(seconds: 18),
+      ),
+      msg(
+        'assistant',
+        'Both are written.\n\n'
+            '- `latency-review.md` — the full write-up: per-endpoint table, '
+            'the phase split, and a bench command to reproduce the slow path '
+            'locally.\n'
+            '- `latency-report.html` — a one-screen version for the team, '
+            'with the p95 trend and the share-of-budget bars.\n\n'
+            '**The finding in one line:** the transcript table passed ten '
+            'million rows mid-week, and the planner stopped using the '
+            '`session_id` index once it did — the query orders by '
+            '`created_at`, which that index cannot serve. A composite index '
+            'on `(session_id, created_at)`, built online, should put p95 back '
+            'around 450 ms.\n\n'
+            'Tap either file above to read it.',
+        gap: const Duration(minutes: 2),
+      ),
+      msg(
+        'user',
+        'Nice. Add a note to the markdown that the first few minutes after a '
+            'deploy are cold-cache and should be excluded.',
+      ),
+      msg(
+        'tool',
+        jsonEncode({
+          'success': true,
+          'diff':
+              '--- a/latency-review.md\n'
+              '+++ b/latency-review.md\n'
+              '@@ -58,6 +58,9 @@\n'
+              ' If `persist` comes back above ~40 ms, this is the same '
+              'regression.\n'
+              '+\n'
+              '+Discard the first five minutes after a deploy: the cache is '
+              'cold\n'
+              '+and p95 is not comparable until it warms up.\n',
+          'files_modified': [markdownPath],
+        }),
+        toolName: 'patch',
+        gap: const Duration(seconds: 30),
+      ),
+      msg(
+        'assistant',
+        'Added, under **Reproducing it** — the note says to discard the '
+            'first five minutes after a deploy while the cache is cold. '
+            '`latency-review.md` is updated; the HTML report did not need '
+            'the caveat since it only shows the weekly aggregate.',
+        gap: const Duration(minutes: 1),
+      ),
+    ];
+
+    return DemoSession(
+      id: 'demo-latency-review',
+      title: 'API latency review',
+      startedAt: _iso(started),
+      lastActive: _iso(t),
+      model: defaultModel,
+      provider: defaultProvider,
+      reasoningEffort: 'high',
+      messages: messages,
+    );
+  }
 
   static DemoSession _paymentsWebhookSession(DateTime now) {
     final started = now.subtract(const Duration(hours: 3, minutes: 12));

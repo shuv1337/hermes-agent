@@ -178,7 +178,7 @@ void main() {
 
       final sessions = await dashboard.listSessions();
       expect(sessions, isNotEmpty);
-      expect(sessions.length, 4); // the four seeded fixture sessions
+      expect(sessions.length, 5); // the five seeded fixture sessions
 
       final messages = await dashboard.listMessages(sessions.first.id);
       expect(messages, isNotEmpty);
@@ -232,7 +232,7 @@ void main() {
       expect(client.isOpen, isTrue);
 
       final listed = await client.request('session.list', {'limit': 100});
-      expect((listed['sessions'] as List), hasLength(4));
+      expect((listed['sessions'] as List), hasLength(5));
 
       final created = await client.request('session.create', {
         'title': 'WS integration test',
