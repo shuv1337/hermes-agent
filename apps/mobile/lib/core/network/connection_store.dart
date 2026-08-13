@@ -17,7 +17,11 @@ import 'package:hermes_mobile/core/network/secure_storage_gate.dart';
 ///   the sandbox mirror. Use upgrade install only (`scripts/deploy_ios.sh`).
 /// - Credentials live in the **iOS Keychain** (stable account + access group)
 ///   and are **mirrored** into Application Support so a keychain hiccup after
-///   Xcode/flutter upgrade still restores the gateway book.
+///   Xcode/flutter upgrade still restores the gateway book. The mirror is
+///   **plaintext on disk** and carries metadata only (baseUrl, label,
+///   username, ...) — never [ConnectionProfile.apiKey] or any other secret;
+///   see [ConnectionProfile.toMirrorJson]. Secrets live in secure storage
+///   only, matching `DESIGN.md`'s "safe by default" claim.
 /// - Storage schema is multi-gateway ([GatewayBook] v2) even though v1 UI is
 ///   single-gateway.
 ///
@@ -35,7 +39,6 @@ class ConnectionStore {
 
   /// Canonical secure-storage config. Keep these constants stable across releases.
   static const keychainAccountName = 'ai.hermes.hermesMobile.gateways';
-  static const keychainAccessGroup = '4WF3G6AN6G.ai.hermes.go';
   static const androidPrefsName = 'ai.hermes.hermesMobile.gateways';
   static const mirrorFileName = 'gateway_book_v2.json';
 
@@ -138,7 +141,13 @@ class ConnectionStore {
     if (file == null) return;
     try {
       await file.parent.create(recursive: true);
-      await file.writeAsString(jsonEncode(book.toJson()), flush: true);
+      // toMirrorJson() (not toJson()) — this file is plaintext on disk, so
+      // per-gateway secrets (ConnectionProfile.apiKey) must never appear in
+      // it. The secure-storage copy (writeBook -> _write(_bookKey, ...))
+      // carries the full profile including apiKey; this mirror only ever
+      // needs to survive a keychain hiccup for non-secret metadata like
+      // baseUrl/label/username, then let the user re-authenticate.
+      await file.writeAsString(jsonEncode(book.toMirrorJson()), flush: true);
     } catch (e) {
       debugPrint('ConnectionStore: mirror write failed: $e');
     }
@@ -504,8 +513,7 @@ class ConnectionStore {
   Future<void> writeSelectedFast(String gatewayId, bool enabled) =>
       _write(_fastKey(gatewayId), enabled ? '1' : '0');
 
-  String _modelOptionsKey(String gatewayId) =>
-      '$_modelOptionsPrefix$gatewayId';
+  String _modelOptionsKey(String gatewayId) => '$_modelOptionsPrefix$gatewayId';
 
   /// Cached GET /api/model/options catalog (JSON) for instant picker opens.
   Future<String?> readModelOptionsJson(String gatewayId) async {

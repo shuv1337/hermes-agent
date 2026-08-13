@@ -15,8 +15,9 @@ server. Not the whole product — just the slice a gateway user needs on a phone
    secondary tabs, not the home screen.
 3. **Thin client.** No skill editors, no provider onboarding, no container
    backends. If it belongs in Desktop's settings tree, it stays there.
-4. **Safe by default.** Dashboard cookies in platform secure storage only.
-   Remote connections require TLS.
+4. **Safe by default.** Dashboard cookies and legacy gateway tokens in
+   platform secure storage only — never in the plaintext Application Support
+   mirror. Remote connections require TLS.
    Clear "you're talking to full tool access" warning on connect.
 5. **Codex / Claude mobile muscle memory.**
    - Left/list: sessions (title, preview, relative time)
@@ -172,6 +173,25 @@ That is an OS constraint for **dead process** recovery, **not** Hermes design.
 
 Lifecycle: `paused` schedules a catch-up task; `resumed` reconnects WS + pulls.
 
+**Outbox flush mechanism differs by auth mode** (`background_sync.dart`
+`BackgroundSync.run`):
+
+- **Legacy API-key auth**: `flushOutbox()` posts queued ops over plain REST
+  (`HermesApi`) — no socket needed, works in the background unconditionally.
+- **Cookie/session auth** (the mode `ConnectionScreen` actually produces —
+  there is no API-key entry in onboarding): `flushOutbox()` is a no-op (no
+  `HermesApi` to call), so the background task mints a short-lived WS ticket
+  off the persisted session cookies (`GatewayAuthClient.persistentJar` +
+  `POST /api/auth/ws-ticket`, the same call `GatewayRealtime` makes in the
+  foreground), connects just long enough to let `flushPendingOverWs()` drain
+  the queue, then disconnects. This is **best-effort**: it is bounded to a
+  bit over a minute so a slow/unreachable gateway can't blow the OS's
+  background execution budget, and either the connect or the drain can time
+  out and leave ops queued for the *next* catch-up pass (Android's periodic
+  minimum is still 15 minutes; iOS decides actual cadence and may skip runs
+  entirely). "Queued for sync" is a real state that can outlive several
+  background passes — it is not a guarantee of imminent delivery.
+
 ### Composer / send
 
 - Send chat commands through the authenticated JSON-RPC WebSocket.
@@ -220,7 +240,10 @@ Lifecycle: `paused` schedules a catch-up task; `resumed` reconnects WS + pulls.
   to the unlocked phone as powerful access to the host.
 - Require HTTPS outside loopback and prefer a private VPN over raw port-forward.
 - The password is used only for login. Auth cookies are encrypted by platform
-  secure storage, and Disconnect clears cookies and legacy credentials.
+  secure storage, and Disconnect clears cookies and legacy credentials. The
+  legacy static gateway token (`ConnectionProfile.apiKey`) is stored the same
+  way and is never written to the plaintext Application Support gateway-book
+  mirror (`gateway_book_v2.json`).
 - Application data and transcripts are excluded from Android cloud backup and
   device transfer.
 

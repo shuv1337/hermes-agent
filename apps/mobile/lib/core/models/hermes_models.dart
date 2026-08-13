@@ -112,6 +112,24 @@ class ConnectionProfile {
     if (lastUsedAt != null) 'lastUsedAt': lastUsedAt,
   };
 
+  /// Same shape as [toJson] but with [apiKey] (the legacy static gateway
+  /// token — a bearer-equivalent secret, see [hasLegacyToken]) omitted.
+  ///
+  /// Use this — never [toJson] — for anything written outside platform
+  /// secure storage (Keychain / EncryptedSharedPreferences). Today that's
+  /// [ConnectionStore]'s plaintext Application Support mirror file.
+  Map<String, dynamic> toMirrorJson() => {
+    'id': id,
+    'baseUrl': baseUrl,
+    'authMode': authMode,
+    if (username != null) 'username': username,
+    if (provider != null) 'provider': provider,
+    if (label != null) 'label': label,
+    if (displayName != null) 'displayName': displayName,
+    if (createdAt != null) 'createdAt': createdAt,
+    if (lastUsedAt != null) 'lastUsedAt': lastUsedAt,
+  };
+
   factory ConnectionProfile.fromJson(Map<String, dynamic> json) {
     final id = '${json['id'] ?? ''}'.trim();
     final key = '${json['apiKey'] ?? ''}';
@@ -198,6 +216,17 @@ class GatewayBook {
   Map<String, dynamic> toJson() => {
     'version': 2,
     'gateways': gateways.map((g) => g.toJson()).toList(),
+    'defaultGatewayId': defaultGatewayId,
+    'activeGatewayId': activeGatewayId,
+  };
+
+  /// Mirror-safe encoding — every gateway's secret fields are dropped (see
+  /// [ConnectionProfile.toMirrorJson]). This is what [ConnectionStore]'s
+  /// plaintext Application Support mirror must be built from; [toJson] is
+  /// for the secure-storage copy only.
+  Map<String, dynamic> toMirrorJson() => {
+    'version': 2,
+    'gateways': gateways.map((g) => g.toMirrorJson()).toList(),
     'defaultGatewayId': defaultGatewayId,
     'activeGatewayId': activeGatewayId,
   };
@@ -340,6 +369,7 @@ class HermesMessage {
     this.tokenCount,
     this.finishReason,
     this.reasoning,
+    this.displayKind,
   });
 
   final String id;
@@ -354,10 +384,27 @@ class HermesMessage {
   final String? finishReason;
   final String? reasoning;
 
+  /// Gateway `display_kind` tag (e.g. `model_switch`, `personality_switch`,
+  /// `auto_continue`, `async_delegation_complete`, `hidden`, …) — set on
+  /// synthetic timeline markers that ride the wire with `role: "user"` but
+  /// are not user-originated turns. Null for ordinary messages.
+  final String? displayKind;
+
   bool get isUser => role == 'user';
   bool get isAssistant => role == 'assistant';
   bool get isTool => role == 'tool' || role == 'function';
   bool get isSystem => role == 'system' || role == 'slash';
+
+  /// Model-visible user turn — mirrors the gateway's
+  /// `_history_user_indices` filter (`role == "user" and not
+  /// m.get("display_kind")`, `tui_gateway/methods_prompt.py`). Synthetic
+  /// timeline markers carry `role: "user"` but must NOT count as a real user
+  /// turn for ordinal/edit/retry/resend math — counting them drifts the
+  /// client's `truncate_before_user_ordinal` away from the gateway's live
+  /// turn count and gets refused with 4018 ("target user message is no
+  /// longer in session history").
+  bool get isVisibleUser =>
+      role == 'user' && (displayKind == null || displayKind!.isEmpty);
 
   factory HermesMessage.fromJson(Map<String, dynamic> json) {
     return HermesMessage(
@@ -374,6 +421,7 @@ class HermesMessage {
       reasoning: _contentToString(
         json['reasoning'] ?? json['reasoning_content'],
       ),
+      displayKind: _asString(json['display_kind']),
     );
   }
 
@@ -390,6 +438,7 @@ class HermesMessage {
       tokenCount: tokenCount,
       finishReason: finishReason,
       reasoning: reasoning,
+      displayKind: displayKind,
     );
   }
 }
