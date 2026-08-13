@@ -589,6 +589,16 @@ class AppLocalizationsEs extends AppLocalizations {
   String get messageActions => 'Message actions';
 
   @override
+  String get deleteMessageTitle => '¿Eliminar mensaje?';
+
+  @override
+  String get deleteMessageBody =>
+      'Esta acción no se puede deshacer. Hermes aún no puede eliminar un solo mensaje en el gateway, así que solo se elimina de este dispositivo — el gateway conserva su propia copia y puede seguir apareciendo en otros lugares.';
+
+  @override
+  String get messageDeleted => 'Mensaje eliminado (solo en este dispositivo)';
+
+  @override
   String get copied => 'Copiado';
 
   @override

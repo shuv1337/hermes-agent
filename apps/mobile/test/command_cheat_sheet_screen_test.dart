@@ -131,9 +131,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text(
-        "Couldn't load commands. Check your connection and try again.",
-      ),
+      find.text("Couldn't load commands. Check your connection and try again."),
       findsOneWidget,
     );
     expect(find.widgetWithText(FilledButton, 'Retry'), findsOneWidget);

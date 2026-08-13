@@ -580,6 +580,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get messageActions => 'Message actions';
 
   @override
+  String get deleteMessageTitle => '删除这条消息？';
+
+  @override
+  String get deleteMessageBody =>
+      '此操作无法撤销。Hermes 目前还无法在网关上删除单条消息，因此只会从此设备中移除——网关会保留自己的副本，该消息可能仍会出现在其他地方。';
+
+  @override
+  String get messageDeleted => '消息已删除（仅限此设备）';
+
+  @override
   String get copied => 'Copied';
 
   @override

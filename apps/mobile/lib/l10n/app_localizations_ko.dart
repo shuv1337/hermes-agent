@@ -582,6 +582,16 @@ class AppLocalizationsKo extends AppLocalizations {
   String get messageActions => 'Message actions';
 
   @override
+  String get deleteMessageTitle => '메시지를 삭제할까요?';
+
+  @override
+  String get deleteMessageBody =>
+      '이 작업은 되돌릴 수 없습니다. Hermes는 아직 게이트웨이에서 개별 메시지를 삭제할 수 없으므로 이 기기에서만 제거됩니다. 게이트웨이에는 자체 사본이 남아 있어 다른 곳에는 계속 표시될 수 있습니다.';
+
+  @override
+  String get messageDeleted => '메시지가 삭제되었습니다 (이 기기에서만)';
+
+  @override
   String get copied => 'Copied';
 
   @override

@@ -231,8 +231,15 @@ class GatewayWsClient {
       if (pending == null) return;
       if (map['error'] != null) {
         final err = map['error'];
-        final msg = err is Map ? '${err['message'] ?? err}' : '$err';
-        pending.completeError(StateError(msg));
+        if (err is Map) {
+          final rawCode = err['code'];
+          final code = rawCode is int ? rawCode : int.tryParse('$rawCode');
+          pending.completeError(
+            GatewayRpcException('${err['message'] ?? err}', code: code),
+          );
+        } else {
+          pending.completeError(GatewayRpcException('$err'));
+        }
         return;
       }
       final result = map['result'];
@@ -295,6 +302,26 @@ class GatewayWsClient {
 }
 
 enum GatewayWsState { idle, connecting, open, closed, error }
+
+/// A JSON-RPC `error` response from a **live, connected** gateway — as
+/// opposed to a transport failure (socket not open, timeout, connection
+/// reset), which throws a plain [StateError] / [TimeoutException] instead.
+///
+/// [code] is the gateway's numeric error code from `tui_gateway/*.py`'s
+/// `_err(rid, code, message)` (e.g. 4018 — permanent request rejection:
+/// stale rewind/edit target, oversized attachment, unresolvable slash
+/// command, …). Previously this code was discarded and every RPC error
+/// surfaced as a bare `StateError(message)`, so callers could only guess
+/// whether a rejection was permanent by pattern-matching message text.
+class GatewayRpcException implements Exception {
+  GatewayRpcException(this.message, {this.code});
+
+  final String message;
+  final int? code;
+
+  @override
+  String toString() => message;
+}
 
 class GatewayWsEvent {
   const GatewayWsEvent({

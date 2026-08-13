@@ -11,6 +11,7 @@ import 'package:hermes_mobile/core/network/connection_store.dart';
 import 'package:hermes_mobile/core/network/dashboard_client.dart';
 import 'package:hermes_mobile/core/network/hermes_api.dart';
 import 'package:hermes_mobile/core/services/result_notifier.dart';
+import 'package:hermes_mobile/core/sync/gateway_realtime.dart';
 import 'package:hermes_mobile/core/sync/session_sync_repository.dart';
 import 'package:hermes_mobile/core/sync/watch_store.dart';
 
@@ -142,7 +143,50 @@ class BackgroundSync {
       );
 
       final pendingBefore = await db.pendingOpsForGateway(profile.id);
+
+      // REST outbox flush — only does anything under legacy API-key auth
+      // (flushOutbox() no-ops without a HermesApi client).
       await sync.flushOutbox();
+
+      // Cookie/session auth — the only mode ConnectionScreen produces — has
+      // no API key, so the REST flush above never runs anything and these
+      // ops used to sit in the outbox until the user reopened the app and
+      // the WS reconnected there. Mint a short-lived ticket off the
+      // persisted session cookies (same mechanism GatewayRealtime uses in
+      // the foreground — see gateway_realtime.dart `_resolveWsUrl`) and
+      // connect just long enough for that connect's own success hook
+      // (`flushPendingOverWs`, fired from `_connectOnceBody`) to drain the
+      // queue, then tear the socket back down. This is the one-shot
+      // background counterpart of reopening the app.
+      if ((await db.pendingOpsForGateway(profile.id)).isNotEmpty) {
+        GatewayRealtime? realtime;
+        try {
+          realtime = GatewayRealtime(profile: profile, sessionSync: sync);
+          sync.bindRealtime(realtime);
+          final connected = await realtime.ensureLive().timeout(
+            const Duration(seconds: 25),
+            onTimeout: () => false,
+          );
+          if (connected) {
+            // ensureLive()'s connect-success path already kicked off
+            // flushPendingOverWs() (fire-and-forget) — wait for it to
+            // actually drain instead of racing it with a second call here
+            // (flushPendingOverWs's own _flushing guard would just no-op
+            // ours and we'd have no handle on the real one to await).
+            final deadline = DateTime.now().add(const Duration(seconds: 45));
+            while (DateTime.now().isBefore(deadline)) {
+              if ((await db.pendingOpsForGateway(profile.id)).isEmpty) break;
+              await Future<void>.delayed(const Duration(seconds: 2));
+            }
+          }
+        } catch (e) {
+          debugPrint('BackgroundSync: WS catch-up flush failed: $e');
+        } finally {
+          sync.bindRealtime(null);
+          await realtime?.dispose();
+        }
+      }
+
       final pendingAfter = await db.pendingOpsForGateway(profile.id);
       flushedOps = (pendingBefore.length - pendingAfter.length).clamp(0, 9999);
 

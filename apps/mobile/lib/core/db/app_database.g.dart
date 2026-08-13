@@ -1084,6 +1084,17 @@ class $CachedMessagesTable extends CachedMessages
     requiredDuringInsert: false,
     defaultValue: const Constant('synced'),
   );
+  static const VerificationMeta _displayKindMeta = const VerificationMeta(
+    'displayKind',
+  );
+  @override
+  late final GeneratedColumn<String> displayKind = GeneratedColumn<String>(
+    'display_kind',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     gatewayId,
@@ -1100,6 +1111,7 @@ class $CachedMessagesTable extends CachedMessages
     toolCallsJson,
     sortIndex,
     syncStatus,
+    displayKind,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1211,6 +1223,15 @@ class $CachedMessagesTable extends CachedMessages
         syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
       );
     }
+    if (data.containsKey('display_kind')) {
+      context.handle(
+        _displayKindMeta,
+        displayKind.isAcceptableOrUnknown(
+          data['display_kind']!,
+          _displayKindMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1276,6 +1297,10 @@ class $CachedMessagesTable extends CachedMessages
         DriftSqlType.string,
         data['${effectivePrefix}sync_status'],
       )!,
+      displayKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_kind'],
+      ),
     );
   }
 
@@ -1304,6 +1329,10 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
 
   /// pending | synced
   final String syncStatus;
+
+  /// Gateway `display_kind` tag (model_switch, personality_switch, …) when
+  /// present — see [HermesMessage.displayKind] / [HermesMessage.isVisibleUser].
+  final String? displayKind;
   const CachedMessage({
     required this.gatewayId,
     required this.sessionId,
@@ -1319,6 +1348,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
     this.toolCallsJson,
     required this.sortIndex,
     required this.syncStatus,
+    this.displayKind,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1353,6 +1383,9 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
     }
     map['sort_index'] = Variable<int>(sortIndex);
     map['sync_status'] = Variable<String>(syncStatus);
+    if (!nullToAbsent || displayKind != null) {
+      map['display_kind'] = Variable<String>(displayKind);
+    }
     return map;
   }
 
@@ -1388,6 +1421,9 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
           : Value(toolCallsJson),
       sortIndex: Value(sortIndex),
       syncStatus: Value(syncStatus),
+      displayKind: displayKind == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayKind),
     );
   }
 
@@ -1411,6 +1447,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
       toolCallsJson: serializer.fromJson<String?>(json['toolCallsJson']),
       sortIndex: serializer.fromJson<int>(json['sortIndex']),
       syncStatus: serializer.fromJson<String>(json['syncStatus']),
+      displayKind: serializer.fromJson<String?>(json['displayKind']),
     );
   }
   @override
@@ -1431,6 +1468,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
       'toolCallsJson': serializer.toJson<String?>(toolCallsJson),
       'sortIndex': serializer.toJson<int>(sortIndex),
       'syncStatus': serializer.toJson<String>(syncStatus),
+      'displayKind': serializer.toJson<String?>(displayKind),
     };
   }
 
@@ -1449,6 +1487,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
     Value<String?> toolCallsJson = const Value.absent(),
     int? sortIndex,
     String? syncStatus,
+    Value<String?> displayKind = const Value.absent(),
   }) => CachedMessage(
     gatewayId: gatewayId ?? this.gatewayId,
     sessionId: sessionId ?? this.sessionId,
@@ -1466,6 +1505,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
         : this.toolCallsJson,
     sortIndex: sortIndex ?? this.sortIndex,
     syncStatus: syncStatus ?? this.syncStatus,
+    displayKind: displayKind.present ? displayKind.value : this.displayKind,
   );
   CachedMessage copyWithCompanion(CachedMessagesCompanion data) {
     return CachedMessage(
@@ -1493,6 +1533,9 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
+      displayKind: data.displayKind.present
+          ? data.displayKind.value
+          : this.displayKind,
     );
   }
 
@@ -1512,7 +1555,8 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
           ..write('reasoning: $reasoning, ')
           ..write('toolCallsJson: $toolCallsJson, ')
           ..write('sortIndex: $sortIndex, ')
-          ..write('syncStatus: $syncStatus')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('displayKind: $displayKind')
           ..write(')'))
         .toString();
   }
@@ -1533,6 +1577,7 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
     toolCallsJson,
     sortIndex,
     syncStatus,
+    displayKind,
   );
   @override
   bool operator ==(Object other) =>
@@ -1551,7 +1596,8 @@ class CachedMessage extends DataClass implements Insertable<CachedMessage> {
           other.reasoning == this.reasoning &&
           other.toolCallsJson == this.toolCallsJson &&
           other.sortIndex == this.sortIndex &&
-          other.syncStatus == this.syncStatus);
+          other.syncStatus == this.syncStatus &&
+          other.displayKind == this.displayKind);
 }
 
 class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
@@ -1569,6 +1615,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
   final Value<String?> toolCallsJson;
   final Value<int> sortIndex;
   final Value<String> syncStatus;
+  final Value<String?> displayKind;
   final Value<int> rowid;
   const CachedMessagesCompanion({
     this.gatewayId = const Value.absent(),
@@ -1585,6 +1632,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     this.toolCallsJson = const Value.absent(),
     this.sortIndex = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.displayKind = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedMessagesCompanion.insert({
@@ -1602,6 +1650,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     this.toolCallsJson = const Value.absent(),
     this.sortIndex = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.displayKind = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : gatewayId = Value(gatewayId),
        sessionId = Value(sessionId),
@@ -1622,6 +1671,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     Expression<String>? toolCallsJson,
     Expression<int>? sortIndex,
     Expression<String>? syncStatus,
+    Expression<String>? displayKind,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1639,6 +1689,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
       if (toolCallsJson != null) 'tool_calls_json': toolCallsJson,
       if (sortIndex != null) 'sort_index': sortIndex,
       if (syncStatus != null) 'sync_status': syncStatus,
+      if (displayKind != null) 'display_kind': displayKind,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1658,6 +1709,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     Value<String?>? toolCallsJson,
     Value<int>? sortIndex,
     Value<String>? syncStatus,
+    Value<String?>? displayKind,
     Value<int>? rowid,
   }) {
     return CachedMessagesCompanion(
@@ -1675,6 +1727,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
       toolCallsJson: toolCallsJson ?? this.toolCallsJson,
       sortIndex: sortIndex ?? this.sortIndex,
       syncStatus: syncStatus ?? this.syncStatus,
+      displayKind: displayKind ?? this.displayKind,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1724,6 +1777,9 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
     if (syncStatus.present) {
       map['sync_status'] = Variable<String>(syncStatus.value);
     }
+    if (displayKind.present) {
+      map['display_kind'] = Variable<String>(displayKind.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1747,6 +1803,7 @@ class CachedMessagesCompanion extends UpdateCompanion<CachedMessage> {
           ..write('toolCallsJson: $toolCallsJson, ')
           ..write('sortIndex: $sortIndex, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('displayKind: $displayKind, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3614,6 +3671,326 @@ class CachedSkillsCompanion extends UpdateCompanion<CachedSkill> {
   }
 }
 
+class $DeletedMessagesTable extends DeletedMessages
+    with TableInfo<$DeletedMessagesTable, DeletedMessage> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeletedMessagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _gatewayIdMeta = const VerificationMeta(
+    'gatewayId',
+  );
+  @override
+  late final GeneratedColumn<String> gatewayId = GeneratedColumn<String>(
+    'gateway_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+    'session_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _messageIdMeta = const VerificationMeta(
+    'messageId',
+  );
+  @override
+  late final GeneratedColumn<String> messageId = GeneratedColumn<String>(
+    'message_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    gatewayId,
+    sessionId,
+    messageId,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deleted_messages';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeletedMessage> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('gateway_id')) {
+      context.handle(
+        _gatewayIdMeta,
+        gatewayId.isAcceptableOrUnknown(data['gateway_id']!, _gatewayIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_gatewayIdMeta);
+    }
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionIdMeta);
+    }
+    if (data.containsKey('message_id')) {
+      context.handle(
+        _messageIdMeta,
+        messageId.isAcceptableOrUnknown(data['message_id']!, _messageIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_messageIdMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deletedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {gatewayId, sessionId, messageId};
+  @override
+  DeletedMessage map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeletedMessage(
+      gatewayId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gateway_id'],
+      )!,
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_id'],
+      )!,
+      messageId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}message_id'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DeletedMessagesTable createAlias(String alias) {
+    return $DeletedMessagesTable(attachedDatabase, alias);
+  }
+}
+
+class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
+  final String gatewayId;
+  final String sessionId;
+  final String messageId;
+  final DateTime deletedAt;
+  const DeletedMessage({
+    required this.gatewayId,
+    required this.sessionId,
+    required this.messageId,
+    required this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['gateway_id'] = Variable<String>(gatewayId);
+    map['session_id'] = Variable<String>(sessionId);
+    map['message_id'] = Variable<String>(messageId);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  DeletedMessagesCompanion toCompanion(bool nullToAbsent) {
+    return DeletedMessagesCompanion(
+      gatewayId: Value(gatewayId),
+      sessionId: Value(sessionId),
+      messageId: Value(messageId),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory DeletedMessage.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeletedMessage(
+      gatewayId: serializer.fromJson<String>(json['gatewayId']),
+      sessionId: serializer.fromJson<String>(json['sessionId']),
+      messageId: serializer.fromJson<String>(json['messageId']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'gatewayId': serializer.toJson<String>(gatewayId),
+      'sessionId': serializer.toJson<String>(sessionId),
+      'messageId': serializer.toJson<String>(messageId),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  DeletedMessage copyWith({
+    String? gatewayId,
+    String? sessionId,
+    String? messageId,
+    DateTime? deletedAt,
+  }) => DeletedMessage(
+    gatewayId: gatewayId ?? this.gatewayId,
+    sessionId: sessionId ?? this.sessionId,
+    messageId: messageId ?? this.messageId,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+  DeletedMessage copyWithCompanion(DeletedMessagesCompanion data) {
+    return DeletedMessage(
+      gatewayId: data.gatewayId.present ? data.gatewayId.value : this.gatewayId,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      messageId: data.messageId.present ? data.messageId.value : this.messageId,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletedMessage(')
+          ..write('gatewayId: $gatewayId, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('messageId: $messageId, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(gatewayId, sessionId, messageId, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeletedMessage &&
+          other.gatewayId == this.gatewayId &&
+          other.sessionId == this.sessionId &&
+          other.messageId == this.messageId &&
+          other.deletedAt == this.deletedAt);
+}
+
+class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
+  final Value<String> gatewayId;
+  final Value<String> sessionId;
+  final Value<String> messageId;
+  final Value<DateTime> deletedAt;
+  final Value<int> rowid;
+  const DeletedMessagesCompanion({
+    this.gatewayId = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    this.messageId = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DeletedMessagesCompanion.insert({
+    required String gatewayId,
+    required String sessionId,
+    required String messageId,
+    required DateTime deletedAt,
+    this.rowid = const Value.absent(),
+  }) : gatewayId = Value(gatewayId),
+       sessionId = Value(sessionId),
+       messageId = Value(messageId),
+       deletedAt = Value(deletedAt);
+  static Insertable<DeletedMessage> custom({
+    Expression<String>? gatewayId,
+    Expression<String>? sessionId,
+    Expression<String>? messageId,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (gatewayId != null) 'gateway_id': gatewayId,
+      if (sessionId != null) 'session_id': sessionId,
+      if (messageId != null) 'message_id': messageId,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DeletedMessagesCompanion copyWith({
+    Value<String>? gatewayId,
+    Value<String>? sessionId,
+    Value<String>? messageId,
+    Value<DateTime>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return DeletedMessagesCompanion(
+      gatewayId: gatewayId ?? this.gatewayId,
+      sessionId: sessionId ?? this.sessionId,
+      messageId: messageId ?? this.messageId,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (gatewayId.present) {
+      map['gateway_id'] = Variable<String>(gatewayId.value);
+    }
+    if (sessionId.present) {
+      map['session_id'] = Variable<String>(sessionId.value);
+    }
+    if (messageId.present) {
+      map['message_id'] = Variable<String>(messageId.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletedMessagesCompanion(')
+          ..write('gatewayId: $gatewayId, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('messageId: $messageId, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3622,6 +3999,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PendingOpsTable pendingOps = $PendingOpsTable(this);
   late final $CachedJobsTable cachedJobs = $CachedJobsTable(this);
   late final $CachedSkillsTable cachedSkills = $CachedSkillsTable(this);
+  late final $DeletedMessagesTable deletedMessages = $DeletedMessagesTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3632,6 +4012,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     pendingOps,
     cachedJobs,
     cachedSkills,
+    deletedMessages,
   ];
 }
 
@@ -4072,6 +4453,7 @@ typedef $$CachedMessagesTableCreateCompanionBuilder =
       Value<String?> toolCallsJson,
       Value<int> sortIndex,
       Value<String> syncStatus,
+      Value<String?> displayKind,
       Value<int> rowid,
     });
 typedef $$CachedMessagesTableUpdateCompanionBuilder =
@@ -4090,6 +4472,7 @@ typedef $$CachedMessagesTableUpdateCompanionBuilder =
       Value<String?> toolCallsJson,
       Value<int> sortIndex,
       Value<String> syncStatus,
+      Value<String?> displayKind,
       Value<int> rowid,
     });
 
@@ -4169,6 +4552,11 @@ class $$CachedMessagesTableFilterComposer
 
   ColumnFilters<String> get syncStatus => $composableBuilder(
     column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayKind => $composableBuilder(
+    column: $table.displayKind,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4251,6 +4639,11 @@ class $$CachedMessagesTableOrderingComposer
     column: $table.syncStatus,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get displayKind => $composableBuilder(
+    column: $table.displayKind,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedMessagesTableAnnotationComposer
@@ -4313,6 +4706,11 @@ class $$CachedMessagesTableAnnotationComposer
     column: $table.syncStatus,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get displayKind => $composableBuilder(
+    column: $table.displayKind,
+    builder: (column) => column,
+  );
 }
 
 class $$CachedMessagesTableTableManager
@@ -4362,6 +4760,7 @@ class $$CachedMessagesTableTableManager
                 Value<String?> toolCallsJson = const Value.absent(),
                 Value<int> sortIndex = const Value.absent(),
                 Value<String> syncStatus = const Value.absent(),
+                Value<String?> displayKind = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedMessagesCompanion(
                 gatewayId: gatewayId,
@@ -4378,6 +4777,7 @@ class $$CachedMessagesTableTableManager
                 toolCallsJson: toolCallsJson,
                 sortIndex: sortIndex,
                 syncStatus: syncStatus,
+                displayKind: displayKind,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4396,6 +4796,7 @@ class $$CachedMessagesTableTableManager
                 Value<String?> toolCallsJson = const Value.absent(),
                 Value<int> sortIndex = const Value.absent(),
                 Value<String> syncStatus = const Value.absent(),
+                Value<String?> displayKind = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedMessagesCompanion.insert(
                 gatewayId: gatewayId,
@@ -4412,6 +4813,7 @@ class $$CachedMessagesTableTableManager
                 toolCallsJson: toolCallsJson,
                 sortIndex: sortIndex,
                 syncStatus: syncStatus,
+                displayKind: displayKind,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -5332,6 +5734,193 @@ typedef $$CachedSkillsTableProcessedTableManager =
       CachedSkill,
       PrefetchHooks Function()
     >;
+typedef $$DeletedMessagesTableCreateCompanionBuilder =
+    DeletedMessagesCompanion Function({
+      required String gatewayId,
+      required String sessionId,
+      required String messageId,
+      required DateTime deletedAt,
+      Value<int> rowid,
+    });
+typedef $$DeletedMessagesTableUpdateCompanionBuilder =
+    DeletedMessagesCompanion Function({
+      Value<String> gatewayId,
+      Value<String> sessionId,
+      Value<String> messageId,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+
+class $$DeletedMessagesTableFilterComposer
+    extends Composer<_$AppDatabase, $DeletedMessagesTable> {
+  $$DeletedMessagesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get gatewayId => $composableBuilder(
+    column: $table.gatewayId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get messageId => $composableBuilder(
+    column: $table.messageId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DeletedMessagesTableOrderingComposer
+    extends Composer<_$AppDatabase, $DeletedMessagesTable> {
+  $$DeletedMessagesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get gatewayId => $composableBuilder(
+    column: $table.gatewayId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get messageId => $composableBuilder(
+    column: $table.messageId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DeletedMessagesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DeletedMessagesTable> {
+  $$DeletedMessagesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get gatewayId =>
+      $composableBuilder(column: $table.gatewayId, builder: (column) => column);
+
+  GeneratedColumn<String> get sessionId =>
+      $composableBuilder(column: $table.sessionId, builder: (column) => column);
+
+  GeneratedColumn<String> get messageId =>
+      $composableBuilder(column: $table.messageId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$DeletedMessagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DeletedMessagesTable,
+          DeletedMessage,
+          $$DeletedMessagesTableFilterComposer,
+          $$DeletedMessagesTableOrderingComposer,
+          $$DeletedMessagesTableAnnotationComposer,
+          $$DeletedMessagesTableCreateCompanionBuilder,
+          $$DeletedMessagesTableUpdateCompanionBuilder,
+          (
+            DeletedMessage,
+            BaseReferences<
+              _$AppDatabase,
+              $DeletedMessagesTable,
+              DeletedMessage
+            >,
+          ),
+          DeletedMessage,
+          PrefetchHooks Function()
+        > {
+  $$DeletedMessagesTableTableManager(
+    _$AppDatabase db,
+    $DeletedMessagesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeletedMessagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeletedMessagesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeletedMessagesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> gatewayId = const Value.absent(),
+                Value<String> sessionId = const Value.absent(),
+                Value<String> messageId = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DeletedMessagesCompanion(
+                gatewayId: gatewayId,
+                sessionId: sessionId,
+                messageId: messageId,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String gatewayId,
+                required String sessionId,
+                required String messageId,
+                required DateTime deletedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => DeletedMessagesCompanion.insert(
+                gatewayId: gatewayId,
+                sessionId: sessionId,
+                messageId: messageId,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DeletedMessagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DeletedMessagesTable,
+      DeletedMessage,
+      $$DeletedMessagesTableFilterComposer,
+      $$DeletedMessagesTableOrderingComposer,
+      $$DeletedMessagesTableAnnotationComposer,
+      $$DeletedMessagesTableCreateCompanionBuilder,
+      $$DeletedMessagesTableUpdateCompanionBuilder,
+      (
+        DeletedMessage,
+        BaseReferences<_$AppDatabase, $DeletedMessagesTable, DeletedMessage>,
+      ),
+      DeletedMessage,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5346,4 +5935,6 @@ class $AppDatabaseManager {
       $$CachedJobsTableTableManager(_db, _db.cachedJobs);
   $$CachedSkillsTableTableManager get cachedSkills =>
       $$CachedSkillsTableTableManager(_db, _db.cachedSkills);
+  $$DeletedMessagesTableTableManager get deletedMessages =>
+      $$DeletedMessagesTableTableManager(_db, _db.deletedMessages);
 }

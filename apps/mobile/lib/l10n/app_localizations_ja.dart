@@ -581,6 +581,16 @@ class AppLocalizationsJa extends AppLocalizations {
   String get messageActions => 'Message actions';
 
   @override
+  String get deleteMessageTitle => 'メッセージを削除しますか？';
+
+  @override
+  String get deleteMessageBody =>
+      'この操作は取り消せません。Hermes はゲートウェイ上の個々のメッセージをまだ削除できないため、このデバイスからのみ削除されます。ゲートウェイには独自のコピーが残るため、他の場所には引き続き表示される場合があります。';
+
+  @override
+  String get messageDeleted => 'メッセージを削除しました（このデバイスのみ）';
+
+  @override
   String get copied => 'Copied';
 
   @override

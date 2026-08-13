@@ -435,14 +435,44 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     try {
       final merged = await sync.syncMessages(_session.id);
       if (!mounted || _sending) return;
-      setState(() => _messages = _mergePreserveInflight(merged));
+      await _applyReloadedMessages(sync, merged);
     } catch (_) {
       try {
         final local = await sync.loadMessagesLocal(_session.id);
         if (!mounted || _sending) return;
-        setState(() => _messages = _mergePreserveInflight(local));
+        await _applyReloadedMessages(sync, local);
       } catch (_) {}
     }
+  }
+
+  /// Apply a background-refreshed transcript and, if this send was showing
+  /// the "queued, will sync" state, reconcile it: a background/foreground
+  /// outbox flush resolving the op (success OR permanent failure) must clear
+  /// the "Queued for sync to gateway…" banner — otherwise it (and any
+  /// "No reply yet" affordance the fresh transcript has already answered)
+  /// sits there forever, since nothing else in this screen revisits it once
+  /// [_send] returns.
+  Future<void> _applyReloadedMessages(
+    SessionSyncRepository sync,
+    List<HermesMessage> incoming,
+  ) async {
+    var stillQueued = _queuedHint;
+    if (_queuedHint) {
+      try {
+        stillQueued = await sync.hasPendingOpsFor(_session.id);
+      } catch (_) {
+        // Unknown — leave the hint as-is rather than guess.
+        stillQueued = _queuedHint;
+      }
+    }
+    if (!mounted || _sending) return;
+    setState(() {
+      _messages = _mergePreserveInflight(incoming);
+      if (_queuedHint && !stillQueued) {
+        _queuedHint = false;
+        if (_error == L10n.current.savedWaitingWs) _error = null;
+      }
+    });
   }
 
   /// Never drop the optimistic user bubble / live stream row when a background
@@ -679,15 +709,20 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   }
 
   /// User ordinal for edit/retry (Desktop `visibleUserOrdinal`).
+  ///
+  /// Uses [HermesMessage.isVisibleUser], not `isUser` — a synthetic timeline
+  /// marker (model_switch, …) carries `role: "user"` too but must not count
+  /// as a turn boundary here, or this drifts from the gateway's own count
+  /// and a submit built from it gets refused with 4018.
   int? _userOrdinalForMessage(HermesMessage message) {
     final idx = _messages.indexWhere((m) => m.id == message.id);
     if (idx < 0) return null;
-    if (message.isUser) {
+    if (message.isVisibleUser) {
       return SessionSyncRepository.userOrdinalAmong(_messages, idx);
     }
     // Assistant: find preceding user turn.
     for (var i = idx - 1; i >= 0; i--) {
-      if (_messages[i].isUser) {
+      if (_messages[i].isVisibleUser) {
         return SessionSyncRepository.userOrdinalAmong(_messages, i);
       }
     }
@@ -696,10 +731,10 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
 
   HermesMessage? _precedingUser(HermesMessage message) {
     final idx = _messages.indexWhere((m) => m.id == message.id);
-    if (idx < 0) return message.isUser ? message : null;
-    if (message.isUser) return message;
+    if (idx < 0) return message.isVisibleUser ? message : null;
+    if (message.isVisibleUser) return message;
     for (var i = idx - 1; i >= 0; i--) {
-      if (_messages[i].isUser) return _messages[i];
+      if (_messages[i].isVisibleUser) return _messages[i];
     }
     return null;
   }
@@ -718,17 +753,20 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   /// While [_sending], the latest user turn is **in flight** (thinking) — not
   /// a failed turn — so we must not show "No reply yet / resend".
   bool _isUnansweredUser(HermesMessage message) {
-    if (!message.isUser) return false;
+    if (!message.isVisibleUser) return false;
     final idx = _messages.indexWhere((m) => m.id == message.id);
     if (idx < 0) return false;
     if (_sending) {
-      final laterUser = _messages.skip(idx + 1).any((m) => m.isUser);
+      final laterUser = _messages.skip(idx + 1).any((m) => m.isVisibleUser);
       if (!laterUser) return false;
     }
     for (var i = idx + 1; i < _messages.length; i++) {
       final m = _messages[i];
-      if (m.isUser) break;
-      if (m.isSystem || m.isTool) continue;
+      if (m.isVisibleUser) break;
+      // System/tool rows AND synthetic user-role timeline markers (role
+      // "user" but not visible — model_switch, …) are not turn boundaries;
+      // skip past them looking for the real assistant reply.
+      if (m.isSystem || m.isTool || m.isUser) continue;
       if (m.isAssistant) {
         final body = (m.content ?? '').trim();
         if (body.isEmpty) continue;
@@ -799,7 +837,7 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   }
 
   Future<void> _editUserMessage(HermesMessage message) async {
-    if (!message.isUser) return;
+    if (!message.isVisibleUser) return;
     final original = message.content ?? '';
     final ctrl = TextEditingController(text: original);
     final next = await showDialog<String>(
@@ -864,7 +902,7 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   Future<void> _onMessageLongPress(HermesMessage message) async {
     if (message.isTool) return;
     hermesHaptic(HapticIntent.selection);
-    final isUser = message.isUser;
+    final isUser = message.isVisibleUser;
     final unanswered = isUser && _isUnansweredUser(message);
     final apiError = _isApiErrorMessage(message);
     // One primary re-run action: Resend (no reply / error) or Retry/Regenerate.
@@ -905,6 +943,11 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
                   title: Text(l10n.readAloud),
                   onTap: () => Navigator.pop(ctx, 'speak'),
                 ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: Text(l10n.delete),
+                onTap: () => Navigator.pop(ctx, 'delete'),
+              ),
               const SizedBox(height: 8),
             ],
           ),
@@ -918,6 +961,8 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
         if (target != null) await _editUserMessage(target);
       case 'retry':
         await _retryFrom(message);
+      case 'delete':
+        await _deleteMessage(message);
       case 'copy':
         final text = message.content ?? '';
         if (text.isNotEmpty) {
@@ -936,6 +981,58 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
           unawaited(_speaker.speakOnce(text));
         }
     }
+  }
+
+  /// Delete a single message. Destructive + not undoable, so this always
+  /// confirms first.
+  ///
+  /// The gateway has no arbitrary single-message delete (only whole-session
+  /// delete, and `session.undo`, which drops the trailing user turn plus
+  /// everything after it — not just the one message being removed here), so
+  /// this only ever removes the message from this device. The confirmation
+  /// copy says so explicitly rather than silently implying server-side
+  /// deletion.
+  Future<void> _deleteMessage(HermesMessage message) async {
+    hermesHaptic(HapticIntent.warning);
+    final l10n = context.l10n;
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(l10n.deleteMessageTitle),
+            content: Text(l10n.deleteMessageBody),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(l10n.cancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(l10n.delete),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _messages = [
+        for (final m in _messages)
+          if (m.id != message.id) m,
+      ];
+    });
+
+    final sync = ref.read(sessionSyncProvider);
+    try {
+      await sync?.deleteMessageLocal(_session.id, message.id);
+    } catch (e) {
+      debugPrint('SessionSync: deleteMessageLocal failed: $e');
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.messageDeleted)));
   }
 
   void _appendSystem(String text) {

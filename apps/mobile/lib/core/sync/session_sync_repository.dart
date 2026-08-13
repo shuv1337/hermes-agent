@@ -112,7 +112,32 @@ class SessionSyncRepository {
 
   Future<List<HermesMessage>> loadMessagesLocal(String sessionId) async {
     final rows = await _db.messagesForSession(gatewayId, sessionId);
-    return rows.map(_messageFromRow).toList();
+    final tombstoned = await _db.tombstonedMessageIds(gatewayId, sessionId);
+    final messages = rows.map(_messageFromRow);
+    if (tombstoned.isEmpty) return messages.toList();
+    return messages.where((m) => !tombstoned.contains(m.id)).toList();
+  }
+
+  /// Delete a message from this device only. The gateway has no arbitrary
+  /// single-message delete (only whole-session delete and `session.undo`,
+  /// which drops the trailing turn) — see report notes on
+  /// `hermes_cli/web_routers/sessions.py` and `tui_gateway/methods_session.py`
+  /// for the full RPC/REST surface checked. The tombstone keeps the message
+  /// filtered out of every subsequent local read even after a server pull
+  /// repopulates the cache (the gateway still has its own copy).
+  Future<List<HermesMessage>> deleteMessageLocal(
+    String sessionId,
+    String messageId,
+  ) async {
+    await _db.tombstoneMessage(gatewayId, sessionId, messageId);
+    return loadMessagesLocal(sessionId);
+  }
+
+  /// Whether [sessionId] still has an outbox op in flight — lets the UI tell
+  /// a genuinely-still-queued send apart from one a background/foreground
+  /// flush already resolved.
+  Future<bool> hasPendingOpsFor(String sessionId) {
+    return _db.hasPendingOpsForSession(gatewayId, sessionId);
   }
 
   /// Local list first; if online, pull + replace cache and return server view
@@ -700,6 +725,40 @@ class SessionSyncRepository {
     return text.contains('session not found') ||
         text.contains('unknown session') ||
         text.contains('no such session');
+  }
+
+  /// True when [error] is the gateway's own explicit, permanent rejection of
+  /// this specific request rather than a transport/connectivity failure.
+  ///
+  /// Post-merge, code **4018** covers a whole class of permanent
+  /// `prompt.submit` / slash-command validation failures beyond rewind
+  /// staleness — see `tui_gateway/methods_prompt.py` (`target user message is
+  /// no longer in session history`, oversized image/PDF attachments) and
+  /// `tui_gateway/methods_tools.py` (bundle dispatch failures, "no previous
+  /// user message to retry"). Every one of these means the gateway is live
+  /// and reachable and is refusing THIS request specifically — retrying it,
+  /// forcing a WS reconnect, or (worse) silently queuing it into the offline
+  /// outbox can never fix it and just replays a doomed operation forever
+  /// under a misleading "will send when WebSocket reconnects" banner.
+  ///
+  /// Keyed off the numeric [GatewayRpcException.code] (see
+  /// gateway_ws_client.dart) rather than message text: the code is the one
+  /// stable signal shared by every 4018 message string, present and future.
+  bool _isTerminalGatewayRejection(Object error) =>
+      error is GatewayRpcException && error.code == 4018;
+
+  /// The one 4018 sub-case that IS recoverable: the client's cached
+  /// `truncate_before_user_ordinal` no longer matches the gateway's live
+  /// visible-user-turn count (e.g. a synthetic system marker miscounted as a
+  /// user turn — see [HermesMessage.isVisibleUser] — or a concurrent
+  /// edit/rewind from another client). Desktop used to retry this exact case
+  /// as a plain resend before it moved to durable row-id addressing
+  /// (`apps/desktop` git history at 23da6d6fe / 42eec4ab3); mobile has no
+  /// row-id plumbing, so this stays the fallback.
+  bool _isStaleTargetError(Object error) {
+    final text = '$error'.toLowerCase();
+    return text.contains('no longer in session history') ||
+        text.contains('not in session history');
   }
 
   void _forgetLiveMapping(String sessionId) {
@@ -1372,11 +1431,15 @@ class SessionSyncRepository {
     }
   }
 
-  /// 0-based index among user turns only (Desktop `visibleUserOrdinal`).
+  /// 0-based index among *visible* user turns only (Desktop
+  /// `visibleUserOrdinal`) — must use [HermesMessage.isVisibleUser], not
+  /// [HermesMessage.isUser]: synthetic timeline markers (model_switch, …)
+  /// carry `role: "user"` too, and counting them drifts this ordinal away
+  /// from the gateway's own `_history_user_indices` count.
   static int userOrdinalAmong(List<HermesMessage> messages, int absoluteIndex) {
     var n = 0;
     for (var i = 0; i < absoluteIndex && i < messages.length; i++) {
-      if (messages[i].isUser) n++;
+      if (messages[i].isVisibleUser) n++;
     }
     return n;
   }
@@ -1495,6 +1558,7 @@ class SessionSyncRepository {
         );
       } catch (e, st) {
         lastWsErr = e;
+        debugPrint('SessionSync: WS chat attempt $attempt failed: $e\n$st');
         // The socket can survive a gateway restart while its in-memory live
         // session does not. prompt.submit is rejected before execution in this
         // case, so discard the stale id and let the next attempt session.resume
@@ -1502,16 +1566,86 @@ class SessionSyncRepository {
         // offline.
         if (_isSessionNotFound(e)) {
           _forgetLiveMapping(sessionId);
+        } else if (_isTerminalGatewayRejection(e)) {
+          // The gateway is live and has permanently rejected this exact
+          // request (4018). A forced-reconnect retry would resend the same
+          // request and fail identically — stop the connectivity loop so the
+          // dedicated stale-target retry (below) and the terminal-error
+          // classification can run without a wasted round trip.
+          break;
         }
-        debugPrint('SessionSync: WS chat attempt $attempt failed: $e\n$st');
       }
     }
 
-    // A connected gateway explicitly saying the session cannot be restored is
-    // not an offline condition. Queuing here creates a misleading "will send
-    // when WebSocket reconnects" banner and repeatedly replays an impossible
-    // operation. Keep a durable terminal error instead.
-    if (lastWsErr != null && _isSessionNotFound(lastWsErr)) {
+    // A stale truncate ordinal is the one 4018 sub-case that's recoverable:
+    // the client's cached ordinal no longer matches the gateway's live turn
+    // count. Retry exactly once as a plain resend (no truncation) instead of
+    // resending the same doomed ordinal again or falling into the outbox
+    // below, which would misreport a live rejection as "will send when
+    // WebSocket reconnects".
+    if (truncateBeforeUserOrdinal != null &&
+        lastWsErr != null &&
+        _isStaleTargetError(lastWsErr)) {
+      debugPrint(
+        'SessionSync: stale truncate ordinal $truncateBeforeUserOrdinal; '
+        'retrying once as a plain resend',
+      );
+      try {
+        if (await _ensureWsLive()) {
+          return await _sendViaGateway(
+            sessionId: sessionId,
+            input: input,
+            model: model,
+            provider: provider,
+            reasoningEffort: reasoningEffort,
+            fastMode: fastMode,
+            userId: userId,
+            userMsg: userMsg,
+            sortIndex: sortIndex,
+            sessionMeta: sessionMeta,
+            truncateBeforeUserOrdinal: null,
+            interruptFirst: false,
+            onToolStatus: onToolStatus,
+            onAssistantDelta: onAssistantDelta,
+          );
+        }
+      } on TurnFailedAfterSubmit catch (e) {
+        debugPrint(
+          'SessionSync: ordinal-free retry failed after submit (no retry): $e',
+        );
+        final sid = e.effectiveSessionId ?? sessionId;
+        List<HermesMessage> msgs;
+        try {
+          msgs = await syncMessages(sid);
+        } catch (_) {
+          msgs = await loadMessagesLocal(sid);
+        }
+        final userFacing = formatTurnErrorForUser(e.message);
+        msgs = ensureErrorAssistantMessage(
+          msgs,
+          sessionId: sid,
+          errorText: userFacing,
+        );
+        return ChatSendResult(
+          messages: msgs,
+          queued: false,
+          sessionId: sid,
+          error: userFacing,
+        );
+      } catch (e, st) {
+        debugPrint('SessionSync: ordinal-free retry failed: $e\n$st');
+        lastWsErr = e;
+      }
+    }
+
+    // A connected gateway's explicit, permanent rejection — session gone, or
+    // any 4018 (including a stale-target retry that still failed) — is not
+    // an offline condition. Queuing here creates a misleading "will send
+    // when WebSocket reconnects" banner and repeatedly replays an operation
+    // that can never succeed. Keep a durable terminal error instead.
+    if (lastWsErr != null &&
+        (_isSessionNotFound(lastWsErr) ||
+            _isTerminalGatewayRejection(lastWsErr))) {
       final userFacing = formatTurnErrorForUser('$lastWsErr');
       return ChatSendResult(
         messages: await _persistTerminalError(sessionId, userFacing),
@@ -2232,6 +2366,7 @@ class SessionSyncRepository {
         try {
           await _runOp(api, op);
           await _db.removeOp(op.id);
+          _notifyOutboxOpResolved(op);
         } catch (e) {
           await _db.bumpOpFailure(op.id, '$e');
           debugPrint('SessionSync: op ${op.opType} failed: $e');
@@ -2240,6 +2375,20 @@ class SessionSyncRepository {
     } finally {
       _flushing = false;
     }
+  }
+
+  /// A queued op just resolved (sent successfully, or dropped after reaching
+  /// the gateway) — wake any listening UI so a stuck "No reply yet" /
+  /// "Queued for sync…" state actually clears instead of sitting there until
+  /// the user happens to trigger another send. Mirrors the notification the
+  /// live WS path already fires on every push event; the outbox path had no
+  /// equivalent, which is why a resolved background/foreground flush never
+  /// reached the open chat screen.
+  void _notifyOutboxOpResolved(PendingOp op) {
+    final sid = op.sessionId;
+    final rt = _realtime;
+    if (rt == null || sid == null || sid.isEmpty) return;
+    unawaited(rt.refreshCaches(sessionId: sid, reason: 'outbox_flush'));
   }
 
   /// Flush pending create/chat ops over live WS (password-auth path has no API key).
@@ -2260,10 +2409,12 @@ class SessionSyncRepository {
         try {
           await _runOpOverWs(op);
           await _db.removeOp(op.id);
+          _notifyOutboxOpResolved(op);
         } on TurnFailedAfterSubmit catch (e) {
           // Prompt reached the gateway — drop the op instead of retrying it
           // into a duplicate turn; the transcript pull reflects the failure.
           await _db.removeOp(op.id);
+          _notifyOutboxOpResolved(op);
           debugPrint('SessionSync: WS op ${op.opType} ran but failed: $e');
         } catch (e) {
           await _db.bumpOpFailure(op.id, '$e');
@@ -2547,6 +2698,7 @@ class SessionSyncRepository {
       finishReason: r.finishReason,
       reasoning: r.reasoning,
       toolCalls: r.toolCallsJson == null ? null : jsonDecode(r.toolCallsJson!),
+      displayKind: r.displayKind,
     );
   }
 
@@ -2602,6 +2754,7 @@ class SessionSyncRepository {
       toolCallsJson: Value(toolCallsJson),
       sortIndex: Value(sortIndex),
       syncStatus: Value(syncStatus),
+      displayKind: Value(m.displayKind),
     );
   }
 

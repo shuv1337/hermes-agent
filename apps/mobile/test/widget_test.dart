@@ -71,8 +71,8 @@ void main() {
     tester,
   ) async {
     var clipboardText = '';
-    final messenger = TestWidgetsFlutterBinding.ensureInitialized()
-        .defaultBinaryMessenger;
+    final messenger =
+        TestWidgetsFlutterBinding.ensureInitialized().defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
       switch (call.method) {
         case 'Clipboard.setData':

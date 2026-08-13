@@ -28,62 +28,57 @@ void main() {
   // lie again, for every built-in skin in both theme slots.
   for (final skin in kBuiltinSkins) {
     for (final requested in Brightness.values) {
-      test(
-        'skin=${skin.id} requested=$requested: ThemeData.brightness matches '
-        'the actual rendered scaffold surface',
-        () {
-          final theme = buildThemeData(skin, requested);
+      test('skin=${skin.id} requested=$requested: ThemeData.brightness matches '
+          'the actual rendered scaffold surface', () {
+        final theme = buildThemeData(skin, requested);
 
-          expect(
-            theme.brightness,
-            ThemeData.estimateBrightnessForColor(
-              theme.scaffoldBackgroundColor,
-            ),
-            reason:
-                'ThemeData.brightness disagrees with the actual '
-                'scaffoldBackgroundColor for skin=${skin.id} '
-                'requested=$requested (background='
-                '${theme.scaffoldBackgroundColor})',
-          );
+        expect(
+          theme.brightness,
+          ThemeData.estimateBrightnessForColor(theme.scaffoldBackgroundColor),
+          reason:
+              'ThemeData.brightness disagrees with the actual '
+              'scaffoldBackgroundColor for skin=${skin.id} '
+              'requested=$requested (background='
+              '${theme.scaffoldBackgroundColor})',
+        );
 
-          expect(
-            theme.colorScheme.brightness,
-            theme.brightness,
-            reason:
-                'ColorScheme.brightness must match ThemeData.brightness for '
-                'skin=${skin.id} requested=$requested',
-          );
+        expect(
+          theme.colorScheme.brightness,
+          theme.brightness,
+          reason:
+              'ColorScheme.brightness must match ThemeData.brightness for '
+              'skin=${skin.id} requested=$requested',
+        );
 
+        expect(
+          _contrastRatio(
+            theme.colorScheme.onSurface,
+            theme.scaffoldBackgroundColor,
+          ),
+          greaterThanOrEqualTo(minContrast),
+          reason:
+              'onSurface vs scaffoldBackground contrast too low for '
+              'skin=${skin.id} requested=$requested '
+              '(onSurface=${theme.colorScheme.onSurface}, '
+              'background=${theme.scaffoldBackgroundColor})',
+        );
+
+        // Cheap default-derived pairing: SnackBar content vs its own
+        // background must stay readable now that its brightness resolves
+        // off the real palette instead of the requested slot.
+        final snackBg = theme.snackBarTheme.backgroundColor;
+        final snackFg = theme.snackBarTheme.contentTextStyle?.color;
+        if (snackBg != null && snackFg != null) {
           expect(
-            _contrastRatio(
-              theme.colorScheme.onSurface,
-              theme.scaffoldBackgroundColor,
-            ),
+            _contrastRatio(snackBg, snackFg),
             greaterThanOrEqualTo(minContrast),
             reason:
-                'onSurface vs scaffoldBackground contrast too low for '
+                'SnackBar content vs background contrast too low for '
                 'skin=${skin.id} requested=$requested '
-                '(onSurface=${theme.colorScheme.onSurface}, '
-                'background=${theme.scaffoldBackgroundColor})',
+                '(bg=$snackBg, fg=$snackFg)',
           );
-
-          // Cheap default-derived pairing: SnackBar content vs its own
-          // background must stay readable now that its brightness resolves
-          // off the real palette instead of the requested slot.
-          final snackBg = theme.snackBarTheme.backgroundColor;
-          final snackFg = theme.snackBarTheme.contentTextStyle?.color;
-          if (snackBg != null && snackFg != null) {
-            expect(
-              _contrastRatio(snackBg, snackFg),
-              greaterThanOrEqualTo(minContrast),
-              reason:
-                  'SnackBar content vs background contrast too low for '
-                  'skin=${skin.id} requested=$requested '
-                  '(bg=$snackBg, fg=$snackFg)',
-            );
-          }
-        },
-      );
+        }
+      });
     }
   }
 }

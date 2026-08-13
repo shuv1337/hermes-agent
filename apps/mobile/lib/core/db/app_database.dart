@@ -53,8 +53,29 @@ class CachedMessages extends Table {
   /// pending | synced
   TextColumn get syncStatus => text().withDefault(const Constant('synced'))();
 
+  /// Gateway `display_kind` tag (model_switch, personality_switch, …) when
+  /// present — see [HermesMessage.displayKind] / [HermesMessage.isVisibleUser].
+  TextColumn get displayKind => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {gatewayId, sessionId, id};
+}
+
+/// Tombstones for messages the user deleted **locally**. The gateway has no
+/// arbitrary single-message delete (only whole-session delete and
+/// `session.undo`, which drops the trailing turn), so a deleted message keeps
+/// existing server-side and would otherwise resurface the next time
+/// [AppDatabase.replaceMessages] repopulates the cache from a server pull.
+/// Rows here are filtered out at read time instead (see
+/// `SessionSyncRepository.loadMessagesLocal`).
+class DeletedMessages extends Table {
+  TextColumn get gatewayId => text()();
+  TextColumn get sessionId => text()();
+  TextColumn get messageId => text()();
+  DateTimeColumn get deletedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {gatewayId, sessionId, messageId};
 }
 
 /// Outbound ops to flush when the gateway is reachable.
@@ -122,6 +143,7 @@ class CachedSkills extends Table {
     PendingOps,
     CachedJobs,
     CachedSkills,
+    DeletedMessages,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -130,7 +152,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -141,6 +163,10 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 3) {
         await m.createTable(cachedSkills);
+      }
+      if (from < 4) {
+        await m.addColumn(cachedMessages, cachedMessages.displayKind);
+        await m.createTable(deletedMessages);
       }
     },
   );
@@ -314,6 +340,46 @@ class AppDatabase extends _$AppDatabase {
     return into(cachedMessages).insertOnConflictUpdate(row);
   }
 
+  // ── Local message deletion (tombstones) ──────────────────────────────
+
+  /// Record a local-only delete and drop the cached row. The tombstone
+  /// outlives the row: a later server pull repopulates `cachedMessages`
+  /// (the gateway still has the message), and the tombstone is what keeps it
+  /// filtered out of every read afterward.
+  Future<void> tombstoneMessage(
+    String gatewayId,
+    String sessionId,
+    String messageId,
+  ) {
+    return transaction(() async {
+      await into(deletedMessages).insertOnConflictUpdate(
+        DeletedMessagesCompanion.insert(
+          gatewayId: gatewayId,
+          sessionId: sessionId,
+          messageId: messageId,
+          deletedAt: DateTime.now().toUtc(),
+        ),
+      );
+      await (delete(cachedMessages)..where(
+            (r) =>
+                r.gatewayId.equals(gatewayId) &
+                r.sessionId.equals(sessionId) &
+                r.id.equals(messageId),
+          ))
+          .go();
+    });
+  }
+
+  Future<Set<String>> tombstonedMessageIds(String gatewayId, String sessionId) async {
+    final rows =
+        await (select(deletedMessages)..where(
+              (r) =>
+                  r.gatewayId.equals(gatewayId) & r.sessionId.equals(sessionId),
+            ))
+            .get();
+    return rows.map((r) => r.messageId).toSet();
+  }
+
   // ── Outbox ─────────────────────────────────────────────────────────
 
   Future<List<PendingOp>> pendingOpsForGateway(String gatewayId) {
@@ -321,6 +387,20 @@ class AppDatabase extends _$AppDatabase {
           ..where((r) => r.gatewayId.equals(gatewayId))
           ..orderBy([(r) => OrderingTerm.asc(r.createdAt)]))
         .get();
+  }
+
+  /// Whether any outbox op still targets [sessionId] — used to tell a
+  /// genuinely-still-queued send apart from one the background/foreground
+  /// flush already resolved, so the UI can drop a stale "Queued for sync"
+  /// banner instead of leaving it stuck forever.
+  Future<bool> hasPendingOpsForSession(String gatewayId, String sessionId) async {
+    final row =
+        await (select(pendingOps)..where(
+              (r) =>
+                  r.gatewayId.equals(gatewayId) & r.sessionId.equals(sessionId),
+            ))
+            .getSingleOrNull();
+    return row != null;
   }
 
   Future<void> enqueueOp(PendingOpsCompanion row) {

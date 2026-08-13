@@ -585,6 +585,16 @@ class AppLocalizationsFr extends AppLocalizations {
   String get messageActions => 'Message actions';
 
   @override
+  String get deleteMessageTitle => 'Supprimer le message ?';
+
+  @override
+  String get deleteMessageBody =>
+      'Cette action est irréversible. Hermes ne peut pas encore supprimer un seul message sur la passerelle ; il est donc supprimé uniquement sur cet appareil — la passerelle conserve sa propre copie et il pourrait encore apparaître ailleurs.';
+
+  @override
+  String get messageDeleted => 'Message supprimé (sur cet appareil uniquement)';
+
+  @override
   String get copied => 'Copied';
 
   @override

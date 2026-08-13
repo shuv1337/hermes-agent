@@ -19,20 +19,17 @@ void main() {
       );
     });
 
-    test(
-      'rejects insecure remote credentials, paths, and incomplete URLs',
-      () {
-        expect(
-          GatewayAuthClient.validateBaseUrl('https://user:pass@gw.example'),
-          isNotNull,
-        );
-        expect(
-          GatewayAuthClient.validateBaseUrl('https://gw.example/prefix'),
-          isNotNull,
-        );
-        expect(GatewayAuthClient.validateBaseUrl('gw.example'), isNotNull);
-      },
-    );
+    test('rejects insecure remote credentials, paths, and incomplete URLs', () {
+      expect(
+        GatewayAuthClient.validateBaseUrl('https://user:pass@gw.example'),
+        isNotNull,
+      );
+      expect(
+        GatewayAuthClient.validateBaseUrl('https://gw.example/prefix'),
+        isNotNull,
+      );
+      expect(GatewayAuthClient.validateBaseUrl('gw.example'), isNotNull);
+    });
 
     test('allows HTTP for private/trusted network space', () {
       // RFC1918 — 192.168.0.0/16 (was rejected pre-policy-change).
@@ -41,10 +38,7 @@ void main() {
         isNull,
       );
       // RFC1918 — 10.0.0.0/8, including the Android emulator host alias.
-      expect(
-        GatewayAuthClient.validateBaseUrl('http://10.0.2.2:9119'),
-        isNull,
-      );
+      expect(GatewayAuthClient.validateBaseUrl('http://10.0.2.2:9119'), isNull);
       expect(
         GatewayAuthClient.validateBaseUrl('http://10.255.255.255:9119'),
         isNull,
@@ -79,9 +73,7 @@ void main() {
       );
       // Tailscale MagicDNS
       expect(
-        GatewayAuthClient.validateBaseUrl(
-          'http://myhost.tailnet.ts.net:9119',
-        ),
+        GatewayAuthClient.validateBaseUrl('http://myhost.tailnet.ts.net:9119'),
         isNull,
       );
     });

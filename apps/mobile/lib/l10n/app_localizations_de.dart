@@ -585,6 +585,16 @@ class AppLocalizationsDe extends AppLocalizations {
   String get messageActions => 'Message actions';
 
   @override
+  String get deleteMessageTitle => 'Nachricht löschen?';
+
+  @override
+  String get deleteMessageBody =>
+      'Dies kann nicht rückgängig gemacht werden. Hermes kann einzelne Nachrichten auf dem Gateway noch nicht löschen, daher wird sie nur auf diesem Gerät entfernt — das Gateway behält seine eigene Kopie, und die Nachricht kann anderswo weiterhin erscheinen.';
+
+  @override
+  String get messageDeleted => 'Nachricht gelöscht (nur auf diesem Gerät)';
+
+  @override
   String get copied => 'Copied';
 
   @override

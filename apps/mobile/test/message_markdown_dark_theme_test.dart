@@ -55,7 +55,9 @@ Future<({Color codeBg, Color codeText})> _pumpAndReadCodeColors(
   await tester.pump();
 
   Color? codeBg;
-  for (final box in tester.widgetList<DecoratedBox>(find.byType(DecoratedBox))) {
+  for (final box in tester.widgetList<DecoratedBox>(
+    find.byType(DecoratedBox),
+  )) {
     final decoration = box.decoration;
     if (decoration is BoxDecoration && decoration.color != null) {
       codeBg = decoration.color;

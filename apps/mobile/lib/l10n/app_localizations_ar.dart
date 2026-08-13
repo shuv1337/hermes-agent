@@ -584,6 +584,16 @@ class AppLocalizationsAr extends AppLocalizations {
   String get messageActions => 'Message actions';
 
   @override
+  String get deleteMessageTitle => 'حذف الرسالة؟';
+
+  @override
+  String get deleteMessageBody =>
+      'لا يمكن التراجع عن هذا الإجراء. لا يمكن لتطبيق Hermes حذف رسالة واحدة على البوابة بعد، لذا تتم إزالتها من هذا الجهاز فقط — تحتفظ البوابة بنسختها الخاصة وقد تظل تظهر في أماكن أخرى.';
+
+  @override
+  String get messageDeleted => 'تم حذف الرسالة (على هذا الجهاز فقط)';
+
+  @override
   String get copied => 'Copied';
 
   @override

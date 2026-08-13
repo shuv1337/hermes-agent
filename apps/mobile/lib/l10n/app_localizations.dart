@@ -1150,6 +1150,24 @@ abstract class AppLocalizations {
   /// **'Message actions'**
   String get messageActions;
 
+  /// No description provided for @deleteMessageTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete message?'**
+  String get deleteMessageTitle;
+
+  /// No description provided for @deleteMessageBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This can\'t be undone. Hermes can\'t delete a single message on the gateway yet, so it\'s removed from this device only — the gateway keeps its own copy and it may still appear elsewhere.'**
+  String get deleteMessageBody;
+
+  /// No description provided for @messageDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Message deleted (this device only)'**
+  String get messageDeleted;
+
   /// No description provided for @copied.
   ///
   /// In en, this message translates to:
