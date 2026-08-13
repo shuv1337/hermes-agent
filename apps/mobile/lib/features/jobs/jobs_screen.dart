@@ -145,10 +145,14 @@ class _JobTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final status =
-        job.lastStatus ??
-        job.state ??
-        (job.enabled == false ? 'paused' : 'scheduled');
+    // `enabled == false` must win over `lastStatus`/`state`: a paused job
+    // keeps whatever status its last *run* finished with (e.g. "success"),
+    // but that's stale information about a run that happened before it was
+    // paused — the row needs to reflect the job's current (paused) state,
+    // not its history, or pausing/resuming never visibly changes anything.
+    final status = job.enabled == false
+        ? 'paused'
+        : (job.lastStatus ?? job.state ?? 'scheduled');
     final when = _rel(job.lastRunAt ?? job.nextRunAt);
 
     return ListTile(
