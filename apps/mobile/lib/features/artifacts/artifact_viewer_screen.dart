@@ -92,15 +92,22 @@ class _ArtifactViewerScreenState extends ConsumerState<ArtifactViewerScreen> {
 
   /// The renderer is chosen by the filename, never by the server's MIME
   /// type — see [rendererKindFor].
-  ArtifactFileKind get _rendererKind => rendererKindFor(
-    detectedKind: widget.artifact.kind,
-    serverMimeType: _content?.mimeType,
-  );
+  ArtifactFileKind get _rendererKind =>
+      rendererKindFor(detectedKind: widget.artifact.kind);
 
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    // Deferred a frame on purpose. `_load` runs synchronously up to its first
+    // `await`, and its `dashboardClientProvider == null` branch reads
+    // `context.l10n` on that synchronous stretch — an inherited-widget lookup
+    // before `initState` has returned, which trips
+    // `dependOnInheritedWidgetOfExactType` in a debug build. `_state` already
+    // starts at `loading`, so nothing flickers by waiting one frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_load());
+    });
   }
 
   Future<void> _load() async {

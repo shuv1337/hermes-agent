@@ -113,6 +113,41 @@ void main() {
       expect(detectArtifactsInMessage(msg), isEmpty);
     });
 
+    test('a falsy error field is a success, not a failure', () {
+      // `'$error'` renders the JSON literal `false` as the *non-empty* string
+      // `"false"`, so a stringified check suppressed the chip for a perfectly
+      // ordinary success shape. Same for `0` and for the empty
+      // list/map some tools use to mean "no errors".
+      for (final falsy in [false, 0, <dynamic>[], <String, dynamic>{}]) {
+        final msg = _tool(
+          toolName: 'write_file',
+          result: {'error': falsy, 'resolved_path': '/tmp/report.md'},
+        );
+        expect(detectArtifactsInMessage(msg).map((a) => a.name), [
+          'report.md',
+        ], reason: 'error: $falsy');
+      }
+    });
+
+    test('other truthy error shapes still suppress the chip', () {
+      for (final truthy in [
+        true,
+        1,
+        ['boom'],
+        {'code': 5},
+      ]) {
+        final msg = _tool(
+          toolName: 'write_file',
+          result: {'error': truthy, 'resolved_path': '/tmp/report.md'},
+        );
+        expect(
+          detectArtifactsInMessage(msg),
+          isEmpty,
+          reason: 'error: $truthy',
+        );
+      }
+    });
+
     test('non-artifact extensions (.txt, .py) never surface a chip', () {
       final txt = _tool(
         toolName: 'write_file',

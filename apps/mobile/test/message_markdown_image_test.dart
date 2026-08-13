@@ -110,6 +110,12 @@ class _FakeResponse implements HttpClientResponse {
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
+/// Unwraps the `ResizeImage` that `Image.memory(cacheWidth: …)` installs.
+MemoryImage _memoryImageOf(ImageProvider provider) {
+  final inner = provider is ResizeImage ? provider.imageProvider : provider;
+  return inner as MemoryImage;
+}
+
 Widget _wrap(String data, {Key? key}) {
   return MaterialApp(
     locale: const Locale('en'),
@@ -343,7 +349,12 @@ void main() {
 
     final images = tester.widgetList<Image>(find.byType(Image)).toList();
     expect(images, hasLength(1));
-    expect(images.single.image, isA<MemoryImage>());
+    // `cacheWidth` wraps the provider in a `ResizeImage`, so the decode is
+    // capped at the screen's physical width instead of the image's own
+    // dimensions — the bytes underneath are still a `MemoryImage`, i.e. still
+    // no socket.
+    expect(images.single.image, isA<ResizeImage>());
+    expect(_memoryImageOf(images.single.image), isA<MemoryImage>());
     expect(requested, isEmpty);
   });
 
@@ -363,10 +374,49 @@ void main() {
     final second = tester.widget<Image>(find.byType(Image)).image;
 
     expect(
-      identical((first as MemoryImage).bytes, (second as MemoryImage).bytes),
+      identical(_memoryImageOf(first).bytes, _memoryImageOf(second).bytes),
       isTrue,
     );
     expect(first, second); // cache hit, no second decode
+  });
+
+  _netTest('an oversized data: payload is refused before it is decoded', (
+    tester,
+    requested,
+  ) async {
+    // `data:` is the one disposition that renders on paint, and the decode is
+    // synchronous inside `build()`. An LLM-written message quoting a 20 MB
+    // inline PNG would otherwise block the frame, and 24 of them used to be
+    // allowed to sit in the module-level cache — ~1 GB retained behind a
+    // limit that counted *entries*.
+    //
+    // The cap is applied to the encoded URI length, so this string never
+    // reaches `contentAsBytes()`. It stays a valid base64 image URI: the
+    // refusal must come from the size, not from a parse failure.
+    final huge = 'A' * (3 * 1024 * 1024);
+    await tester.pumpWidget(_wrap('![big](data:image/png;base64,$huge)'));
+    await tester.pump();
+
+    expect(find.byType(Image), findsNothing);
+    expect(find.text('Image blocked — unsupported source'), findsOneWidget);
+    expect(requested, isEmpty);
+  });
+
+  _netTest('a data: image just under the cap still renders', (
+    tester,
+    requested,
+  ) async {
+    // The other side of the cap — the guard must not have swallowed ordinary
+    // inline images. 1 MB of base64 decodes to ~768 KB, comfortably under.
+    final ok = 'A' * (1024 * 1024);
+    await tester.pumpWidget(_wrap('![fine](data:image/png;base64,$ok)'));
+    await tester.pump();
+
+    // The bytes are not a real PNG, so the decode fails at the *image* layer
+    // and `errorBuilder` runs — but an `Image` widget was built, which is
+    // exactly what the size gate is being asked not to prevent.
+    expect(find.byType(Image), findsOneWidget);
+    expect(requested, isEmpty);
   });
 
   _netTest('raw HTML in a message never becomes a fetching widget', (

@@ -144,17 +144,17 @@ ArtifactNavigationAction decideArtifactNavigation(
 
 /// Which renderer an artifact opens in.
 ///
-/// The **file extension decides**, always — the server-reported MIME type is
-/// advisory and never promotes a `.md` file into the WebView. (It also never
-/// demotes a `.html` one: the gateway derives the MIME from the same
-/// filename the agent chose, so the two signals are not independent and
-/// cross-checking them would buy nothing but a way to break legitimate
-/// files.) The user tapped a chip labelled `report.md`; `report.md` must not
-/// be able to render as HTML because a response header said so.
-ArtifactFileKind rendererKindFor({
-  required ArtifactFileKind detectedKind,
-  String? serverMimeType,
-}) => detectedKind;
+/// The **file extension decides**, always — [detectedKind] comes from the
+/// path, and that is the whole input. The server-reported MIME type is
+/// deliberately not a parameter: it used to be accepted and ignored, which
+/// reads like a cross-check that is silently not happening. (It would not be
+/// a useful one either: the gateway derives the MIME from the same filename
+/// the agent chose, so the two signals are not independent, and honouring a
+/// disagreement would only add a way to break legitimate files.) The user
+/// tapped a chip labelled `report.md`; `report.md` must not be able to render
+/// as HTML because a response header said so.
+ArtifactFileKind rendererKindFor({required ArtifactFileKind detectedKind}) =>
+    detectedKind;
 
 /// MIME type to attach when sharing an artifact out of the app.
 ///

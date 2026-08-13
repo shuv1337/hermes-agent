@@ -237,41 +237,22 @@ void main() {
   });
 
   group('rendererKindFor', () {
-    test('the extension decides — a MIME type never promotes markdown into '
-        'the WebView', () {
+    // `serverMimeType` used to be a parameter that was accepted and then
+    // ignored. It is gone: the renderer's only input is the kind derived from
+    // the filename, so there is no MIME argument left for a hostile
+    // `mime_type` header to arrive through.
+    test('the detected kind is the whole input — markdown stays markdown', () {
       expect(
-        rendererKindFor(
-          detectedKind: ArtifactFileKind.markdown,
-          serverMimeType: 'text/html',
-        ),
-        ArtifactFileKind.markdown,
-      );
-      expect(
-        rendererKindFor(
-          detectedKind: ArtifactFileKind.markdown,
-          serverMimeType: 'application/octet-stream',
-        ),
+        rendererKindFor(detectedKind: ArtifactFileKind.markdown),
         ArtifactFileKind.markdown,
       );
     });
 
     test('nor does it demote html', () {
-      for (final mime in [
-        'text/markdown',
-        'text/plain',
-        null,
-        '',
-        'text/html; charset=utf-8',
-      ]) {
-        expect(
-          rendererKindFor(
-            detectedKind: ArtifactFileKind.html,
-            serverMimeType: mime,
-          ),
-          ArtifactFileKind.html,
-          reason: '$mime',
-        );
-      }
+      expect(
+        rendererKindFor(detectedKind: ArtifactFileKind.html),
+        ArtifactFileKind.html,
+      );
     });
   });
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -73,6 +74,98 @@ void main() {
     expect((await other.loadSessionsLocal()).length, 1);
     expect((await repo.loadSessionsLocal()).first.title, 'A');
     expect((await other.loadSessionsLocal()).first.title, 'B');
+  });
+
+  group('replaceMessages re-inserts pending rows intact', () {
+    test('a pending row keeps its display_kind', () async {
+      // `HermesMessage.isVisibleUser` is `role == 'user' && displayKind`
+      // empty. A re-insert that drops the tag turns a synthetic timeline
+      // marker into a *visible* user turn, which shifts every later user
+      // ordinal — the mismatch the gateway rejects with error 4018.
+      await db.upsertMessage(
+        CachedMessagesCompanion.insert(
+          gatewayId: 'gw1',
+          sessionId: 's1',
+          id: 'local_marker',
+          role: 'user',
+          content: const Value('/model gpt-x'),
+          sortIndex: const Value(3),
+          syncStatus: const Value('pending'),
+          displayKind: const Value('model_switch'),
+        ),
+      );
+
+      // A server pull that does not include the pending row: it is deleted
+      // and re-inserted from the in-memory copy.
+      await db.replaceMessages('gw1', 's1', [
+        CachedMessagesCompanion.insert(
+          gatewayId: 'gw1',
+          sessionId: 's1',
+          id: 'm1',
+          role: 'user',
+          content: const Value('hello'),
+          sortIndex: const Value(0),
+        ),
+      ]);
+
+      final rows = await db.messagesForSession('gw1', 's1');
+      final marker = rows.firstWhere((r) => r.id == 'local_marker');
+      expect(marker.displayKind, 'model_switch');
+      expect(marker.syncStatus, 'pending');
+    });
+  });
+
+  group('tombstones do not outlive the session they belong to', () {
+    setUp(() async {
+      await db.upsertSession(
+        CachedSessionsCompanion.insert(
+          gatewayId: 'gw1',
+          id: 's1',
+          updatedAt: DateTime.utc(2026),
+        ),
+      );
+      await db.tombstoneMessage('gw1', 's1', 'm1', fingerprint: 'user:abc');
+      expect(await db.tombstonedMessageIds('gw1', 's1'), contains('m1'));
+    });
+
+    test('removeSession clears them', () async {
+      await db.removeSession('gw1', 's1');
+      expect(await db.tombstonedMessageIds('gw1', 's1'), isEmpty);
+    });
+
+    test('clearGatewayData clears them', () async {
+      await db.clearGatewayData('gw1');
+      expect(await db.tombstonedMessageIds('gw1', 's1'), isEmpty);
+    });
+
+    test(
+      'the replaceSessions GC clears them once the delete is confirmed',
+      () async {
+        await db.markSessionDeleted('gw1', 's1');
+        // Server no longer lists s1 → the delete is confirmed and the session,
+        // its transcript and its tombstones all go.
+        await db.replaceSessions('gw1', [
+          CachedSessionsCompanion.insert(
+            gatewayId: 'gw1',
+            id: 's2',
+            updatedAt: DateTime.utc(2026),
+          ),
+        ]);
+        expect(await db.tombstonedMessageIds('gw1', 's1'), isEmpty);
+        expect((await db.sessionsForGateway('gw1')).map((s) => s.id), ['s2']);
+      },
+    );
+
+    test('a session the server still lists keeps its tombstones', () async {
+      await db.replaceSessions('gw1', [
+        CachedSessionsCompanion.insert(
+          gatewayId: 'gw1',
+          id: 's1',
+          updatedAt: DateTime.utc(2026),
+        ),
+      ]);
+      expect(await db.tombstonedMessageIds('gw1', 's1'), contains('m1'));
+    });
   });
 
   // ── Startup redundant-fetch coalescing (single-flight) ─────────────────

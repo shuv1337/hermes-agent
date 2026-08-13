@@ -297,6 +297,11 @@ class SessionSyncRepository {
             toolCallsJson: Value(row.toolCallsJson),
             sortIndex: Value(row.sortIndex),
             syncStatus: Value(row.syncStatus),
+            // `isVisibleUser` is `role == 'user' && displayKind` empty — a
+            // carried-over row that loses the tag re-enters the transcript as
+            // a *visible* user turn and shifts every later user ordinal, which
+            // is what the gateway rejects with error 4018.
+            displayKind: Value(row.displayKind),
           );
 
       final orphanCompanions = <CachedMessagesCompanion>[];

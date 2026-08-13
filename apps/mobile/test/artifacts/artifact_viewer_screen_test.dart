@@ -75,7 +75,7 @@ const _markdownArtifact = DetectedArtifact(
   origin: ArtifactOrigin.toolResult,
 );
 
-Widget _wrap(DashboardClient client, Widget child) {
+Widget _wrap(DashboardClient? client, Widget child) {
   return ProviderScope(
     overrides: [dashboardClientProvider.overrideWithValue(client)],
     child: MaterialApp(
@@ -93,6 +93,21 @@ Widget _wrap(DashboardClient client, Widget child) {
 }
 
 void main() {
+  testWidgets('no gateway client shows the load-failed state without '
+      'tripping a framework assert', (tester) async {
+    // `_load` used to run synchronously from `initState`, and its
+    // "no dashboard client" branch reads `context.l10n` — an inherited-widget
+    // lookup before `initState` returns, which asserts in a debug build. It
+    // is deferred past the first frame now.
+    await tester.pumpWidget(
+      _wrap(null, const ArtifactViewerScreen(artifact: _markdownArtifact)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text("Couldn't load this file."), findsOneWidget);
+  });
+
   testWidgets('markdown artifact fetches through DashboardClient and renders '
       'via the MessageMarkdown pipeline', (tester) async {
     final dataUrl =

@@ -281,20 +281,52 @@ class _ImageConsent {
   void grant(Uri uri) => _granted.add(uri.toString());
 }
 
+/// Largest `data:` image this renderer will decode, in decoded bytes.
+///
+/// Message bodies are LLM-written and routinely quote the open web, so
+/// `![](data:image/png;base64,<20MB>)` is an ordinary thing to receive. The
+/// decode is synchronous and happens inside `build()`, so an unbounded one
+/// stalls the frame; 2 MB is comfortably above any legitimate inline
+/// illustration and well under "the UI visibly hitches".
+const int _maxDataImageBytes = 2 * 1024 * 1024;
+
+/// The same cap expressed on the *encoded* URI, checked first so an oversized
+/// payload is refused without ever being decoded. base64 spends 4 characters
+/// per 3 bytes and percent-encoding never shrinks, so a URI no longer than
+/// this cannot decode to more than [_maxDataImageBytes] (the slack covers the
+/// `data:image/png;base64,` header).
+const int _maxDataImageUriChars = (_maxDataImageBytes ~/ 3) * 4 + 1024;
+
+/// Total memory [_dataImageBytes] may retain, counting **both** the decoded
+/// bytes and the base64 key that addresses them — the key is the bigger half
+/// for a base64 payload (2 bytes per UTF-16 code unit), and bounding entry
+/// *count* instead let 24 large images pin ~1 GB in a top-level global that
+/// outlives every widget that asked for them.
+const int _dataImageCacheBudgetBytes = 8 * 1024 * 1024;
+
 /// Decoded `data:` image payloads, keyed by the URI text.
 ///
 /// `MemoryImage` keys Flutter's image cache on the *identity* of the byte
 /// list, so handing `Image.memory` a freshly-decoded `Uint8List` on every
 /// rebuild would re-decode the picture on every streamed token. Reusing one
-/// instance keeps the cache hitting. Bounded, so a long transcript cannot
-/// grow it without limit; a miss only costs one base64 decode.
+/// instance keeps the cache hitting. Bounded by bytes (see
+/// [_dataImageCacheBudgetBytes]) with oldest-first eviction; a miss only costs
+/// one base64 decode.
 final Map<String, Uint8List> _dataImageBytes = <String, Uint8List>{};
-const int _dataImageBytesLimit = 24;
+int _dataImageCacheBytes = 0;
 
+int _dataImageCacheCost(String key, Uint8List bytes) =>
+    bytes.length + key.length * 2;
+
+/// Decodes a `data:` image, or returns null when it is unusable — malformed,
+/// or larger than [_maxDataImageBytes]. Null renders the same inert
+/// placeholder an unsupported source gets; nothing is fetched either way.
 Uint8List? _decodeDataImage(Uri uri) {
   final key = uri.toString();
   final cached = _dataImageBytes[key];
   if (cached != null) return cached;
+  // Before `contentAsBytes()`, not after: the decode is the expensive part.
+  if (key.length > _maxDataImageUriChars) return null;
   final data = uri.data;
   if (data == null) return null;
   final Uint8List bytes;
@@ -303,10 +335,18 @@ Uint8List? _decodeDataImage(Uri uri) {
   } catch (_) {
     return null; // Malformed payload — treated as an unusable source.
   }
-  if (_dataImageBytes.length >= _dataImageBytesLimit) {
-    _dataImageBytes.remove(_dataImageBytes.keys.first);
+  if (bytes.length > _maxDataImageBytes) return null;
+  final cost = _dataImageCacheCost(key, bytes);
+  if (cost <= _dataImageCacheBudgetBytes) {
+    while (_dataImageBytes.isNotEmpty &&
+        _dataImageCacheBytes + cost > _dataImageCacheBudgetBytes) {
+      final oldest = _dataImageBytes.keys.first;
+      final evicted = _dataImageBytes.remove(oldest)!;
+      _dataImageCacheBytes -= _dataImageCacheCost(oldest, evicted);
+    }
+    _dataImageBytes[key] = bytes;
+    _dataImageCacheBytes += cost;
   }
-  _dataImageBytes[key] = bytes;
   return bytes;
 }
 
@@ -356,6 +396,18 @@ class _MarkdownImageState extends State<_MarkdownImage> {
     return host.length <= 48 ? host : '${host.substring(0, 47)}…';
   }
 
+  /// Physical-pixel width to decode into: no bubble is wider than the window,
+  /// so anything beyond that is bitmap the user never sees. Clamped to a
+  /// sane floor because a zero/absent MediaQuery would otherwise ask for a
+  /// 0-pixel decode.
+  int _decodeWidthCap(BuildContext context) {
+    final media = MediaQuery.maybeOf(context);
+    final logical = media?.size.width ?? 0;
+    final ratio = media?.devicePixelRatio ?? 1;
+    final physical = (logical * ratio).round();
+    return physical < 64 ? 1080 : physical;
+  }
+
   void _load() {
     widget.consent.grant(widget.uri);
     // The grant lives in the shared consent object, so this setState only
@@ -378,6 +430,10 @@ class _MarkdownImageState extends State<_MarkdownImage> {
         }
         return Image.memory(
           bytes,
+          // Decode to at most the physical width of the screen. Without it a
+          // 8000x8000 PNG inflates to a ~256 MB uncompressed bitmap to be
+          // drawn into a chat bubble a few hundred points wide.
+          cacheWidth: _decodeWidthCap(context),
           errorBuilder: (context, error, stackTrace) => _placeholder(
             icon: Icons.broken_image_outlined,
             label: l10n.imageLoadFailed,

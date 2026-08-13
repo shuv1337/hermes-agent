@@ -75,6 +75,53 @@ void main() {
     });
   });
 
+  /// The observer's hold and the screen's pin detection are two halves of one
+  /// behaviour, wired through two different numbers. They shipped disagreeing
+  /// (`fixedPositionOffset = 5` against a 96px threshold) and the gap between
+  /// them was a state with no exit: the observer pinned the reading position,
+  /// so the streaming reply stopped advancing, while `isPinnedToBottom` still
+  /// said "pinned", so the jump-to-latest chip was withheld. Nudging the list
+  /// ~50px mid-stream was enough to get there.
+  group('the observer hold and the jump-to-latest chip agree', () {
+    test('the two constants are the same number', () {
+      expect(kChatObserverFixedPositionOffset, kAutoscrollPinThresholdPx);
+    });
+
+    test('no offset both holds the position and hides the chip', () {
+      // `ChatObserverScrollPhysicsMixin.adjustPositionForNewDimensions` skips
+      // its correction when `newPosition.extentBefore <= fixedPositionOffset`,
+      // and the list is `reverse: true`, so `extentBefore == pixels`. "Held"
+      // must therefore be exactly "not pinned", at every offset.
+      for (var px = 0.0; px <= 400; px += 0.5) {
+        expect(
+          chatObserverHoldsPositionAt(px),
+          !isPinnedToBottom(px),
+          reason: 'offset $px',
+        );
+      }
+    });
+
+    test('the old 5px offset reproduces the dead zone', () {
+      // Guards the direction of the fix: with the shipped pair, a 50px nudge
+      // froze the transcript *and* withheld the chip.
+      expect(chatObserverHoldsPositionAt(50, fixedPositionOffset: 5), isTrue);
+      expect(isPinnedToBottom(50), isTrue);
+      // Aligned, the same offset keeps following the stream instead.
+      expect(chatObserverHoldsPositionAt(50), isFalse);
+    });
+
+    test('past the threshold the observer holds and the chip is offered', () {
+      expect(isPinnedToBottom(kAutoscrollPinThresholdPx + 1), isFalse);
+      expect(
+        chatObserverHoldsPositionAt(kAutoscrollPinThresholdPx + 1),
+        isTrue,
+      );
+      // And at the boundary itself, both still say "following".
+      expect(isPinnedToBottom(kAutoscrollPinThresholdPx), isTrue);
+      expect(chatObserverHoldsPositionAt(kAutoscrollPinThresholdPx), isFalse);
+    });
+  });
+
   group('isUnansweredUserAt', () {
     HermesMessage user(String id, {String? displayKind}) => HermesMessage(
       id: id,

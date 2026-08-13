@@ -53,6 +53,39 @@ bool isPinnedToBottom(
   return pixels <= threshold;
 }
 
+/// `ChatScrollObserver.fixedPositionOffset` this screen installs.
+///
+/// **Must equal [kAutoscrollPinThresholdPx].** The two numbers govern the two
+/// halves of one behaviour and there is no coherent state where they differ:
+///
+/// * `ChatObserverScrollPhysicsMixin.adjustPositionForNewDimensions` (see
+///   `scrollview_observer`) skips its correction only when
+///   `newPosition.extentBefore <= fixedPositionOffset`; the list is
+///   `reverse: true`, so `extentBefore == pixels`. Above the offset the
+///   observer *pins the reading position*, and a streaming reply stops
+///   visibly advancing.
+/// * [isPinnedToBottom] decides whether the jump-to-latest chip is offered.
+///
+/// When the offset was smaller than the threshold, offsets in between put the
+/// user in a dead zone: the transcript was frozen (observer holding) while the
+/// screen still believed the user was pinned, so no chip was offered and there
+/// was no way back to the live tail short of scrolling by hand. Nudging the
+/// list ~50px mid-stream was enough to reach it.
+const double kChatObserverFixedPositionOffset = kAutoscrollPinThresholdPx;
+
+/// Mirrors the package's hold/release predicate for a `reverse: true` list:
+/// true when the observer will hold the reading position instead of letting
+/// new content push it.
+///
+/// Pure, so the "hold" and "offer the chip" switches can be tested to flip
+/// together without pumping a widget.
+bool chatObserverHoldsPositionAt(
+  double pixels, {
+  double fixedPositionOffset = kChatObserverFixedPositionOffset,
+}) {
+  return pixels > fixedPositionOffset;
+}
+
 /// Is this user turn unanswered — i.e. the turn at [index] never got a real
 /// assistant reply (empty tail, or only an API-error / failed banner after
 /// it)? Drives the "No response yet" label plus the Resend/Edit chips, which
@@ -421,7 +454,7 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     _observerController = ListObserverController(controller: _scroll)
       ..cacheJumpIndexOffset = false;
     _chatObserver = ChatScrollObserver(_observerController)
-      ..fixedPositionOffset = 5
+      ..fixedPositionOffset = kChatObserverFixedPositionOffset
       ..toRebuildScrollViewCallback = () {
         if (mounted) setState(() {});
       };
@@ -575,6 +608,12 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
               tokenCount: m.tokenCount,
               finishReason: m.finishReason,
               reasoning: m.reasoning,
+              // Carried deliberately: `isVisibleUser` is `role == 'user' &&
+              // displayKind` empty, so dropping the tag would turn every
+              // synthetic marker in the kept transcript into a visible user
+              // turn and shift the ordinals an edit/retry sends back to the
+              // gateway (error 4018).
+              displayKind: m.displayKind,
             ),
         ];
         // Background refresh only — do not clear the chat.

@@ -152,6 +152,50 @@ void main() {
     });
   });
 
+  group('synthetic timeline markers vs a pull', () {
+    test('a carried-over local row keeps its display_kind', () async {
+      // `syncMessages` re-inserts local rows the server has not echoed
+      // (`carry()`). It rebuilt them field by field and omitted
+      // `display_kind`, so a `role: user` marker came back as a *visible*
+      // user turn — which shifts every later user ordinal and is exactly the
+      // mismatch the gateway rejects with error 4018.
+      final gw = await _ConflictGateway.start();
+      addTearDown(gw.close);
+      gw.addSession('sess-dk', title: 'Chat');
+      gw.appendMessage('sess-dk', 'user', 'hello');
+      gw.appendMessage('sess-dk', 'assistant', 'hi');
+
+      final sync = SessionSyncRepository(
+        gatewayId: 'gw-dk',
+        db: db,
+        dashboard: gw.dashboard(),
+      );
+      await sync.syncMessages('sess-dk');
+
+      await db.upsertMessage(
+        CachedMessagesCompanion.insert(
+          gatewayId: 'gw-dk',
+          sessionId: 'sess-dk',
+          id: 'local_marker',
+          role: 'user',
+          content: const Value('/model gpt-x'),
+          sortIndex: const Value(99),
+          syncStatus: const Value('pending'),
+          displayKind: const Value('model_switch'),
+        ),
+      );
+
+      final merged = await sync.syncMessages('sess-dk');
+      final marker = merged.firstWhere((m) => m.id == 'local_marker');
+      expect(marker.displayKind, 'model_switch');
+      expect(
+        marker.isVisibleUser,
+        isFalse,
+        reason: 'a tagged marker is not a user turn the gateway counts',
+      );
+    });
+  });
+
   group('message tombstones vs a server-side rewind', () {
     test('a locally deleted message stays deleted after the gateway rewinds '
         'and re-stamps every row id', () async {

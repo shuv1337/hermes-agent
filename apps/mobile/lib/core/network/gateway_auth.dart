@@ -105,7 +105,11 @@ class GatewayAuthClient {
     if (uri.path.isNotEmpty && uri.path != '/') {
       return 'Gateway URLs cannot include a path.';
     }
-    final host = _stripBrackets(uri.host.toLowerCase());
+    final host = _canonicalHost(uri.host);
+    // Deliberately the *precise* pair, not [isPrivateOrLoopbackHost]: that one
+    // fails closed (unknown ⇒ private), which is right for refusing an image
+    // fetch but would be backwards here — it would hand plain HTTP to every
+    // host this file cannot classify.
     if (scheme != 'https' &&
         !_isLoopbackHost(host) &&
         !_isPrivateNetworkHost(host)) {
@@ -127,73 +131,223 @@ class GatewayAuthClient {
       return false;
     }
     if (uri.scheme.toLowerCase() != 'http') return false;
-    final host = _stripBrackets(uri.host.toLowerCase());
+    final host = _canonicalHost(uri.host);
     if (_isLoopbackHost(host)) return false;
     return _isPrivateNetworkHost(host);
   }
 
-  /// True when [host] is loopback or sits in private/trusted network space
-  /// (RFC1918 LAN, link-local, CGNAT/tailnet, mDNS `.local`, MagicDNS
-  /// `.ts.net`, IPv6 ULA) — the same classification [validateBaseUrl] uses to
-  /// decide plain HTTP is acceptable.
+  /// True when [host] must NOT be handed a same-network request the user
+  /// cannot vet — loopback, private/trusted network space (RFC1918 LAN,
+  /// link-local, CGNAT/tailnet, mDNS `.local`, MagicDNS `.ts.net`, IPv6 ULA),
+  /// **or any host this file cannot positively recognise as public**.
   ///
   /// Exposed so other layers can recognise a LAN-flavoured target without
   /// re-deriving the ranges. The Markdown image gate
   /// (`features/sessions/message_markdown.dart`) uses it to refuse
-  /// tap-to-load for hosts the user cannot meaningfully vet.
+  /// tap-to-load for such hosts.
+  ///
+  /// **Fails closed, unlike [validateBaseUrl].** The two callers want opposite
+  /// defaults for an unclassifiable host: refusing to fetch an image is cheap,
+  /// while refusing a gateway URL locks the user out, so [validateBaseUrl]
+  /// keeps using the precise `_isLoopbackHost`/`_isPrivateNetworkHost` pair and
+  /// only this entry point treats "not recognisably public" as private.
+  /// Recognisably public means a dotted DNS name with a plausible TLD, or an
+  /// IP literal that parses and lands outside every special-use range;
+  /// single-label names (`intranet`, resolved through the DHCP search domain),
+  /// unparseable IPv6, and numeric junk all come back true.
+  ///
+  /// Every non-canonical spelling of an address is normalised first, because
+  /// the classification is otherwise trivial to evade: `Uri` does not
+  /// canonicalise IPv6 (`0:0:0:0:0:0:0:1`), and IPv4 literals are legal in
+  /// integer (`2130706433`), hex (`0x7f000001`), octal, and short
+  /// (`127.1`) forms, all of which `connect()` resolves to 127.0.0.1.
+  ///
+  /// KNOWN RESIDUAL — this is string inspection, so it cannot stop **DNS
+  /// rebinding**: `images.attacker.example` is a perfectly public-looking name
+  /// that may resolve to 192.168.1.1 at fetch time, and nothing here (or
+  /// anywhere else in-process, short of pinning the resolved address and
+  /// re-checking it below the HTTP client) would notice. What this function
+  /// buys is that the *literal* SSRF cases — the ones an LLM-authored message
+  /// can express directly — are refused, and a public-looking host at least
+  /// still costs the attacker a domain the user can read in the placeholder.
   static bool isPrivateOrLoopbackHost(String host) {
-    final h = _stripBrackets(host.trim().toLowerCase());
-    if (h.isEmpty) return false;
-    return _isLoopbackHost(h) || _isPrivateNetworkHost(h);
+    final h = _canonicalHost(host);
+    if (h.isEmpty) return true; // Nothing to vet — fail closed.
+    if (_isLoopbackHost(h) || _isPrivateNetworkHost(h)) return true;
+    return !_looksPublicHost(h);
   }
 
-  static String _stripBrackets(String host) =>
-      host.replaceAll('[', '').replaceAll(']', '');
+  /// Strips the syntax `Uri` leaves attached to a host so the classifiers see
+  /// one canonical spelling: `[…]` IPv6 brackets, an `%en0` zone id, and the
+  /// trailing root dot of an absolute FQDN.
+  static String _canonicalHost(String host) {
+    var h = host.trim().toLowerCase();
+    h = h.replaceAll('[', '').replaceAll(']', '');
+    final zone = h.indexOf('%');
+    if (zone >= 0) h = h.substring(0, zone);
+    while (h.length > 1 && h.endsWith('.')) {
+      h = h.substring(0, h.length - 1);
+    }
+    return h;
+  }
 
   static bool _isLoopbackHost(String host) {
-    if (host == 'localhost' || host == '::1') return true;
+    if (host == 'localhost') return true;
+    final v6 = _parseIPv6(host);
+    if (v6 != null) {
+      // `::` (unspecified) and `::1` in any spelling.
+      if (v6.every((b) => b == 0)) return true;
+      final embedded = _embeddedIPv4(v6);
+      if (embedded != null) return _isLoopbackIPv4(embedded);
+      return v6.take(15).every((b) => b == 0) && v6[15] == 1;
+    }
     final v4 = _parseIPv4(host);
-    return v4 != null && v4[0] == 127;
+    return v4 != null && _isLoopbackIPv4(v4);
   }
 
+  /// 127.0.0.0/8, plus 0.0.0.0/8 — `connect()` to `0.0.0.0` reaches the local
+  /// host on every platform this app ships to, so it is loopback in practice.
+  static bool _isLoopbackIPv4(List<int> v4) => v4[0] == 127 || v4[0] == 0;
+
   /// RFC1918 private ranges, link-local, CGNAT (Tailscale tailnet IPs),
-  /// mDNS `.local` hostnames, and Tailscale MagicDNS `.ts.net` hostnames.
+  /// mDNS `.local` hostnames, and Tailscale MagicDNS `.ts.net` hostnames,
+  /// plus the IPv6 equivalents (ULA `fc00::/7`, link-local `fe80::/10`) and
+  /// the non-unicast IPv4/IPv6 space nothing should ever be fetched from.
   /// Does not include loopback — see [_isLoopbackHost].
   static bool _isPrivateNetworkHost(String host) {
     if (host.endsWith('.local') || host.endsWith('.ts.net')) return true;
-    final v4 = _parseIPv4(host);
-    if (v4 != null) {
-      final a = v4[0], b = v4[1];
-      if (a == 10) return true; // 10.0.0.0/8
-      if (a == 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-      if (a == 192 && b == 168) return true; // 192.168.0.0/16
-      if (a == 169 && b == 254) return true; // 169.254.0.0/16 link-local
-      if (a == 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+    final v6 = _parseIPv6(host);
+    if (v6 != null) {
+      // An IPv4-mapped/-compatible address is an IPv4 address wearing a hat:
+      // `::ffff:192.168.1.1` connects to 192.168.1.1.
+      final embedded = _embeddedIPv4(v6);
+      if (embedded != null) return _isPrivateIPv4(embedded);
+      if ((v6[0] & 0xfe) == 0xfc) return true; // fc00::/7 unique local
+      if (v6[0] == 0xfe && (v6[1] & 0xc0) == 0x80) return true; // fe80::/10
+      if (v6[0] == 0xff) return true; // ff00::/8 multicast
       return false;
     }
-    // IPv6 unique local fc00::/7 — first byte 0xfc or 0xfd. Anything else
-    // (including other IPv6) is treated as public/unrecognized.
-    if (host.contains(':') &&
-        (host.startsWith('fc') || host.startsWith('fd'))) {
-      return true;
-    }
+    final v4 = _parseIPv4(host);
+    return v4 != null && _isPrivateIPv4(v4);
+  }
+
+  static bool _isPrivateIPv4(List<int> v4) {
+    final a = v4[0], b = v4[1];
+    if (a == 10) return true; // 10.0.0.0/8
+    if (a == 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a == 192 && b == 168) return true; // 192.168.0.0/16
+    if (a == 169 && b == 254) return true; // 169.254.0.0/16 link-local
+    if (a == 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+    if (a >= 224) return true; // 224/4 multicast, 240/4 reserved, broadcast
     return false;
   }
 
-  /// Parses a dotted-quad IPv4 literal into 4 numeric octets (no substring
-  /// matching), or null if [host] is not a valid IPv4 address.
+  /// [Uri.parseIPv6Address] guarded, so a host that merely *contains* a colon
+  /// does not throw. Returns the 16 address bytes, or null when [host] is not
+  /// an IPv6 literal at all.
+  static List<int>? _parseIPv6(String host) {
+    if (!host.contains(':')) return null;
+    try {
+      return Uri.parseIPv6Address(host);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  /// The four IPv4 bytes an IPv6 address carries when it is really an IPv4
+  /// address — `::ffff:a.b.c.d` (mapped) or the deprecated `::a.b.c.d`
+  /// (compatible) — else null. `::` and `::1` are excluded: those are handled
+  /// as IPv6 loopback rather than as 0.0.0.0 / 0.0.0.1.
+  static List<int>? _embeddedIPv4(List<int> v6) {
+    for (var i = 0; i < 10; i++) {
+      if (v6[i] != 0) return null;
+    }
+    final mapped = v6[10] == 0xff && v6[11] == 0xff;
+    final compatible = v6[10] == 0 && v6[11] == 0;
+    if (!mapped && !compatible) return null;
+    final tail = v6.sublist(12);
+    if (compatible && tail[0] == 0 && tail[1] == 0 && tail[2] == 0) {
+      return null; // `::` / `::1` — not a meaningful IPv4 literal.
+    }
+    return tail;
+  }
+
+  /// Hostname shape check: labels of letters/digits/hyphens (underscores
+  /// tolerated — they appear in real service records), 1–253 chars total.
+  static final RegExp _dnsHostname = RegExp(
+    r'^(?=.{1,253}$)[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?'
+    r'(\.[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?)*$',
+  );
+
+  /// A plausible public TLD: alphabetic, or an IDN `xn--` A-label.
+  static final RegExp _publicTld = RegExp(r'^([a-z]{2,}|xn--[a-z0-9-]{2,})$');
+
+  /// Positive recognition of a public target, for the fail-closed default in
+  /// [isPrivateOrLoopbackHost]. Assumes the private/loopback checks already
+  /// said no.
+  static bool _looksPublicHost(String host) {
+    // IPv6 counts as public only when it actually parses — a colon-bearing
+    // host we could not read tells us nothing, so it fails closed.
+    if (host.contains(':')) return _parseIPv6(host) != null;
+    // A parseable literal that got here is outside every special-use range.
+    if (_parseIPv4(host) != null) return true;
+    if (!_dnsHostname.hasMatch(host)) return false;
+    final labels = host.split('.');
+    // Single-label names resolve through the DHCP search domain — i.e. the
+    // local network — so they are exactly the case the image gate refuses.
+    if (labels.length < 2) return false;
+    return _publicTld.hasMatch(labels.last);
+  }
+
+  /// Parses an IPv4 literal in **any** form `inet_aton`/`connect()` accepts —
+  /// dotted quad, but also the short (`127.1`), integer (`2130706433`), hex
+  /// (`0x7f000001`) and octal (`0177.0.0.1`) spellings — into 4 octets, or
+  /// null if [host] is not an IPv4 address. Checking only the dotted quad let
+  /// every other spelling of 127.0.0.1 through the private-host gate.
   static List<int>? _parseIPv4(String host) {
+    if (host.isEmpty) return null;
     final parts = host.split('.');
-    if (parts.length != 4) return null;
-    final octets = <int>[];
+    if (parts.length > 4) return null;
+    final values = <int>[];
     for (final part in parts) {
-      if (part.isEmpty || part.length > 3) return null;
-      if (!RegExp(r'^\d+$').hasMatch(part)) return null;
-      final n = int.parse(part);
-      if (n > 255) return null;
-      octets.add(n);
+      final n = _parseIPv4Part(part);
+      if (n == null) return null;
+      values.add(n);
+    }
+    // inet_aton: the final part spreads over every octet the leading parts
+    // did not claim — `127.1` is 127.0.0.1, `2130706433` is the whole word.
+    final octets = <int>[];
+    for (var i = 0; i < values.length - 1; i++) {
+      if (values[i] > 0xff) return null;
+      octets.add(values[i]);
+    }
+    const maxForWidth = <int>[0, 0xff, 0xffff, 0xffffff, 0xffffffff];
+    final remaining = 4 - octets.length;
+    final tail = values.last;
+    if (tail > maxForWidth[remaining]) return null;
+    for (var shift = remaining - 1; shift >= 0; shift--) {
+      octets.add((tail >> (8 * shift)) & 0xff);
     }
     return octets;
+  }
+
+  static final RegExp _hexPart = RegExp(r'^0x[0-9a-f]{1,8}$');
+  static final RegExp _octalPart = RegExp(r'^0[0-7]{1,11}$');
+  static final RegExp _decimalPart = RegExp(r'^\d{1,10}$');
+
+  static int? _parseIPv4Part(String part) {
+    if (part.isEmpty) return null;
+    if (part.startsWith('0x')) {
+      if (!_hexPart.hasMatch(part)) return null;
+      return int.parse(part.substring(2), radix: 16);
+    }
+    if (part.length > 1 && part.startsWith('0')) {
+      if (!_octalPart.hasMatch(part)) return null;
+      return int.parse(part.substring(1), radix: 8);
+    }
+    if (!_decimalPart.hasMatch(part)) return null;
+    final n = int.parse(part);
+    return n > 0xffffffff ? null : n;
   }
 
   /// Public probe — no credentials (Desktop probeRemoteAuthMode).

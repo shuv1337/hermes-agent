@@ -287,6 +287,25 @@ class _WrittenPaths {
 /// The artifact-extension paths a `write_file`/`patch` result names, in the
 /// exact form the tool reported them. Callers must have already checked the
 /// tool name against [_fileWriteToolNames].
+/// Whether a tool result's `error` field actually reports a failure.
+///
+/// Typed rather than stringified: `'$error'` renders the JSON literal `false`
+/// as the non-empty string `"false"`, so `{"ok": true, "error": false}` — a
+/// perfectly ordinary success shape — read as an error and suppressed the
+/// artifact chip. Same for the numeric `0`, and for an empty list/map, which
+/// tools use to mean "no errors".
+///
+/// Latent today (the write tool only emits `error` when it is truthy) but the
+/// failure mode is silent, so it is not worth leaving to chance.
+bool _isTruthyError(dynamic error) {
+  if (error == null) return false;
+  if (error is bool) return error;
+  if (error is num) return error != 0;
+  if (error is Iterable) return error.isNotEmpty;
+  if (error is Map) return error.isNotEmpty;
+  return '$error'.trim().isNotEmpty;
+}
+
 List<String> _writtenArtifactPaths(HermesMessage message) {
   final content = message.content;
   if (content == null || content.trim().isEmpty) return const [];
@@ -300,8 +319,7 @@ List<String> _writtenArtifactPaths(HermesMessage message) {
   if (decoded is! Map) return const [];
 
   // A failed write never produced a file worth opening.
-  final error = decoded['error'];
-  if (error != null && '$error'.trim().isNotEmpty) return const [];
+  if (_isTruthyError(decoded['error'])) return const [];
 
   final candidates = <String>[];
   void addString(dynamic value) {

@@ -184,7 +184,16 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(cachedMessages, cachedMessages.displayKind);
         await m.createTable(deletedMessages);
       }
-      if (from < 5) {
+      // `from == 4`, NOT `from < 5`. Migrator.createTable builds its DDL from
+      // the table class's *current* columns — drift keeps no historical
+      // snapshot — so the `from < 4` step above already creates
+      // `deleted_messages` including `fingerprint`. Only a device that ran a
+      // v4 build has the table without it. Guarding on `from < 5` made every
+      // upgrade from v3 or earlier throw `duplicate column name: fingerprint`
+      // on the first cache read, which is every shipped install, while fresh
+      // installs (onCreate -> createAll) were fine — so it would have passed
+      // review and broken existing users.
+      if (from == 4) {
         // Additive only: a nullable column on an existing table (plain
         // `ALTER TABLE ... ADD COLUMN`). No row is rewritten or dropped, and
         // pre-v5 tombstones keep working with a null fingerprint.
@@ -273,6 +282,7 @@ class AppDatabase extends _$AppDatabase {
               (r) => r.gatewayId.equals(gatewayId) & r.sessionId.equals(id),
             ))
             .go();
+        await _dropTombstonesForSession(gatewayId, id);
       }
       await batch(
         (b) => b.insertAllOnConflictUpdate(cachedSessions, [
@@ -332,7 +342,23 @@ class AppDatabase extends _$AppDatabase {
                 r.gatewayId.equals(gatewayId) & r.sessionId.equals(sessionId),
           ))
           .go();
+      await _dropTombstonesForSession(gatewayId, sessionId);
     });
+  }
+
+  /// Drop every tombstone belonging to [sessionId].
+  ///
+  /// Tombstones deliberately outlive the cached rows they hide (see
+  /// [tombstoneMessage]), so anything that removes a *session* has to clear
+  /// them explicitly or they leak forever — and, worse, a later session that
+  /// reuses the id (a local_* create that the gateway echoes back, or a
+  /// re-imported history) would silently start with rows hidden by a stranger's
+  /// tombstone.
+  Future<void> _dropTombstonesForSession(String gatewayId, String sessionId) {
+    return (delete(deletedMessages)..where(
+          (r) => r.gatewayId.equals(gatewayId) & r.sessionId.equals(sessionId),
+        ))
+        .go();
   }
 
   // ── Messages ───────────────────────────────────────────────────────
@@ -394,6 +420,13 @@ class AppDatabase extends _$AppDatabase {
               toolCallsJson: Value(p.toolCallsJson),
               sortIndex: Value(p.sortIndex),
               syncStatus: const Value('pending'),
+              // Must be carried: `HermesMessage.isVisibleUser` is
+              // `role == 'user' && displayKind` empty, so dropping it here
+              // promotes a synthetic timeline marker (model_switch, …) back
+              // into a *visible* user turn and shifts every later user
+              // ordinal — the gateway then rejects the edit/retry with
+              // error 4018.
+              displayKind: Value(p.displayKind),
             ),
           );
         }
@@ -713,6 +746,12 @@ class AppDatabase extends _$AppDatabase {
       )..where((r) => r.gatewayId.equals(gatewayId))).go();
       await (delete(
         pendingOps,
+      )..where((r) => r.gatewayId.equals(gatewayId))).go();
+      // Tombstones are per-gateway local state too: leaving them behind after
+      // a disconnect/wipe means the next sign-in to the same gateway
+      // re-hides messages the user has no record of deleting.
+      await (delete(
+        deletedMessages,
       )..where((r) => r.gatewayId.equals(gatewayId))).go();
     });
   }
