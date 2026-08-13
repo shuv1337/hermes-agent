@@ -18,6 +18,7 @@ the hygiene-compression block already uses) and must actually reach
 """
 import logging
 import threading
+from contextlib import contextmanager
 
 import pytest
 
@@ -185,3 +186,54 @@ async def test_at_reference_resolves_model_via_session_runtime(monkeypatch):
     assert captured_runtime_call.get("model") == "openai/gpt-4.1-mini"
     assert captured_runtime_call.get("base_url") == "https://api.openai.com/v1"
     assert captured_runtime_call.get("provider") == "openai"
+
+
+@pytest.mark.asyncio
+async def test_at_reference_ignores_global_context_for_runtime_route_override(monkeypatch):
+    """Context expansion must not inherit a global pin from another route."""
+    runner = _make_runner()
+    source = _source()
+    captured = {}
+
+    monkeypatch.setattr(
+        gateway_run,
+        "_load_gateway_config",
+        lambda: {
+            "model": {
+                "default": "shared-model",
+                "provider": "custom",
+                "base_url": "https://large.example/v1",
+                "context_length": 1_048_576,
+            }
+        },
+    )
+    monkeypatch.setattr(
+        runner,
+        "_resolve_session_agent_runtime",
+        lambda **_kwargs: (
+            "shared-model",
+            {
+                "provider": "custom",
+                "api_key": "test",
+                "base_url": "https://small.example/v1",
+            },
+        ),
+    )
+
+    import agent.context_references as ctx_mod
+    import agent.model_metadata as model_meta_mod
+
+    async def _fake_get_context(_model, **kwargs):
+        captured["config_context_length"] = kwargs["config_context_length"]
+        return 32_768
+
+    async def _passthrough(message, **_kwargs):
+        return ContextReferenceResult(message=message, original_message=message)
+
+    monkeypatch.setattr(model_meta_mod, "get_model_context_length_async", _fake_get_context)
+    monkeypatch.setattr(ctx_mod, "preprocess_context_references_async", _passthrough)
+
+    await runner._prepare_inbound_message_text(
+        event=MessageEvent(text="@file:note", source=source), source=source, history=[]
+    )
+    assert captured["config_context_length"] is None
