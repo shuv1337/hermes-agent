@@ -14,6 +14,121 @@ import pytest
 from hermes_cli.auth import AuthError, get_provider_auth_state, resolve_nous_runtime_credentials
 
 
+def test_nous_model_catalog_preserves_server_reasoning_options(monkeypatch):
+    import hermes_cli.auth as auth_mod
+
+    payload = {
+        "data": [
+            {
+                "id": "anthropic/claude-fable-5",
+                "aliases": ["anthropic/claude-5-fable-20260609"],
+                "reasoning": {
+                    "default_effort": "medium",
+                    "mandatory": True,
+                    "supported_efforts": ["max", "xhigh", "high", "medium", "low"],
+                },
+            },
+            {
+                "id": "openai/gpt-5.6-sol",
+                "reasoning": {
+                    "default_effort": "medium",
+                    "mandatory": False,
+                    "supported_efforts": ["high", "medium", "low", "none"],
+                },
+            },
+            {
+                "id": "anthropic/claude-opus-4.8",
+                "reasoning": {
+                    "default_effort": "medium",
+                    "mandatory": False,
+                    "supported_efforts": ["max", "xhigh", "high", "medium", "low"],
+                },
+            },
+            {
+                "id": "anthropic/claude-sonnet-5",
+                "reasoning": {
+                    "default_effort": "medium",
+                    "mandatory": False,
+                    "supported_efforts": ["max", "xhigh", "high", "medium", "low"],
+                },
+            },
+            {
+                "id": "anthropic/claude-haiku-4.5",
+                "reasoning": {
+                    "default_effort": None,
+                    "mandatory": False,
+                    "supported_efforts": [],
+                },
+            },
+        ]
+    }
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return payload
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def get(self, *_args, **_kwargs):
+            return Response()
+
+    monkeypatch.setattr(auth_mod.httpx, "Client", lambda **_kwargs: Client())
+    auth_mod._NOUS_MODEL_METADATA.clear()
+
+    assert auth_mod.fetch_nous_models(
+        inference_base_url="https://inference.example/v1",
+        api_key="secret",
+    )
+    assert set(auth_mod._NOUS_MODEL_METADATA) >= {
+        "anthropic/claude-fable-5",
+        "anthropic/claude-opus-4.8",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-haiku-4.5",
+        "openai/gpt-5.6-sol",
+    }
+    assert auth_mod.get_nous_model_options("anthropic/claude-fable-5") == {
+        "reasoning_efforts": [
+            {"effort": "max"},
+            {"effort": "xhigh"},
+            {"effort": "high"},
+            {"effort": "medium"},
+            {"effort": "low"},
+        ],
+        "default_reasoning_effort": "medium",
+        "thinking": False,
+    }
+    assert auth_mod.get_nous_model_options("openai/gpt-5.6-sol")["thinking"] is True
+    assert auth_mod.get_nous_model_options("openai/gpt-5.6-sol")["reasoning_efforts"] == [
+        {"effort": "high"},
+        {"effort": "medium"},
+        {"effort": "low"},
+    ]
+    for model in ("anthropic/claude-opus-4.8", "anthropic/claude-sonnet-5"):
+        assert auth_mod.get_nous_model_options(model) == {
+            "reasoning_efforts": [
+                {"effort": "max"},
+                {"effort": "xhigh"},
+                {"effort": "high"},
+                {"effort": "medium"},
+                {"effort": "low"},
+            ],
+            "default_reasoning_effort": "medium",
+            "thinking": True,
+        }
+    assert auth_mod.get_nous_model_options("anthropic/claude-haiku-4.5") == {
+        "reasoning_efforts": [],
+        "default_reasoning_effort": "",
+        "thinking": False,
+    }
+
+
 # =============================================================================
 # _resolve_verify: CA bundle path validation
 # =============================================================================
