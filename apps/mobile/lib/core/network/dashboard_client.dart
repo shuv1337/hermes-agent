@@ -577,11 +577,26 @@ class ManagedFileContent {
   /// (rather than throwing) on a missing/malformed data URL, so callers can
   /// show an error state instead of crashing on a hostile or truncated
   /// response.
+  ///
+  /// The header is checked rather than skipped: the gateway always emits
+  /// `data:<mime>;base64,<...>` (`hermes_cli/web_server.py:2413`), so a
+  /// response whose data URL is shaped differently is treated as malformed
+  /// instead of being guessed at. The declared MIME type inside the header
+  /// is deliberately *not* consulted — it never decides how the bytes are
+  /// decoded, and it never decides which renderer they reach (see
+  /// `rendererKindFor`).
   String decodeText() {
     final comma = dataUrl.indexOf(',');
     if (comma < 0) return '';
+    final header = dataUrl.substring(0, comma).toLowerCase();
+    if (!header.startsWith('data:') || !header.endsWith(';base64')) return '';
     try {
-      return utf8.decode(base64.decode(dataUrl.substring(comma + 1)));
+      // `allowMalformed`: a stray byte in an otherwise readable file should
+      // degrade to U+FFFD, not blank the whole viewer.
+      return utf8.decode(
+        base64.decode(dataUrl.substring(comma + 1)),
+        allowMalformed: true,
+      );
     } catch (_) {
       return '';
     }

@@ -11,6 +11,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:hermes_mobile/core/network/dashboard_client.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/artifacts/artifact_detection.dart';
+import 'package:hermes_mobile/features/artifacts/artifact_sandbox.dart';
 import 'package:hermes_mobile/features/sessions/message_markdown.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
@@ -27,7 +28,9 @@ enum _LoadState { loading, loaded, notFound, forbidden, tooLarge, error }
 ///
 /// Agent-generated HTML is untrusted content on a phone that can reach the
 /// user's private network, so the WebView never talks to the network on its
-/// own:
+/// own. The rules themselves live in `artifact_sandbox.dart` as pure
+/// functions so they can be unit tested without a platform WebView; this
+/// widget only wires them up:
 ///
 ///  - Bytes are fetched here in Dart through the authenticated
 ///    [DashboardClient] (`GET /api/files/read`) and handed to
@@ -38,17 +41,17 @@ enum _LoadState { loading, loaded, notFound, forbidden, tooLarge, error }
 ///    time this screen opens. [_jsEnabled] is local `State` — it is never
 ///    persisted, so re-opening the same artifact (or any other) starts from
 ///    off again.
-///  - [_sandboxedHtml] injects a restrictive CSP `<meta>` ahead of the
-///    document's own `<head>` content — see that method for exactly what it
-///    allows and why.
-///  - [NavigationDelegate.onNavigationRequest] denies every navigation that
-///    isn't the initial `loadHtmlString` load (that call does not itself
-///    raise a navigation request in either platform's implementation — only
-///    link taps / `window.location` / form submissions do). An http(s)
-///    target is offered to the user as an system-browser handoff via
-///    [url_launcher]; anything else (including `file://`) is silently
-///    blocked. This also means the WebView can never navigate itself to a
-///    `file://` URL.
+///  - [sandboxedArtifactHtml] wraps the bytes in a document whose `<head>`
+///    we own, carrying a restrictive CSP `<meta>`; `script-src` is `'none'`
+///    unless the user turned JS on for this viewing.
+///  - [decideArtifactNavigation] gates every navigation: only the
+///    `about:blank` bootstrap proceeds, http(s) is offered as a confirmed
+///    system-browser hand-off (and only while scripts are off), and every
+///    other scheme is refused without being handed to `url_launcher`.
+///  - JS dialogs (`alert`/`confirm`/`prompt`) are swallowed rather than
+///    shown: a native-looking dialog rendered by an untrusted document is a
+///    phishing surface, and `prompt()` is a credential-harvesting one.
+///  - Camera/microphone permission requests are denied outright.
 ///  - [WebViewCookieManager.clearCookies] runs before every load. There is
 ///    **no** way to force a fully non-persistent (incognito-style)
 ///    `WKWebsiteDataStore`/`WebStorage` through the current
@@ -57,6 +60,10 @@ enum _LoadState { loading, loaded, notFound, forbidden, tooLarge, error }
 ///    IndexedDB, that can still land in the platform WebView's default,
 ///    persistent data store. This is a known, documented residual risk (see
 ///    the task report), not a silent gap.
+///
+/// The Markdown path is sandboxed too: [sanitizeMarkdownArtifact] blocks
+/// non-`data:` images, which `flutter_markdown_plus` would otherwise fetch
+/// with `Image.network` the moment the artifact opens.
 class ArtifactViewerScreen extends ConsumerStatefulWidget {
   const ArtifactViewerScreen({super.key, required this.artifact});
 
@@ -78,6 +85,17 @@ class _ArtifactViewerScreenState extends ConsumerState<ArtifactViewerScreen> {
   /// Local to this screen instance — deliberately not persisted anywhere, so
   /// every fresh open (including re-opening the same file) starts at off.
   bool _jsEnabled = false;
+
+  /// Single-flight guard for the external-link confirmation, so a document
+  /// that fires navigations in a loop can't stack dialogs on the user.
+  bool _promptingExternalOpen = false;
+
+  /// The renderer is chosen by the filename, never by the server's MIME
+  /// type — see [rendererKindFor].
+  ArtifactFileKind get _rendererKind => rendererKindFor(
+    detectedKind: widget.artifact.kind,
+    serverMimeType: _content?.mimeType,
+  );
 
   @override
   void initState() {
@@ -109,7 +127,7 @@ class _ArtifactViewerScreenState extends ConsumerState<ArtifactViewerScreen> {
         _text = text;
         _state = _LoadState.loaded;
       });
-      if (widget.artifact.kind == ArtifactFileKind.html) {
+      if (_rendererKind == ArtifactFileKind.html) {
         await _initWebView(text);
       }
     } on ManagedFileException catch (e) {
@@ -138,108 +156,89 @@ class _ArtifactViewerScreenState extends ConsumerState<ArtifactViewerScreen> {
       await WebViewCookieManager().clearCookies();
     } catch (_) {
       // Not fatal — the document still never gets a network path to send a
-      // cookie to in the first place (see the CSP in `_sandboxedHtml`).
+      // cookie to in the first place (see [artifactCsp]).
     }
 
-    final controller = WebViewController()
-      ..setJavaScriptMode(
-        _jsEnabled ? JavaScriptMode.unrestricted : JavaScriptMode.disabled,
-      )
-      ..setBackgroundColor(Colors.transparent)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) {
-            final uri = Uri.tryParse(request.url);
-            final isHttp =
-                uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
-            if (isHttp) {
-              unawaited(_confirmOpenExternally(uri));
-            }
-            // Always prevent — the WebView itself never follows a link, a
-            // redirect, or a `file://`/`javascript:`/custom-scheme target.
-            return NavigationDecision.prevent;
-          },
-        ),
-      )
-      ..loadHtmlString(_sandboxedHtml(html));
+    final scriptsEnabled = _jsEnabled;
+    final controller =
+        WebViewController(
+            // An untrusted document must never be able to reach the camera
+            // or microphone. `about:blank` counts as a secure context, so
+            // `getUserMedia` is reachable once scripts are on; the platform
+            // default on iOS is to *prompt*, which is not good enough here.
+            onPermissionRequest: (request) => request.deny(),
+          )
+          ..setJavaScriptMode(
+            scriptsEnabled
+                ? JavaScriptMode.unrestricted
+                : JavaScriptMode.disabled,
+          )
+          ..setBackgroundColor(Colors.transparent)
+          // Swallow JS dialogs instead of letting the platform render them:
+          // an untrusted document showing a native alert (or a `prompt()`
+          // asking for a password) is a phishing surface, and there is no
+          // legitimate use for one in a static artifact.
+          ..setOnJavaScriptAlertDialog((request) async {})
+          ..setOnJavaScriptConfirmDialog((request) async => false)
+          ..setOnJavaScriptTextInputDialog((request) async => '')
+          ..setNavigationDelegate(
+            NavigationDelegate(
+              onNavigationRequest: (request) {
+                switch (decideArtifactNavigation(
+                  request.url,
+                  scriptsEnabled: scriptsEnabled,
+                )) {
+                  case ArtifactNavigationAction.allowInitialLoad:
+                    // Only ever the `about:blank` document `loadHtmlString`
+                    // installs. WKWebView routes that through this delegate,
+                    // so preventing it would render a blank page on iOS.
+                    return NavigationDecision.navigate;
+                  case ArtifactNavigationAction.offerExternalOpen:
+                    final uri = Uri.tryParse(request.url);
+                    if (uri != null) unawaited(_confirmOpenExternally(uri));
+                    return NavigationDecision.prevent;
+                  case ArtifactNavigationAction.block:
+                    return NavigationDecision.prevent;
+                }
+              },
+            ),
+          )
+          ..loadHtmlString(
+            sandboxedArtifactHtml(html, allowScripts: scriptsEnabled),
+          );
 
     if (!mounted) return;
     setState(() => _webController = controller);
   }
 
-  /// Injects a restrictive Content-Security-Policy `<meta>` ahead of
-  /// whatever `<head>` (or `<html>`) the document supplies, so it applies
-  /// before any of the document's own tags are parsed. The policy:
-  ///
-  ///  - `default-src 'none'` — nothing loads unless explicitly allowed below.
-  ///  - `img-src data:; font-src data:; media-src data:` — inline `data:`
-  ///    assets (a self-contained artifact's embedded images/fonts) render;
-  ///    nothing is fetched over the network.
-  ///  - `style-src 'unsafe-inline'` — the document's own `<style>`/`style=`
-  ///    renders.
-  ///  - `script-src 'unsafe-inline'` — inline `<script>` is *permitted by
-  ///    the policy* only so the JS toggle has something to turn on;
-  ///    `setJavaScriptMode(disabled)` is the actual gate while the toggle is
-  ///    off. Either way, no remote host is ever in `script-src`, so a script
-  ///    can't load a remote payload even after the toggle is flipped on.
-  ///  - `connect-src 'none'` — `fetch`/`XHR`/`WebSocket` beaconing is
-  ///    blocked outright, independent of the JS toggle.
-  ///  - `frame-src 'none'; object-src 'none'` — no nested browsing contexts,
-  ///    no plugins.
-  ///  - `form-action 'none'` — forms can't submit anywhere.
-  ///  - `base-uri 'none'` — a `<base>` tag can't redirect relative URLs.
-  String _sandboxedHtml(String rawHtml) {
-    const csp =
-        "default-src 'none'; "
-        "img-src data:; font-src data:; media-src data:; "
-        "style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
-        "connect-src 'none'; frame-src 'none'; object-src 'none'; "
-        "form-action 'none'; base-uri 'none';";
-    const meta = '<meta http-equiv="Content-Security-Policy" content="$csp">';
-
-    final lower = rawHtml.toLowerCase();
-    final headIdx = lower.indexOf('<head');
-    if (headIdx >= 0) {
-      final headEnd = rawHtml.indexOf('>', headIdx);
-      if (headEnd >= 0) {
-        return rawHtml.replaceRange(headEnd + 1, headEnd + 1, meta);
-      }
-    }
-    final htmlIdx = lower.indexOf('<html');
-    if (htmlIdx >= 0) {
-      final htmlEnd = rawHtml.indexOf('>', htmlIdx);
-      if (htmlEnd >= 0) {
-        return rawHtml.replaceRange(
-          htmlEnd + 1,
-          htmlEnd + 1,
-          '<head>$meta</head>',
-        );
-      }
-    }
-    return '<html><head>$meta</head><body>$rawHtml</body></html>';
-  }
-
   Future<void> _confirmOpenExternally(Uri uri) async {
-    if (!mounted) return;
-    final open = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(dialogContext.l10n.artifactOpenLinkTitle),
-        content: Text(dialogContext.l10n.artifactOpenLinkBody(uri.toString())),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(dialogContext.l10n.cancel),
+    if (!mounted || _promptingExternalOpen) return;
+    _promptingExternalOpen = true;
+    try {
+      final open = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(dialogContext.l10n.artifactOpenLinkTitle),
+          content: Text(
+            dialogContext.l10n.artifactOpenLinkBody(uri.toString()),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(dialogContext.l10n.artifactOpenLinkAction),
-          ),
-        ],
-      ),
-    );
-    if (open == true) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(dialogContext.l10n.cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(dialogContext.l10n.artifactOpenLinkAction),
+            ),
+          ],
+        ),
+      );
+      if (open == true) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } finally {
+      _promptingExternalOpen = false;
     }
   }
 
@@ -261,12 +260,15 @@ class _ArtifactViewerScreenState extends ConsumerState<ArtifactViewerScreen> {
     if (content == null || text == null) return;
     try {
       final dir = await getTemporaryDirectory();
-      final safeName = content.name.isEmpty ? 'artifact' : content.name;
+      // `name` and `mime_type` both come from the gateway response for an
+      // agent-chosen filename — neither is allowed to steer where we write
+      // or how the receiving app interprets the file.
+      final safeName = safeArtifactFileName(content.name);
       final file = File('${dir.path}/$safeName');
       await file.writeAsString(text);
       await SharePlus.instance.share(
         ShareParams(
-          files: [XFile(file.path, mimeType: content.mimeType)],
+          files: [XFile(file.path, mimeType: shareMimeTypeFor(_rendererKind))],
           subject: safeName,
         ),
       );
@@ -335,10 +337,12 @@ class _ArtifactViewerScreenState extends ConsumerState<ArtifactViewerScreen> {
         );
       case _LoadState.loaded:
         final text = _text ?? '';
-        if (widget.artifact.kind == ArtifactFileKind.markdown) {
+        if (_rendererKind == ArtifactFileKind.markdown) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: MessageMarkdown(data: text),
+            // Sanitized, not raw: an unsanitized remote image URL would be
+            // fetched by `flutter_markdown_plus` on first paint.
+            child: MessageMarkdown(data: sanitizeMarkdownArtifact(text)),
           );
         }
 

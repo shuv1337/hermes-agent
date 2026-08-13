@@ -174,18 +174,56 @@ void main() {
   });
 
   group('ManagedFileContent.decodeText', () {
-    test(
-      'returns an empty string for a malformed data URL instead of throwing',
-      () {
-        const content = ManagedFileContent(
+    ManagedFileContent withDataUrl(String dataUrl, {String? mime}) =>
+        ManagedFileContent(
           name: 'x.md',
           path: '/tmp/x.md',
           size: 0,
-          mimeType: 'text/markdown',
-          dataUrl: 'not-a-data-url',
+          mimeType: mime ?? 'text/markdown',
+          dataUrl: dataUrl,
         );
-        expect(content.decodeText(), '');
+
+    test(
+      'returns an empty string for a malformed data URL instead of throwing',
+      () {
+        expect(withDataUrl('not-a-data-url').decodeText(), '');
+        expect(withDataUrl('').decodeText(), '');
+        expect(withDataUrl('data:text/markdown;base64,%%%%').decodeText(), '');
       },
     );
+
+    test('a data URL that is not base64-encoded is treated as malformed', () {
+      // The gateway always base64-encodes; anything else is a response we
+      // do not understand, and guessing at it is how content-type confusion
+      // starts.
+      expect(
+        withDataUrl('data:text/html,<script>alert(1)</script>').decodeText(),
+        '',
+      );
+      expect(withDataUrl('notdata:x;base64,aGk=').decodeText(), '');
+    });
+
+    test('the declared MIME type does not affect decoding', () {
+      // A `.md` artifact whose data URL claims to be HTML still decodes to
+      // exactly its bytes — the MIME never gets a vote, here or in the
+      // renderer choice (see rendererKindFor).
+      final payload = base64.encode(utf8.encode('# just markdown'));
+      expect(
+        withDataUrl(
+          'data:text/html;base64,$payload',
+          mime: 'text/html',
+        ).decodeText(),
+        '# just markdown',
+      );
+    });
+
+    test('malformed UTF-8 degrades to replacement chars, not a blank file', () {
+      final bytes = <int>[...utf8.encode('ok '), 0xFF, ...utf8.encode(' end')];
+      final text = withDataUrl(
+        'data:text/markdown;base64,${base64.encode(bytes)}',
+      ).decodeText();
+      expect(text, startsWith('ok '));
+      expect(text, endsWith(' end'));
+    });
   });
 }

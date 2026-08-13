@@ -19,10 +19,15 @@ import 'package:hermes_mobile/l10n/l10n.dart';
 /// dependencies and isn't exercised by `flutter_test`'s software renderer;
 /// wiring one up would mean either adding a mock platform-view dependency
 /// or hand-rolling a `TestWebViewPlatform`, both bigger than this task's
-/// scope. The detection unit tests and the `DashboardClient` unit tests
-/// cover the logic feeding into that path; the CSP/navigation-blocking
-/// code in `_sandboxedHtml`/`onNavigationRequest` is exercised only by
-/// manual verification, called out in the task report.
+/// scope.
+///
+/// The *rules* that path enforces are not WebView-dependent, though: the
+/// CSP wrapper, the navigation predicate and the renderer choice are pure
+/// functions in `artifact_sandbox.dart` and are tested adversarially in
+/// `artifact_sandbox_test.dart`. What remains unverified by automation is
+/// only the wiring between them and the platform view (that
+/// `setJavaScriptMode`/`loadHtmlString`/`onNavigationRequest` are actually
+/// called with those values), plus the platform's own behaviour.
 class _FixedAdapter implements HttpClientAdapter {
   _FixedAdapter(this.statusCode, this.body);
 
@@ -110,6 +115,37 @@ void main() {
 
     expect(find.text('report.md'), findsOneWidget); // AppBar title
     expect(find.textContaining('Hello artifact'), findsOneWidget);
+  });
+
+  testWidgets('a remote image in a markdown artifact is never fetched', (
+    tester,
+  ) async {
+    // End-to-end check of the sanitizer wiring: left raw, this would reach
+    // `flutter_markdown_plus`'s default image builder and fire an
+    // `Image.network` GET on first paint — a zero-click beacon confirming
+    // the artifact was opened, from a device on the user's LAN.
+    const body =
+        '# Report\n\n![tracker](https://evil.example/p.png)\n\n'
+        '![lan](http://192.168.1.1/x.png)\n';
+    final client = _clientWith(
+      200,
+      jsonEncode({
+        'name': 'report.md',
+        'path': '/tmp/report.md',
+        'size': body.length,
+        'mime_type': 'text/markdown',
+        'data_url':
+            'data:text/markdown;base64,${base64.encode(utf8.encode(body))}',
+      }),
+    );
+
+    await tester.pumpWidget(
+      _wrap(client, const ArtifactViewerScreen(artifact: _markdownArtifact)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Image), findsNothing);
+    expect(find.textContaining('Report'), findsWidgets);
   });
 
   testWidgets('a 404 shows the not-found state with a retry action', (
