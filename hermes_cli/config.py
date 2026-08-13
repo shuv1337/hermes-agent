@@ -27,6 +27,7 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Set
@@ -1919,6 +1920,20 @@ def validate_config_structure(config: Optional[Dict[str, Any]] = None) -> List["
 
     issues: List[ConfigIssue] = []
 
+    # ── voice.submit_mode: direct | draft ────────────────────────────────
+    voice_cfg = config.get("voice")
+    if isinstance(voice_cfg, dict) and "submit_mode" in voice_cfg:
+        submit_mode = voice_cfg.get("submit_mode")
+        normalized_submit_mode = (
+            submit_mode.strip().lower() if isinstance(submit_mode, str) else None
+        )
+        if normalized_submit_mode not in {"direct", "draft"}:
+            issues.append(ConfigIssue(
+                "error",
+                f"voice.submit_mode must be 'direct' or 'draft', got {submit_mode!r}",
+                "Set voice.submit_mode to direct (submit immediately) or draft (edit before sending)",
+            ))
+
     # ── custom_providers must be a list, not a dict ──────────────────────
     cp = config.get("custom_providers")
     if cp is not None:
@@ -2929,6 +2944,41 @@ def cfg_get(cfg: Optional[Dict[str, Any]], *keys: str, default: Any = None) -> A
     return node
 
 
+# Back-compat alias — canonical set lives in hermes_cli.personality.
+from hermes_cli.personality import NEUTRAL_PERSONALITY_NAMES as _NEUTRAL_PERSONALITY_NAMES  # noqa: F401
+
+
+def _prompt_text(value: Any) -> str:
+    """Normalize config prompt values from YAML before handing them to AIAgent.
+
+    Delegates to :mod:`hermes_cli.personality` — the single owner of
+    personality/overlay semantics. Kept as a re-export for existing importers.
+    """
+    from hermes_cli.personality import prompt_text
+
+    return prompt_text(value)
+
+
+def render_personality_prompt(value: Any) -> str:
+    """Render a string or structured personality definition to a prompt."""
+    from hermes_cli.personality import render_personality_prompt as _render
+
+    return _render(value)
+
+
+def resolve_ephemeral_system_prompt_from_config(cfg: Optional[Dict[str, Any]]) -> str:
+    """Resolve the session overlay from config.yaml.
+
+    ``display.personality`` is the selected named personality and wins when set.
+    Otherwise fall back to the user-owned ``agent.system_prompt``. Callers should
+    still prefer ``HERMES_EPHEMERAL_SYSTEM_PROMPT`` when that env var is set.
+
+    Delegates to :mod:`hermes_cli.personality` (single owner).
+    """
+    from hermes_cli.personality import resolve_ephemeral_system_prompt
+
+    return resolve_ephemeral_system_prompt(cfg)
+
 
 def read_raw_config() -> Dict[str, Any]:
     """Read ~/.hermes/config.yaml as-is, without merging defaults or migrating.
@@ -3183,6 +3233,7 @@ def write_platform_config_field(
 TERMINAL_CONFIG_ENV_MAP = {
     "backend": "TERMINAL_ENV",
     "modal_mode": "TERMINAL_MODAL_MODE",
+    "degraded_mode": "TERMINAL_DEGRADED_MODE",
     "cwd": "TERMINAL_CWD",
     "timeout": "TERMINAL_TIMEOUT",
     "lifetime_seconds": "TERMINAL_LIFETIME_SECONDS",
@@ -3228,6 +3279,18 @@ def terminal_config_env_var_for_key(key: str) -> Optional[str]:
     return TERMINAL_CONFIG_ENV_MAP.get(key[len(prefix):])
 
 
+def _is_ssh_remote_tilde_cwd(backend: str, cwd: str) -> bool:
+    """Return whether the remote SSH shell must expand *cwd* itself.
+
+    Expanding ``~`` on the Hermes host rewrites it to the host or container
+    home before SSH sees it. Preserve ``~`` and ``~/...`` so they follow the
+    user selected by the SSH connection.
+    """
+    if (backend or "").strip().lower() != "ssh":
+        return False
+    return cwd == "~" or cwd.startswith("~/")
+
+
 def apply_terminal_config_to_env(
     *,
     env: Optional[Dict[str, str]] = None,
@@ -3264,6 +3327,15 @@ def apply_terminal_config_to_env(
     # override existing env values; keys inherited from DEFAULT_CONFIG are
     # backfill-only.
     explicit_keys = terminal_cfg.keys() if config is not None else raw_terminal_cfg.keys()
+    backend_is_explicit = config is not None or "backend" in raw_terminal_cfg
+    if backend_is_explicit:
+        terminal_backend = str(
+            terminal_cfg.get("backend") or target.get("TERMINAL_ENV") or ""
+        )
+    else:
+        terminal_backend = str(
+            target.get("TERMINAL_ENV") or terminal_cfg.get("backend") or ""
+        )
 
     for cfg_key, env_var in TERMINAL_CONFIG_ENV_MAP.items():
         if cfg_key not in terminal_cfg:
@@ -3273,7 +3345,9 @@ def apply_terminal_config_to_env(
             raw_cwd = str(value or "").strip()
             if raw_cwd in {".", "auto", "cwd"}:
                 continue
-            if isinstance(value, str):
+            if isinstance(value, str) and not _is_ssh_remote_tilde_cwd(
+                terminal_backend, raw_cwd
+            ):
                 value = os.path.expanduser(value)
         if (should_override and cfg_key in explicit_keys) or env_var not in target:
             target[env_var] = _terminal_env_value(value)
@@ -4334,7 +4408,13 @@ def show_config():
     print()
     print(color("◆ Display", Colors.CYAN, Colors.BOLD))
     display = config.get('display', {})
-    print(f"  Personality:  {display.get('personality') or 'none'}")
+    try:
+        from hermes_cli.personality import active_personality_name
+
+        _active_personality = active_personality_name(config) or 'none'
+    except Exception:
+        _active_personality = display.get('personality') or 'none'
+    print(f"  Personality:  {_active_personality}")
     print(f"  Reasoning:    {'on' if display.get('show_reasoning', True) else 'off'}")
     print(f"  Bell:         {'on' if display.get('bell_on_complete', False) else 'off'}")
     ump = display.get('user_message_preview', {}) if isinstance(display.get('user_message_preview', {}), dict) else {}
@@ -4561,16 +4641,182 @@ def _cron_fleet_default_covers_axis(
     return isinstance(value, str) and bool(value.strip())
 
 
-def _load_cron_jobs_for_config_warning() -> List[Dict[str, Any]]:
-    """Best-effort read of the active profile's cron jobs database.
+_CRON_MODEL_IMPACT_JOB_LIMIT = 50
+_CRON_MODEL_IMPACT_ID_LIMIT = 256
+_CRON_MODEL_IMPACT_NAME_LIMIT = 120
 
-    Delegates to ``cron.jobs.load_jobs`` to reuse its BOM handling, corruption
-    repair, and context-local store resolution (tests, embedders). Falls back
-    to an empty list on any failure so config writes never break.
+
+def _model_assignment_text(value: Any) -> str:
+    """Return a trimmed scalar model/provider value, or empty for malformed data."""
+    return value.strip() if isinstance(value, str) else ""
+
+
+def resolve_cron_model_drift_defaults(
+    config: Any,
+    *,
+    environ: Optional[Dict[str, str]] = None,
+) -> Tuple[str, str]:
+    """Resolve the global provider/model values cron compares against snapshots.
+
+    Mirrors the scheduler's global-model precedence: a truthy configured model
+    wins ``HERMES_MODEL``; the environment is only a fallback. Per-job and cron
+    fleet defaults are handled by the caller/classifier because they suppress a
+    drift axis rather than changing the global assignment.
     """
+    env = os.environ if environ is None else environ
+    provider = ""
+    model = _model_assignment_text(env.get("HERMES_MODEL", ""))
+    model_config = config.get("model") if isinstance(config, dict) else None
+    if isinstance(model_config, str):
+        configured_model = model_config.strip()
+        if configured_model:
+            model = configured_model
+    elif isinstance(model_config, dict):
+        provider = _model_assignment_text(model_config.get("provider"))
+        configured_model = _model_assignment_text(
+            model_config.get("default")
+            or model_config.get("model")
+            or model_config.get("name")
+        )
+        if configured_model:
+            model = configured_model
+    return provider, model
+
+
+def cron_model_drift_axes(
+    job: Any,
+    *,
+    current_provider: Any = "",
+    current_model: Any = "",
+    config: Any = None,
+) -> List[str]:
+    """Return the unpinned axes that the fail-closed cron guard would block."""
+    if not isinstance(job, dict) or not cron_model_drift_guard_enabled(config):
+        return []
+
+    current = {
+        "provider": _model_assignment_text(current_provider).lower(),
+        "model": _model_assignment_text(current_model).lower(),
+    }
+    drifted: List[str] = []
+    for axis in ("provider", "model"):
+        if _cron_fleet_default_covers_axis(axis, config):
+            continue
+        if _model_assignment_text(job.get(axis)):
+            continue
+        snapshot = _model_assignment_text(job.get(f"{axis}_snapshot")).lower()
+        if snapshot and current[axis] and snapshot != current[axis]:
+            drifted.append(axis)
+    return drifted
+
+
+def _valid_cron_impact_job_id(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    job_id = value.strip()
+    if not job_id or len(job_id) > _CRON_MODEL_IMPACT_ID_LIMIT:
+        return ""
+    if any(unicodedata.category(char).startswith("C") for char in job_id):
+        return ""
+    return job_id
+
+
+def _cron_impact_job_name(value: Any, job_id: str) -> str:
+    if isinstance(value, str):
+        printable = "".join(
+            char for char in value if not unicodedata.category(char).startswith("C")
+        )
+        name = " ".join(printable.split())[:_CRON_MODEL_IMPACT_NAME_LIMIT].rstrip()
+        if name:
+            return name
+    return f"Job {job_id}"[:_CRON_MODEL_IMPACT_NAME_LIMIT].rstrip()
+
+
+def _unavailable_cron_model_impact(guard_enabled: bool) -> Dict[str, Any]:
+    return {
+        "available": False,
+        "guard_enabled": guard_enabled,
+        "affected_count": 0,
+        "truncated": False,
+        "jobs": [],
+    }
+
+
+def build_cron_model_impact(
+    *,
+    current_provider: Any = "",
+    current_model: Any = "",
+    config: Any = None,
+    jobs: Any = None,
+) -> Dict[str, Any]:
+    """Build a bounded, profile-local summary of jobs blocked by model drift.
+
+    Job-store inspection is deliberately best effort: a model assignment has
+    already succeeded by the time Desktop requests this summary, so an unreadable
+    store is represented as unavailable instead of failing or rolling back it.
+    """
+    guard_enabled = cron_model_drift_guard_enabled(config)
+    if jobs is None:
+        try:
+            from cron.jobs import load_jobs
+
+            jobs = load_jobs()
+        except Exception:
+            return _unavailable_cron_model_impact(guard_enabled)
+    if not isinstance(jobs, list):
+        return _unavailable_cron_model_impact(guard_enabled)
+
+    result: Dict[str, Any] = {
+        "available": True,
+        "guard_enabled": guard_enabled,
+        "affected_count": 0,
+        "truncated": False,
+        "jobs": [],
+    }
+    if not guard_enabled:
+        return result
+
+    from cron.jobs import is_job_runnable
+
+    seen_ids: Set[str] = set()
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        if not is_job_runnable(job) or job.get("no_agent"):
+            continue
+        job_id = _valid_cron_impact_job_id(job.get("id"))
+        if not job_id or job_id in seen_ids:
+            continue
+        seen_ids.add(job_id)
+        axes = cron_model_drift_axes(
+            job,
+            current_provider=current_provider,
+            current_model=current_model,
+            config=config,
+        )
+        if not axes:
+            continue
+        result["affected_count"] += 1
+        if len(result["jobs"]) < _CRON_MODEL_IMPACT_JOB_LIMIT:
+            result["jobs"].append(
+                {
+                    "id": job_id,
+                    "name": _cron_impact_job_name(job.get("name"), job_id),
+                    "drifted_axes": axes,
+                }
+            )
+
+    result["truncated"] = result["affected_count"] > len(result["jobs"])
+    return result
+
+
+def _load_cron_jobs_for_config_warning() -> List[Dict[str, Any]]:
+    """Best-effort read of the active profile's cron jobs database."""
     try:
         from cron.jobs import load_jobs
-        return load_jobs()
+
+        jobs = load_jobs()
+        return jobs if isinstance(jobs, list) else []
     except Exception:
         return []
 
@@ -4580,46 +4826,25 @@ def warn_unpinned_cron_jobs_after_model_config_change(
     value: Any,
     config: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Warn when a global model/provider change will trip cron's drift guard.
-
-    Cron intentionally fails closed when an unpinned agent job's current global
-    model/provider differs from its creation-time snapshot. Surface that outcome
-    when the operator changes the global axis instead of letting the next tick
-    be the first visible signal.
-    """
+    """Warn when a global model/provider change will trip cron's drift guard."""
     axis = _cron_model_drift_axis_for_config_key(key)
     if axis is None:
         return
-    if not cron_model_drift_guard_enabled(config):
-        return
-    # A cron-fleet default covering this axis (cron.model /
-    # cron.model_provider) means unpinned jobs no longer follow the global
-    # value at all — the drift guard will not engage, so warning here would
-    # be a false alarm.
-    if _cron_fleet_default_covers_axis(axis, config):
-        return
 
-    new_value = str(value or "").strip().lower()
+    new_value = _model_assignment_text(value)
     if not new_value:
         return
-
-    pinned_field = axis
-    snapshot_field = f"{axis}_snapshot"
-    affected = 0
-    for job in _load_cron_jobs_for_config_warning():
-        if not job.get("enabled", True):
-            continue
-        if job.get("no_agent"):
-            continue
-        if str(job.get(pinned_field) or "").strip():
-            continue
-        snapshot = str(job.get(snapshot_field) or "").strip().lower()
-        if snapshot and snapshot != new_value:
-            affected += 1
-
+    impact = build_cron_model_impact(
+        current_provider=new_value if axis == "provider" else "",
+        current_model=new_value if axis == "model" else "",
+        config=config,
+        jobs=_load_cron_jobs_for_config_warning(),
+    )
+    affected = impact["affected_count"]
     if affected <= 0:
         return
 
+    snapshot_field = f"{axis}_snapshot"
     noun = "job" if affected == 1 else "jobs"
     verb = "has" if affected == 1 else "have"
     print(
@@ -4677,6 +4902,11 @@ _SCHEMA_DEFINED_DICT_KEYS = frozenset({
     "email", "sms", "dingtalk",
     # MCP server template / dynamic auth dicts
     "sessions", "checkpoints",
+    # Plugin settings — enable/disable lists plus index_url override
+    # (hermes_cli/plugins_cmd.py, hermes_cli/plugin_index.py). Absent from
+    # DEFAULT_CONFIG (written only when used), so listed here for
+    # `hermes config set plugins.index_url ...` validation.
+    "plugins",
 })
 
 # Top-level keys that can be ANY user-supplied name (platform/provider dict

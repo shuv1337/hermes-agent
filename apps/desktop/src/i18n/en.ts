@@ -202,7 +202,8 @@ export const en: Translations = {
     unmuteHaptics: 'Unmute haptics',
     openSettings: 'Open settings',
     openStarmap: 'Open memory graph',
-    openKeybinds: 'Keyboard shortcuts',
+    enterHud: 'HUD mode',
+    exitHud: 'Exit HUD mode',
     layoutEditor: 'Layout editor',
     layoutEditorTitle: 'Layout editor — ⌘-click resets the layout'
   },
@@ -261,6 +262,8 @@ export const en: Translations = {
       'view.toggleReview': 'Toggle review pane',
       'view.toggleStatusbar': 'Toggle status bar',
       'view.showFiles': 'Show file browser',
+      'view.toggleHud': 'Toggle HUD mode',
+      'hud.snapToPointer': 'Move HUD to pointer (global, while HUD is open)',
       'view.showTerminal': 'Toggle terminal',
       'view.newTerminal': 'New terminal',
       'view.nextTerminal': 'Next terminal',
@@ -363,7 +366,20 @@ export const en: Translations = {
       disable: 'Disable',
       failed: 'failed',
       empty: 'No desktop plugins installed yet.',
-      kinds: { bundled: 'bundled', disk: 'on disk', runtime: 'runtime' }
+      kinds: { bundled: 'bundled', disk: 'on disk', runtime: 'runtime' },
+      agent: {
+        title: 'Agent plugins',
+        blurb:
+          'Run in the Hermes backend — tools, skills, MCP servers, hooks, and slash commands. Portable ones are Agent Plugins packages (skills + MCP bundles that work in other agents too). Toggles apply to new sessions.',
+        empty: 'No agent plugins installed yet.',
+        loadFailed: 'Could not load agent plugins',
+        portable: 'portable',
+        search: 'Search plugins…',
+        noMatches: 'No plugins match your search.',
+        toggleFailed: (name: string) => `Could not toggle ${name}`,
+        updateBackendToManage: 'Update the Hermes backend to manage this plugin from Desktop.',
+        sources: { bundled: 'bundled', user: 'user', git: 'git', project: 'project', entrypoint: 'pip' }
+      }
     },
     notifications: {
       title: 'Notifications',
@@ -395,6 +411,10 @@ export const en: Translations = {
         credits: {
           label: 'Credit alerts',
           description: 'Credit access is paused or restored.'
+        },
+        plugin: {
+          label: 'Plugin notifications',
+          description: 'A desktop plugin sent a notification while Hermes was in the background.'
         }
       },
       test: 'Send test notification',
@@ -673,6 +693,13 @@ export const en: Translations = {
       existingToken: value => `Existing token ${value}`,
       savedToken: 'saved',
       pasteSessionToken: 'Paste session token',
+      plainTextConfirmTitle: 'Store the gateway token in plain text?',
+      plainTextConfirmDesc:
+        'No OS keyring service was found on this machine, so the token would be saved unencrypted in the app’s connection settings file, readable by any process running as this user. Install or enable GNOME Keyring or KWallet for encrypted storage.',
+      plainTextConfirmAction: 'Save as plain text',
+      plainTextStoredTitle: 'Token stored in plain text',
+      plainTextStoredDesc:
+        'Secure storage is unavailable, so the saved token is stored unencrypted in the app’s connection settings file on this machine. Install or enable GNOME Keyring or KWallet to encrypt it.',
       testRemote: 'Test remote',
       saveForRestart: 'Save for next restart',
       saveAndReconnect: 'Save and reconnect',
@@ -1559,6 +1586,12 @@ export const en: Translations = {
     search: 'Search profiles...',
     loading: 'Loading profiles...',
     newProfile: 'New profile',
+    importProfile: 'Import profile…',
+    exportProfile: 'Export profile…',
+    imported: 'Profile imported',
+    exported: 'Profile exported',
+    failedImport: 'Failed to import profile',
+    failedExport: 'Failed to export profile',
     allProfiles: 'All profiles',
     showAllProfiles: 'Show all profiles',
     switchToProfile: name => `Switch to ${name}`,
@@ -1633,6 +1666,14 @@ export const en: Translations = {
     close: 'Close cron',
     title: 'Scheduled jobs',
     count: count => `${count} ${count === 1 ? 'job' : 'jobs'}`,
+    modelImpact: {
+      title: 'Scheduled jobs need review',
+      message: count =>
+        `${count} scheduled ${count === 1 ? 'job' : 'jobs'} will be skipped until you review their model settings.`,
+      detailMore: (names, remaining) => `${names} and ${remaining} more`,
+      review: 'Review scheduled jobs',
+      saveFailed: 'Hermes did not save that model change.'
+    },
     search: 'Search cron jobs...',
     loading: 'Loading cron jobs...',
     states: {
@@ -1824,7 +1865,8 @@ export const en: Translations = {
       'new-session': 'New session',
       skills: 'Capabilities',
       messaging: 'Messaging',
-      artifacts: 'Artifacts'
+      artifacts: 'Artifacts',
+      cron: 'Scheduled jobs'
     },
     searchAria: 'Search sessions',
     searchPlaceholder: 'Search sessions…',
@@ -1845,6 +1887,7 @@ export const en: Translations = {
     noWorkspace: 'No workspace',
     projectEmpty: 'No sessions yet',
     noSessions: 'No sessions yet',
+    noFilterMatches: 'No sessions match these filters',
     projects: {
       sectionLabel: 'Projects',
       home: 'Home',
@@ -1872,6 +1915,11 @@ export const en: Translations = {
       menuAddFolder: 'Add folder',
       menuSetActive: 'Set active',
       menuDelete: 'Delete',
+      moveToProject: 'Move to project',
+      movedTo: name => `Moved to ${name}`,
+      moveFailed: 'Could not move session',
+      moveNoFolder: 'That project has no folder to move into',
+      moveNoProjects: 'No other projects',
       reveal: 'Reveal in folder',
       copyPath: 'Copy path',
       removeFromSidebar: 'Hide from sidebar',
@@ -1887,6 +1935,9 @@ export const en: Translations = {
       baseBranchPlaceholder: 'Search branches…',
       baseBranchNone: 'No branches found',
       startWorkFailed: 'Could not create worktree',
+      worktreeProjectLabel: 'Project',
+      worktreeProjectPlaceholder: 'Search projects…',
+      worktreeProjectNone: 'No projects with a folder',
       convertBranch: 'Convert a branch…',
       convertBranchTitle: 'Convert a branch',
       convertBranchDesc: 'Open checked-out branches, or create a worktree for a free branch.',
@@ -1895,6 +1946,7 @@ export const en: Translations = {
       branchOpenExisting: 'open',
       branchSwitchHome: 'switch home',
       branchCreateWorktree: 'new worktree',
+      branchTrackRemote: 'track remote',
       branchesLoading: 'Loading branches…',
       noBranches: 'No branches found',
       removeWorktree: 'Remove worktree',
@@ -1933,6 +1985,7 @@ export const en: Translations = {
       waitingForAnswer: 'Waiting for your answer',
       finishedUnread: 'Finished — unread',
       backgroundRunning: 'Background task running',
+      draftSession: 'Draft — nothing sent yet',
       handoffOrigin: platform => `Handed off from ${platform}`,
       ownedByProfile: profile => `Profile: ${profile}`,
       renamed: 'Renamed',
@@ -1941,6 +1994,8 @@ export const en: Translations = {
       renameDesc: 'Leave empty to clear.',
       untitledPlaceholder: 'Untitled session',
       untitledChat: id => `Chat ${id}`,
+      messageCount: count => `${count} ${count === 1 ? 'message' : 'messages'}`,
+      todoProgress: 'Tasks completed',
       ageNow: 'now',
       ageDay: 'd',
       ageHour: 'h',
@@ -1952,6 +2007,10 @@ export const en: Translations = {
       thisWeek: 'Earlier this week',
       lastWeek: 'Last week',
       thisMonth: 'Earlier this month'
+    },
+    statusDivider: {
+      working: 'Working',
+      done: 'Done'
     }
   },
 
@@ -2043,6 +2102,7 @@ export const en: Translations = {
     editingQueuedInComposer: 'Editing queued turn in composer',
     queueEdit: 'Edit',
     queueSendNext: 'Next',
+    queueSteer: 'Steer — redirect the live turn now',
     queueSend: 'Send',
     queueDelete: 'Delete',
     queueResume: 'Resume',
@@ -2074,6 +2134,37 @@ export const en: Translations = {
     snippetsDesc: 'Pick a starter prompt to drop into the composer.',
     dropFiles: 'Drop files to attach',
     dropSession: 'Drop to link this chat',
+    mcpSuggestions: {
+      label: server => `Add ${server}`,
+      tip: keyword => `Suggested because you mentioned “${keyword}” — click to connect`,
+      connecting: server => `Connecting ${server}…`,
+      cancelTip: 'Click to cancel',
+      added: server => `Added ${server}`,
+      addedTip: 'Connected — its tools are ready in this chat',
+      connectFailed: server => `Could not connect ${server}`
+    },
+    skillSuggestions: {
+      label: skill => `Use skill: ${skill}`,
+      tip: skill => `You mentioned “${skill}” — click to lead with that skill`,
+      done: skill => `Added /${skill}`,
+      doneTip: 'The skill loads when you send'
+    },
+    repairSuggestions: {
+      label: server => `Reconnect ${server}`,
+      tip: server => `A ${server} call just failed with a connection error`,
+      working: server => `Reconnecting ${server}…`,
+      workingTip: 'Click to cancel',
+      done: server => `Reconnected ${server}`,
+      doneTip: 'Fresh credentials are live in this chat',
+      failed: server => `Could not reconnect ${server}`
+    },
+    cronSuggestions: {
+      label: 'Schedule this',
+      tip: phrase => `“${phrase}” sounds recurring — run it on a schedule instead`,
+      prefix: 'Set this up as a scheduled job:',
+      done: 'Marked for scheduling',
+      doneTip: 'Send it and the agent creates the job'
+    },
     snippets: {
       codeReview: {
         label: 'Code review',
@@ -2562,10 +2653,6 @@ export const en: Translations = {
 
   preview: {
     tab: 'Preview',
-    closeTab: label => `Close ${label}`,
-    closeOthers: 'Close others',
-    closeToRight: 'Close to the right',
-    closeAll: 'Close all',
     closePane: 'Close preview pane',
     loading: 'Loading preview',
     unavailable: 'Preview unavailable',
@@ -2693,7 +2780,8 @@ export const en: Translations = {
     layoutNamePlaceholder: fallback => `Layout name (${fallback})`,
     saveApply: 'Save & apply',
     notExpressible: 'this arrangement interlocks (pinwheel) — not expressible as nested splits yet',
-    zoneCount: count => `${count} zones`
+    zoneCount: count => `${count} zones`,
+    tabCount: count => `${count} tabs`
   },
 
   assistant: {
@@ -2767,6 +2855,28 @@ export const en: Translations = {
       lateAnswer: (question, choice) => `Re: "${question}" — my answer: ${choice}`,
       lateAnswerTip: 'Draft this answer as a follow-up message',
       lateAnswerHint: 'This prompt is no longer waiting. Pick an option to draft it as a follow-up message.'
+    },
+    mcpSetup: {
+      installTitle: server => `Add the ${server} MCP server?`,
+      enableTitle: server => `Enable the ${server} MCP server?`,
+      authorizeTitle: server => `Authorize the ${server} MCP server?`,
+      installAction: 'Install',
+      enableAction: 'Enable',
+      authorizeAction: 'Authorize',
+      decline: 'Not now',
+      declined: 'Declined',
+      installed: server => `Installed ${server}`,
+      enabled: server => `Enabled ${server}`,
+      authorized: server => `Authorized ${server}`,
+      failed: server => `Setup failed for ${server}`,
+      unanswered: 'No response',
+      toolCount: count => (count === 1 ? '1 tool' : `${count} tools`),
+      notInCatalog: server => `“${server}” is not in the MCP catalog`,
+      catalogSource: 'From the Nous-approved catalog',
+      envRequired: 'Fill in the required credentials first',
+      sendFailed: 'Could not send MCP setup response',
+      reloadFailed: 'Server saved, but reloading MCP tools failed — they load next session',
+      gatewayDisconnected: 'Hermes gateway is not connected'
     },
     tool: {
       copyCode: 'Copy code',

@@ -252,6 +252,7 @@ LEGACY_AUTHOR_MAP = {
     "jmmaloney4@gmail.com": "jmmaloney4",  # PR #25206 salvage (re-select credential pool on primary runtime restore; #25205)
     "hmirin@users.noreply.github.com": "hmirin",
     "dale@dalenguyen.me": "dalenguyen",  # PR #53678 salvage (strip VIRTUAL_ENV/CONDA_PREFIX from terminal subprocess env; #23473)
+    "prashantjain25@gmail.com": "prashantjain25",  # PR #80740 salvage (custom-endpoint /v1/models disk cache; #72762)
     "liruixinch@outlook.com": "HexLab98",  # PR #53863 salvage (env-only proxy policy for auxiliary OpenAI clients on macOS; #53702)
     "blaryx@gmail.com": "Blaryxoff",  # PR #32602 salvage (deep-merge PUT /api/config to preserve unrelated sections; #13396)
     "diamondeyesfox@gmail.com": "DiamondEyesFox",  # PR #53351 salvage (rebaseline in-place compression flushes to prevent duplicate compacted rows; #9096)
@@ -569,6 +570,7 @@ LEGACY_AUTHOR_MAP = {
     "frowte3k@gmail.com": "Frowtek",
     "211828103+julio-cloudvisor@users.noreply.github.com": "julio-cloudvisor",
     "17778+kweiner@users.noreply.github.com": "kweiner",
+    "ken@kenweiner.com": "kweiner",
     "223516181+faisfamilytravel@users.noreply.github.com": "faisfamilytravel",
     "45189813+baofuen@users.noreply.github.com": "baofuen",
     "interstellar.consulting@gmail.com": "Interstellar-code",
@@ -1445,6 +1447,7 @@ LEGACY_AUTHOR_MAP = {
     "xiayh17@gmail.com": "xiayh0107",
     "zhujianxyz@gmail.com": "opriz",
     "tuancanhnguyen706@gmail.com": "xxxigm",
+    "j.brownemoore@gmail.com": "ElSnacko",
     "timchris.roth@pm.me": "x9x9x9x9x9x91",
     "larcombe.n@gmail.com": "NickLarcombe",
     "54813621+xxxigm@users.noreply.github.com": "xxxigm",
@@ -1576,6 +1579,7 @@ LEGACY_AUTHOR_MAP = {
     "17683456+wanazhar@users.noreply.github.com": "wanazhar",
     "26782336+cixuuz@users.noreply.github.com": "cixuuz",
     "aleksandr.pasevin@openzeppelin.com": "pasevin",
+    "pasevin@gmail.com": "pasevin",
     "ubuntu@localhost.localdomain": "holynn-q",
     "holynn@placeholder.local": "holynn-q",
     "agent@hermes.local": "jacdevos",
@@ -2059,6 +2063,7 @@ LEGACY_AUTHOR_MAP = {
     "rodisoft1@gmail.com": "0disoft",  # PR #53511 salvage (gateway PID probe TTL cache)
     "craigs.seller.sixx@gmail.com": "0-CYBERDYNE-SYSTEMS-0",  # PR #53966 salvage (session DB reads off event loop)
     "sebastianlutycz@users.noreply.github.com": "sebastianlutycz",  # PR #39140 salvage (descendant CTE); bare noreply (no NNN+ prefix) needs explicit mapping
+    "bobclawblaw@users.noreply.github.com": "BobClawblaw",  # PR #77870 salvage (output-cap compression on retry path; #55546)
     "wafy.081107@gmail.com": "mahdiwafy",  # PR #60347 salvage (session messages pagination)
     "codeforgenet@icloud.com": "CodeForgeNet",  # PR #47437 salvage (compact_rows blob skip)
     "i@dex.moe": "dexhunter",  # PR #60339 salvage (skills snapshot manifest speedup)

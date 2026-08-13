@@ -47,6 +47,7 @@ def _add_prompt_cache_key(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None,
     supports_prompt_cache_key: bool,
+    session_id: str | None = None,
 ) -> None:
     """Add a content-addressed key only for an explicitly capable endpoint."""
     if not supports_prompt_cache_key:
@@ -60,11 +61,17 @@ def _add_prompt_cache_key(
     ):
         return
 
-    # Reuse the Responses transport's single authoritative hash algorithm so
-    # equivalent static prefixes route to the same cache bucket across modes.
-    from agent.transports.codex import _content_cache_key
+    # Reuse the Responses transport's single authoritative hash algorithm and
+    # session-scope normalization so equivalent static prefixes route to the
+    # same cache bucket across modes, without concentrating unrelated
+    # sessions into one shared bucket (see #78941).
+    from agent.transports.codex import _cache_scope_from_session_id, _content_cache_key
 
-    cache_key = _content_cache_key(_static_prompt_instructions(messages), tools)
+    cache_key = _content_cache_key(
+        _static_prompt_instructions(messages),
+        tools,
+        _cache_scope_from_session_id(session_id),
+    )
     if cache_key:
         api_kwargs["prompt_cache_key"] = cache_key
 
@@ -591,6 +598,7 @@ class ChatCompletionsTransport(ProviderTransport):
             tools=api_kwargs.get("tools"),
             supports_prompt_cache_key=bool(params.get("supports_prompt_cache_key"))
             or _is_openai_api_base_url(params.get("base_url")),
+            session_id=params.get("session_id"),
         )
 
         return api_kwargs
@@ -739,7 +747,8 @@ class ChatCompletionsTransport(ProviderTransport):
             api_kwargs,
             messages=sanitized,
             tools=api_kwargs.get("tools"),
-            supports_prompt_cache_key=bool(profile.supports_prompt_cache_key),
+            supports_prompt_cache_key=bool(getattr(profile, "supports_prompt_cache_key", False)),
+            session_id=params.get("session_id"),
         )
 
         return api_kwargs
@@ -776,7 +785,12 @@ class ChatCompletionsTransport(ProviderTransport):
                 if extra is not None:
                     if hasattr(extra, "model_dump"):
                         try:
-                            extra = extra.model_dump()
+                            extra = extra.model_dump(warnings=False)
+                        except TypeError:
+                            try:
+                                extra = extra.model_dump()
+                            except Exception:
+                                pass
                         except Exception:
                             pass
                     tc_provider_data["extra_content"] = extra

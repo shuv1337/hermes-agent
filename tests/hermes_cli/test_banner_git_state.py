@@ -38,6 +38,10 @@ def test_get_git_banner_state_reads_origin_and_head(tmp_path):
     with patch("hermes_cli.banner.subprocess.run", side_effect=fake_run):
         state = banner.get_git_banner_state(repo_dir)
 
-    assert state == {"upstream": "b2f477a3", "local": "af8aad31", "ahead": 3}
-
+    assert state == {
+        "upstream": "b2f477a3",
+        "local": "af8aad31",
+        "ahead": 3,
+        "base_label": "origin",
+    }
 

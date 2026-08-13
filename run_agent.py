@@ -469,6 +469,9 @@ class AIAgent:
         reasoning_callback: callable = None,
         clarify_callback: callable = None,
         read_terminal_callback: callable = None,
+        read_preview_callback: callable = None,
+        read_window_below_callback: callable = None,
+        setup_mcp_callback: callable = None,
         step_callback: callable = None,
         stream_delta_callback: callable = None,
         interim_assistant_callback: callable = None,
@@ -495,6 +498,7 @@ class AIAgent:
         skip_context_files: bool = False,
         load_soul_identity: bool = False,
         skip_memory: bool = False,
+        skip_background_review: bool = False,
         session_db=None,
         parent_session_id: str = None,
         iteration_budget: "IterationBudget" = None,
@@ -553,6 +557,9 @@ class AIAgent:
             reasoning_callback=reasoning_callback,
             clarify_callback=clarify_callback,
             read_terminal_callback=read_terminal_callback,
+            read_preview_callback=read_preview_callback,
+            read_window_below_callback=read_window_below_callback,
+            setup_mcp_callback=setup_mcp_callback,
             step_callback=step_callback,
             stream_delta_callback=stream_delta_callback,
             interim_assistant_callback=interim_assistant_callback,
@@ -579,6 +586,7 @@ class AIAgent:
             skip_context_files=skip_context_files,
             load_soul_identity=load_soul_identity,
             skip_memory=skip_memory,
+            skip_background_review=skip_background_review,
             session_db=session_db,
             parent_session_id=parent_session_id,
             iteration_budget=iteration_budget,
@@ -611,6 +619,9 @@ class AIAgent:
             from hermes_state import SessionDB
 
             self._session_db = SessionDB()
+            # We opened it here, so nothing else holds a reference — this agent
+            # is its only owner and close() must release it.
+            self._owns_session_db = True
             return self._session_db
         except Exception:
             logger.debug("SessionDB unavailable for recall", exc_info=True)
@@ -1794,6 +1805,7 @@ class AIAgent:
         messages_snapshot: List[Dict],
         review_memory: bool = False,
         review_skills: bool = False,
+        focus: Optional[str] = None,
     ) -> None:
         """Spawn the background memory/skill review thread.
 
@@ -1802,6 +1814,10 @@ class AIAgent:
         returns the thread target.  ``threading.Thread`` is constructed
         here so existing tests that patch ``run_agent.threading.Thread``
         keep working.
+
+        ``focus`` is optional user-supplied steering (from ``/refine``)
+        appended to the review prompt — e.g. "save the deploy workflow as a
+        skill". The automatic post-turn triggers never set it.
         """
         from agent.background_review import spawn_background_review_thread
         from tools.thread_context import propagate_context_to_thread
@@ -1810,6 +1826,7 @@ class AIAgent:
             messages_snapshot,
             review_memory=review_memory,
             review_skills=review_skills,
+            focus=focus,
         )
         # Carry the active profile into the review thread so MEMORY.md / skill
         # review writes land in the right profile (#54937).
@@ -2234,10 +2251,26 @@ class AIAgent:
                     "codex_message_items": msg.get("codex_message_items"),
                     "timestamp": _row_timestamp,
                     "api_content": _row_api_content,
+                    # Standalone reference handoffs are always hidden, even
+                    # when the summarized transcript contained a user turn —
+                    # otherwise they occupy the active user slot in
+                    # retry/undo/session dispatch (#80622). Merge-into-tail
+                    # carriers keep prior visibility rules so preserved tail
+                    # content stays readable.
                     "display_kind": (
                         "hidden"
-                        if msg.get(COMPRESSED_SUMMARY_METADATA_KEY)
-                        and not msg.get("_compressed_summary_has_user_turn")
+                        if (
+                            msg.get(COMPRESSED_SUMMARY_METADATA_KEY)
+                            and (
+                                ContextCompressor.classify_summary_content(
+                                    msg.get("content")
+                                )
+                                == "standalone"
+                                or not msg.get(
+                                    "_compressed_summary_has_user_turn"
+                                )
+                            )
+                        )
                         else msg.get("display_kind")
                     ),
                     "display_metadata": msg.get("display_metadata"),
@@ -2273,6 +2306,13 @@ class AIAgent:
             # Force a full re-scan on the next flush: an exception mid-loop
             # leaves messages with mixed dispositions.
             self._db_flush_scan_prefix = None
+            # This is the one place the underlying SQLite error is visible
+            # before it is swallowed into a bare ``False`` — classify it here
+            # so the turn-end explanation can distinguish lock contention
+            # ("storage was busy, send it again") from disk-full/read-only.
+            from hermes_state import classify_persistence_error
+
+            self._last_persistence_error_cause = classify_persistence_error(e)
             logger.warning("Session DB append_message failed: %s", e)
             return False
 
@@ -2491,10 +2531,37 @@ class AIAgent:
         """Extract a human-readable one-liner from an API error.
 
         Handles Cloudflare HTML error pages (502, 503, etc.) by pulling the
-        <title> tag instead of dumping raw HTML.  Falls back to a truncated
-        str(error) for everything else.
+        <title> tag instead of dumping raw HTML. Network/DNS failures are
+        translated into an offline hint, including when an SDK wraps the
+        original OS error. Falls back to a truncated str(error) otherwise.
         """
         raw = str(error)
+
+        # Linux, macOS, and Windows use different low-level messages when DNS
+        # cannot resolve the provider while the device is offline. SDKs often
+        # wrap that OSError in a generic "Connection error", so inspect the
+        # exception chain before showing the top-level message to the user.
+        network_resolution_markers = (
+            "temporary failure in name resolution",
+            "name or service not known",
+            "nodename nor servname provided, or not known",
+            "getaddrinfo failed",
+            "no address associated with hostname",
+            "network is unreachable",
+        )
+        current: Optional[BaseException] = error
+        seen: set[int] = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            if any(
+                marker in str(current).lower()
+                for marker in network_resolution_markers
+            ):
+                return (
+                    "Hermes can't reach the model provider. You may be offline. "
+                    "Check your internet connection and try again."
+                )
+            current = current.__cause__ or current.__context__
 
         if (
             isinstance(error, ValueError)
@@ -2703,9 +2770,15 @@ class AIAgent:
         try:
             if hasattr(value, "model_dump"):
                 try:
-                    dumped = value.model_dump(mode="json")
+                    # warnings=False: pydantic's serializer UserWarnings on
+                    # generic-union SDK models (Anthropic ParsedMessage etc.)
+                    # would otherwise leak to the terminal mid-response.
+                    dumped = value.model_dump(mode="json", warnings=False)
                 except TypeError:
-                    dumped = value.model_dump()
+                    try:
+                        dumped = value.model_dump(mode="json")
+                    except TypeError:
+                        dumped = value.model_dump()
                 return cls._hook_jsonable(
                     dumped,
                     depth=depth + 1,
@@ -3550,7 +3623,9 @@ class AIAgent:
         return True  # safe default: explainer on
 
     @staticmethod
-    def _format_turn_completion_explanation(turn_exit_reason: str) -> str:
+    def _format_turn_completion_explanation(
+        turn_exit_reason: str, persistence_cause: Optional[str] = None
+    ) -> str:
         """Render a user-facing explanation for an abnormal turn ending.
 
         Maps the internal ``turn_exit_reason`` to a short, actionable
@@ -3558,6 +3633,13 @@ class AIAgent:
         content after retries, a partial/truncated stream, a still-pending
         tool result, or an iteration/budget limit) is never silent from
         the UI's perspective — the symptom users report in #34452.
+
+        ``persistence_cause`` refines the ``session_persistence_failed``
+        wording (see ``classify_persistence_error``): lock contention gets
+        "storage was busy, send it again" instead of the disk-space advice,
+        which was a misdiagnosis for that failure mode. It is optional and
+        ignored for every other reason, so one-argument callers keep the
+        exact behavior they had before.
 
         Returns an empty string for reasons that are NOT abnormal (e.g.
         a normal ``text_response(...)`` exit), so callers can concatenate
@@ -3639,12 +3721,30 @@ class AIAgent:
                 "let it summarize."
             )
         if reason == "session_persistence_failed":
+            cause = persistence_cause or "unknown"
+            if cause == "locked":
+                return (
+                    prefix
+                    + "the turn was stopped because session storage was busy "
+                    "(another Hermes process was writing to the state "
+                    "database). Your message should already be saved — "
+                    "please send it again in a moment."
+                )
+            if cause == "disk":
+                return (
+                    prefix
+                    + "the turn was stopped because session storage could not "
+                    "be written (the transcript would have been lost on "
+                    "restart). This is often a full disk — free some space "
+                    "(or fix state.db permissions), then send your message "
+                    "again."
+                )
             return (
                 prefix
                 + "the turn was stopped because session storage could not be "
                 "written (the transcript would have been lost on restart). "
-                "This is often a full disk — free some space (or fix state.db "
-                "permissions), then send your message again."
+                "Check the state database health (`hermes doctor`), then "
+                "send your message again."
             )
         # Unknown/diagnostic-only reasons (e.g. "unknown", guardrail_halt
         # which already surfaces its own message) — don't second-guess.
@@ -4274,6 +4374,21 @@ class AIAgent:
         except Exception:
             pass
 
+        # 6c. Close the Codex app-server session. The runtime already drops
+        # it on turn crash / retirement (agent/codex_runtime.py), but hard
+        # teardown had no owner — a /new, /reset, or session expiry left the
+        # app-server child process running until interpreter exit. Clear the
+        # attribute BEFORE close() so a concurrent reader can't grab a
+        # half-closed session, and so a raising close() can't strand a stale
+        # reference behind.
+        try:
+            codex_session = getattr(self, "_codex_session", None)
+            if codex_session is not None:
+                self._codex_session = None
+                codex_session.close()
+        except Exception:
+            pass
+
         # 7. Free conversation history.  Mirrors _release_evicted_agent_soft's
         # soft-eviction clear — close() is the hard teardown for true session
         # boundaries (/new, /reset, session expiry), so the message list won't
@@ -4301,12 +4416,30 @@ class AIAgent:
         # must leave it open). end_session() is first-reason-wins and no-ops on
         # an already-ended row, so this never clobbers a 'compression' /
         # 'cron_complete' / 'cli_close' reason set by an earlier terminal path.
+        session_db = getattr(self, "_session_db", None)
         try:
             if getattr(self, "_end_session_on_close", True):
-                session_db = getattr(self, "_session_db", None)
                 session_id = getattr(self, "session_id", None)
                 if session_db and session_id:
                     session_db.end_session(session_id, "agent_close")
+        except Exception:
+            pass
+
+        # 9. Close the SQLite handle itself, but ONLY when this agent owns it.
+        # end_session() above finalizes the session ROW; it does not release the
+        # connection. For the shared launch handle that is correct — it outlives
+        # every agent — so _owns_session_db defaults False and this is a no-op.
+        # A DEDICATED handle (the gateway's per-profile state.db opens, and the
+        # lazy self-open in _get_session_db_for_recall) has no other owner: left
+        # unclosed it keeps its db/-wal/-shm fds and its background token-writer
+        # thread, and once that writer has started the instance pins ITSELF via
+        # atexit.register(_drain_token_queue_at_exit) — which only close()
+        # unregisters — so it survives for the life of the process.
+        # Cleared first so the documented idempotency of close() holds.
+        try:
+            if getattr(self, "_owns_session_db", False) and session_db is not None:
+                self._owns_session_db = False
+                session_db.close()
         except Exception:
             pass
 
@@ -4495,6 +4628,10 @@ class AIAgent:
             return False
         if msg.get("tool_calls"):
             return False
+        # Prefill stubs are thinking-only by construction; check before content
+        # inspection since repair_empty_non_final_messages may have healed content.
+        if msg.get("_thinking_prefill"):
+            return True
         # Does it have any actual output?
         content = msg.get("content")
         if isinstance(content, str):
@@ -4518,7 +4655,18 @@ class AIAgent:
                 return False
         elif content is not None and content != "":
             return False
-        # Content is empty-ish. Is there reasoning to make it thinking-only?
+        # A native compaction checkpoint makes a carrier never thinking-only,
+        # regardless of api_mode or which reasoning field is populated. The
+        # checkpoint is the server-side stand-in for already-pruned history
+        # and exists in exactly one place; the codex_responses adapter also
+        # surfaces commentary text via msg["reasoning"], so the string branch
+        # below would otherwise drop a carrier before the sidecar is ever
+        # inspected. Checked here — above every reasoning branch — so no
+        # carrier shape can fall into a drop path (#82108 review finding).
+        from agent.native_compaction import has_compaction_checkpoint
+
+        if has_compaction_checkpoint(msg.get("codex_reasoning_items")):
+            return False
         reasoning = msg.get("reasoning_content") or msg.get("reasoning")
         if isinstance(reasoning, str) and reasoning.strip():
             return True
@@ -5375,6 +5523,192 @@ class AIAgent:
 
         return True
 
+    def _try_refresh_env_client_credentials(self) -> bool:
+        """Adopt ~/.hermes/.env credential/base-url edits at the turn boundary.
+
+        A Settings save (desktop ``PUT /api/env``, ``hermes setup``) updates
+        ``.env`` and the *saving* process's os.environ, but a live session
+        worker keeps the base_url/api_key captured at agent init until it
+        restarts — so an open chat silently keeps calling the old endpoint
+        (#67821). Called at the start of each conversation turn, this
+        re-resolves the provider's env-sourced credentials (load_env() is
+        mtime-memoized, so an unchanged file costs one stat()) and rebuilds
+        the client when the user edited them.
+
+        Reacts only to env *edits* (resolved values changed since the last
+        look), never to mere divergence from the agent's current values —
+        credential-pool rotation and failover legitimately move the session
+        off the env credential, and stomping those back every turn would
+        flap. A config.yaml ``model.base_url`` (or a pool entry with a
+        custom endpoint) also wins: edits are only adopted while the
+        session's current base_url is still the registry default or the
+        previously-seen env value.
+
+        Covers api-key registry providers and named custom providers with a
+        ``key_env`` (#67935) — the latter resolve to ``provider="custom"``
+        with no registry entry, so they are matched through the runtime
+        provider's config lookup instead.
+        """
+        if self.api_mode != "chat_completions":
+            return False
+        if getattr(self, "_fallback_activated", False):
+            return False
+        try:
+            from agent.credential_pool import get_env_prefer_dotenv
+            from hermes_cli.auth import PROVIDER_REGISTRY
+        except ImportError:
+            return False
+
+        pconfig = PROVIDER_REGISTRY.get(self.provider)
+        if (
+            pconfig
+            and getattr(pconfig, "auth_type", "") == "api_key"
+            and getattr(pconfig, "api_key_env_vars", ())
+        ):
+            api_key = ""
+            for env_var in pconfig.api_key_env_vars:
+                api_key = get_env_prefer_dotenv(env_var).strip()
+                if api_key:
+                    break
+            if not api_key:
+                return False
+
+            env_url = ""
+            if pconfig.base_url_env_var:
+                env_url = get_env_prefer_dotenv(pconfig.base_url_env_var).strip().rstrip("/")
+            default_base = (pconfig.inference_base_url or "").strip().rstrip("/")
+            base_url = env_url or default_base
+            if self.provider == "kimi-coding":
+                from hermes_cli.auth import _resolve_kimi_base_url
+
+                base_url = _resolve_kimi_base_url(
+                    api_key, pconfig.inference_base_url, env_url
+                ).rstrip("/")
+            elif self.provider == "zai":
+                from hermes_cli.auth import _resolve_zai_base_url
+
+                base_url = _resolve_zai_base_url(
+                    api_key, pconfig.inference_base_url, env_url
+                ).rstrip("/")
+        elif self.provider == "custom":
+            # Named custom provider (#67935): identity lives in config
+            # (``providers.<name>`` / ``custom_providers``), the credential in
+            # the env var it names via ``key_env``. Re-resolve through the
+            # same config lookup the runtime resolver uses; entries without
+            # ``key_env`` (inline ``api_key``, pool-backed) have no
+            # env-sourced credential to watch.
+            try:
+                from hermes_cli.runtime_provider import _get_named_custom_provider
+            except ImportError:
+                return False
+            custom_provider = _get_named_custom_provider(
+                getattr(self, "requested_provider", "") or ""
+            )
+            if not custom_provider:
+                return False
+            key_env = str(custom_provider.get("key_env") or "").strip()
+            if not key_env:
+                return False
+            api_key = get_env_prefer_dotenv(key_env).strip()
+            if not api_key:
+                return False
+            # Custom providers pin their endpoint in config, not env — the
+            # config base_url is both the resolved and the "default" base, so
+            # only key edits are ever adopted here.
+            default_base = str(custom_provider.get("base_url") or "").strip().rstrip("/")
+            base_url = default_base
+        else:
+            return False
+
+        if not base_url:
+            return False
+
+        resolved = (base_url, api_key)
+        prev = getattr(self, "_env_creds_seen", None)
+        current_base = (self.base_url or "").strip().rstrip("/")
+
+        if prev is None:
+            # First look — no baseline to diff against. Adopt only the
+            # boot-default case (worker spawned before the user saved an
+            # override); anything else is unattributable on turn one.
+            adopt = current_base == default_base and not (
+                base_url == current_base and api_key == self.api_key
+            )
+            # #79156: if the session already holds a pool-rotated key, do
+            # not treat that divergence as a boot-time env adoption. First
+            # look would otherwise stomp the rotated key with the env value
+            # while leaving ``_credential_pool_entry_id`` on the fallback.
+            if (
+                adopt
+                and api_key != self.api_key
+                and getattr(self, "_credential_pool", None) is not None
+                and getattr(self, "_credential_pool_entry_id", None)
+            ):
+                adopt = False
+        else:
+            # Env unchanged → no-op; any drift from self.* is rotation/
+            # failover or config precedence — leave it alone. An edit is
+            # only adopted while the session still runs on the registry
+            # default or the previously-seen env value.
+            adopt = (
+                resolved != prev
+                and current_base in {default_base, prev[0]}
+                and not (base_url == current_base and api_key == self.api_key)
+            )
+
+        if not adopt:
+            self._env_creds_seen = resolved
+            return False
+
+        from hermes_cli.route_identity import normalize_route_base_url
+
+        route_changed = normalize_route_base_url(self.base_url) != normalize_route_base_url(
+            base_url
+        )
+        prior_api_key = self.api_key
+        prior_base_url = self.base_url
+        prior_client_kwargs = dict(self._client_kwargs)
+
+        self.api_key = api_key
+        self.base_url = base_url
+        self._client_kwargs["api_key"] = self.api_key
+        self._client_kwargs["base_url"] = self.base_url
+        # A base-url change moves the route: TLS material and default
+        # headers derived from the old endpoint must be recomputed, exactly
+        # as on credential-pool rotation.
+        self._reapply_route_client_config(route_changed=route_changed)
+
+        if not self._replace_primary_openai_client(reason="env_credential_refresh"):
+            # Leave the baseline un-advanced so the unchanged edit is
+            # retried next turn, and roll the agent back so its state keeps
+            # matching the still-live old client.
+            self.api_key = prior_api_key
+            self.base_url = prior_base_url
+            self._client_kwargs.clear()
+            self._client_kwargs.update(prior_client_kwargs)
+            return False
+
+        # Rebind the pool entry id to the key we just adopted. Leaving a
+        # stale id after a key rewrite makes mark_exhausted_and_rotate
+        # quarantine the wrong credential on the next 429 (#79156).
+        try:
+            from agent.agent_runtime_helpers import sync_credential_pool_entry_id
+
+            sync_credential_pool_entry_id(self)
+        except Exception:
+            logger.debug(
+                "sync_credential_pool_entry_id after env refresh failed",
+                exc_info=True,
+            )
+
+        self._env_creds_seen = resolved
+        logger.info(
+            "Applied updated .env credentials for %s: endpoint %s",
+            self.provider,
+            self.base_url,
+        )
+        return True
+
     def _try_refresh_vertex_client_credentials(self) -> bool:
         """Re-mint the Vertex OAuth2 access token and rebuild the OpenAI client.
 
@@ -5616,7 +5950,8 @@ class AIAgent:
 
             self._client_kwargs["default_headers"] = copilot_default_headers()
         elif base_url_host_matches(base_url, "api.kimi.com"):
-            self._client_kwargs["default_headers"] = {"User-Agent": "claude-code/0.1.0"}
+            from agent.auxiliary_client import _AI_GATEWAY_HEADERS
+            self._client_kwargs["default_headers"] = dict(_AI_GATEWAY_HEADERS)
         elif base_url_host_matches(base_url, "portal.qwen.ai"):
             self._client_kwargs["default_headers"] = _qwen_portal_headers()
         elif base_url_host_matches(base_url, "chatgpt.com"):
@@ -5728,6 +6063,19 @@ class AIAgent:
         self.base_url = runtime_base.rstrip("/") if isinstance(runtime_base, str) else runtime_base
         self._client_kwargs["api_key"] = self.api_key
         self._client_kwargs["base_url"] = self.base_url
+        self._reapply_route_client_config(route_changed=route_changed)
+        self._replace_primary_openai_client(reason="credential_rotation")
+
+    def _reapply_route_client_config(self, *, route_changed: bool) -> None:
+        """Recompute route-derived client kwargs for the current ``self.base_url``.
+
+        TLS material (``ssl_verify``/``ssl_ca_cert``) and default headers are
+        derived from the endpoint, not the credential — any client rebuild
+        that may have moved ``base_url`` must recompute them or the new
+        endpoint inherits configuration computed for the old one. Shared by
+        credential-pool rotation and the per-turn env refresh so the two
+        paths cannot drift.
+        """
         self._client_kwargs.pop("ssl_verify", None)
         self._client_kwargs.pop("ssl_ca_cert", None)
         try:
@@ -5751,7 +6099,6 @@ class AIAgent:
             self.base_url,
             apply_user_headers=not route_changed,
         )
-        self._replace_primary_openai_client(reason="credential_rotation")
 
     def _recover_with_credential_pool(
         self,
@@ -6022,8 +6369,7 @@ class AIAgent:
         when the only streamed text was unrelated mid-turn commentary. (#65919
         review: response-loss blocker)
         """
-        cb = getattr(self, "interim_assistant_callback", None)
-        if cb is None or not isinstance(assistant_msg, dict):
+        if not isinstance(assistant_msg, dict):
             return
         commentary_parts = self._extract_codex_interim_visible_parts(assistant_msg)
         undelivered_parts: List[str] = []
@@ -6050,6 +6396,25 @@ class AIAgent:
         ):
             return
         already_streamed = self._interim_content_was_streamed(visible)
+        try:
+            from agent.plugin_stream_hooks import enqueue_plugin_stream_hook
+
+            enqueue_plugin_stream_hook(
+                "on_interim_message",
+                turn_id=getattr(self, "_current_turn_id", "") or "",
+                iteration=int(getattr(self, "_api_call_count", 0) or 0),
+                session_id=self.session_id or "",
+                model=self.model or "",
+                provider=self.provider or "",
+                surface=self.platform or "cli",
+                text=visible,
+                already_streamed=already_streamed,
+            )
+        except Exception:
+            logger.debug("on_interim_message plugin hook enqueue failed", exc_info=True)
+        cb = getattr(self, "interim_assistant_callback", None)
+        if cb is None:
+            return
         try:
             cb(visible, already_streamed=already_streamed)
             if undelivered_parts:
@@ -6135,6 +6500,38 @@ class AIAgent:
                 where, _n,
             )
 
+    def _stream_hook_base_payload(self) -> Dict[str, Any]:
+        return {
+            "turn_id": getattr(self, "_current_turn_id", "") or "",
+            "iteration": int(getattr(self, "_api_call_count", 0) or 0),
+            "session_id": self.session_id or "",
+            "model": self.model or "",
+            "provider": self.provider or "",
+            "surface": self.platform or "cli",
+        }
+
+    def _emit_stream_start(self) -> None:
+        try:
+            from agent.plugin_stream_hooks import enqueue_plugin_stream_hook
+
+            enqueue_plugin_stream_hook("on_stream_start", **self._stream_hook_base_payload())
+        except Exception:
+            logger.debug("on_stream_start plugin hook enqueue failed", exc_info=True)
+
+    def _emit_stream_end(self, *, final_text: str, finished: bool, error: str | None) -> None:
+        try:
+            from agent.plugin_stream_hooks import enqueue_plugin_stream_hook
+
+            enqueue_plugin_stream_hook(
+                "on_stream_end",
+                **self._stream_hook_base_payload(),
+                final_text=final_text,
+                finished=finished,
+                error=error,
+            )
+        except Exception:
+            logger.debug("on_stream_end plugin hook enqueue failed", exc_info=True)
+
     def _fire_stream_delta(self, text: str) -> None:
         """Fire all registered stream delta callbacks (display + TTS)."""
         # Single-writer guard (#65991): a superseded stream must not interleave
@@ -6190,6 +6587,17 @@ class AIAgent:
                 delivered = True
             except Exception:
                 pass
+        try:
+            from agent.plugin_stream_hooks import enqueue_plugin_stream_hook
+
+            enqueue_plugin_stream_hook(
+                "on_stream_delta",
+                **self._stream_hook_base_payload(),
+                delta=text,
+                kind="text",
+            )
+        except Exception:
+            logger.debug("on_stream_delta plugin hook enqueue failed", exc_info=True)
         if delivered:
             self._record_streamed_assistant_text(text)
 
@@ -6206,6 +6614,18 @@ class AIAgent:
                 cb(text)
             except Exception:
                 pass
+        try:
+            from agent.plugin_stream_hooks import enqueue_plugin_stream_hook, stream_reasoning_deltas_enabled
+
+            if stream_reasoning_deltas_enabled():
+                enqueue_plugin_stream_hook(
+                    "on_stream_delta",
+                    **self._stream_hook_base_payload(),
+                    delta=text,
+                    kind="reasoning",
+                )
+        except Exception:
+            logger.debug("reasoning on_stream_delta plugin hook enqueue failed", exc_info=True)
 
     def _fire_tool_gen_started(self, tool_name: str) -> None:
         """Notify display layer that the model is generating tool call arguments.
@@ -6224,6 +6644,13 @@ class AIAgent:
 
     def _has_stream_consumers(self) -> bool:
         """Return True if any streaming consumer is registered."""
+        try:
+            from agent.plugin_stream_hooks import has_stream_observer_hooks
+
+            if has_stream_observer_hooks():
+                return True
+        except Exception:
+            logger.debug("plugin stream hook consumer check failed", exc_info=True)
         return (
             self.stream_delta_callback is not None
             or getattr(self, "_stream_callback", None) is not None
@@ -6835,6 +7262,31 @@ class AIAgent:
             return False
 
         model = (self.model or "").lower()
+        # Live-catalog metadata first (ported from
+        # PrimeIntellect-ai/prime-agent#1258): OpenRouter's /v1/models entries
+        # advertise reasoning support via supported_parameters + a reasoning
+        # object, which covers every routed vendor without a hand-maintained
+        # prefix list. The static prefix allowlist below repeatedly went
+        # stale one vendor at a time (nvidia/ missing → #75386; same class
+        # as tencent/, xiaomi/ additions before it) — metadata makes new
+        # vendors work without a code change. One catalog fetch per process,
+        # cached; unknown (catalog unreachable / unlisted model) falls back
+        # to the static list.
+        try:
+            from hermes_cli.models import (
+                openrouter_model_reasoning_capabilities,
+                warm_openrouter_reasoning_caps_async,
+            )
+            caps = openrouter_model_reasoning_capabilities(self.model)
+            if caps is None:
+                # Cache cold (no picker run this process) — warm it in the
+                # background so subsequent turns get metadata; never block
+                # this turn on HTTP.
+                warm_openrouter_reasoning_caps_async()
+        except Exception:
+            caps = None
+        if caps is not None:
+            return bool(caps.get("supports_reasoning"))
         reasoning_model_prefixes = (
             "deepseek/",
             "anthropic/",
@@ -7466,6 +7918,9 @@ class AIAgent:
             max_iterations=function_args.get("max_iterations"),
             role=function_args.get("role"),
             background=(not _is_subagent),
+            action=function_args.get("action"),
+            subagent_id=function_args.get("subagent_id"),
+            message=function_args.get("message"),
             parent_agent=self,
         )
 
@@ -7624,11 +8079,14 @@ class AIAgent:
                 turn_id=relay_turn_id,
                 task_id=effective_task_id,
             )
-            start_task_run(
-                **task_context,
-                parent_session_id=getattr(self, "_parent_session_id", None) or "",
-            )
-            task_started = True
+            # Keep existing tests and external relay-runtime shims that return
+            # a minimal turn object compatible with the new opt-out flag.
+            if getattr(relay_turn, "relay_enabled", True):
+                start_task_run(
+                    **task_context,
+                    parent_session_id=getattr(self, "_parent_session_id", None) or "",
+                )
+                task_started = True
             # Publish the conversation id for ambient Nous Portal tagging. Every
             # LLM call made inside this turn — main loop, compression, vision,
             # web_extract, session_search, MoA slots, background-review forks
@@ -7674,8 +8132,9 @@ class AIAgent:
                 relay_turn,
                 outcome=relay_outcome,
             )
-            task_finished = True
-            finish_task_run(**task_context, result=result)
+            if task_started:
+                task_finished = True
+                finish_task_run(**task_context, result=result)
             return result
         except BaseException as exc:
             if isinstance(exc, (KeyboardInterrupt, InterruptedError)) or (

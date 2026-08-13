@@ -168,6 +168,8 @@ interface PluginContext {
   rest: <T>(path: string, opts?: PluginRestOptions) => Promise<T>
   /** Live WebSocket to this plugin's own namespace. Returns a disposer. */
   socket: (path: string, onMessage: (data: unknown) => void) => () => void
+  /** The curated OS door: native notification, open-external, reveal-in-file-manager, clipboard. */
+  os: PluginOs
   /** Plugin-scoped JSON persistence (keys live under `hermes.plugin.<id>.`). */
   storage: PluginStorage
 }
@@ -370,7 +372,15 @@ host.state.viewport         // ReadableAtom<{ width, height, narrow }>
 
 host.notify({ kind, message, title?, detail?, action? })  // toast; returns id
 host.notifyError(error, fallbackMessage)                   // toast an error
+ctx.os.notify({ title, body?, silent? })   // native OS notification (attributed to your plugin)
+ctx.os.openExternal(url)                   // OS default handler (browser, mail, spotify:) → Promise<boolean>
+ctx.os.revealPath(path)                    // reveal in Finder / Explorer → Promise<boolean>
+ctx.os.writeClipboard(text)                // system clipboard → Promise<boolean>
 host.navigate('/route')                    // hash-route navigation
+host.openSession(id, { profile?, intent? }) // open a stored session core-style;
+                                           //   profile: soft-swap to that profile's backend first
+                                           //   intent: 'in-place' (default) | 'stack' | 'tab' | 'window'
+host.newChat(profile?)                     // fresh chat draft, optionally in another profile
 host.onEvent(type, fn)                     // gateway event stream ('*' = all); returns disposer
 host.logs(...)                             // tail an app log file
 host.status()                              // one-shot system status snapshot
@@ -379,11 +389,29 @@ host.request<T>(method, params?)           // gateway JSON-RPC — the real powe
 ```
 
 `host.request` is the same JSON-RPC the app itself uses (sessions, config, skills,
-cron, kanban, …). `host.onEvent` streams live gateway events (message deltas,
+cron, kanban, …). Profile-shaped plugins get first-class methods too:
+`profiles.list` (each profile + its most recent conversation as
+`last_session`; pass `include_sessions: false` to skip the per-profile DB
+probe) and `profiles.create` (`name`, `description`, `clone_from`,
+`clone_all`, `no_skills`, `soul`, optional `model` + `provider` pin) — the
+ws twins of the dashboard's `/api/profiles` REST routes.
+`host.onEvent` streams live gateway events (message deltas,
 session lifecycle, tool activity). Listeners are isolated — a throw in your
 listener can't affect app dispatch. Every `host` door is async-safe: a sync throw
 from an internal helper (e.g. no desktop bridge in a plain browser) becomes a
 rejection your `.catch()` sees, never an error-boundary crash.
+
+`ctx.os` is the curated OS door — every way a plugin reaches outside the app
+window, in one namespace attributed to your plugin. `ctx.os.notify` posts a
+**native OS notification** — the same Electron pipeline the app's own
+approval/turn alerts use. It fires only while the user is away from Hermes
+(backgrounded / unfocused); use `host.notify` for the in-app toast when
+they're looking at the app. Users can silence it per device under Settings ▸
+Notifications ▸ "Plugin notifications", and repeats from the same plugin are
+throttled, so treat it as a signal for genuinely notable events — not a log.
+The other doors (`openExternal`, `revealPath`, `writeClipboard`) resolve
+`false` instead of throwing when the capability isn't available (older desktop
+shell, plain browser) — branch on the result rather than sniffing the bridge.
 
 ## Data layer — React Query + nanostores
 
@@ -597,7 +625,7 @@ not treat this pipeline as a trust boundary.
 | Category | Exports |
 |----------|---------|
 | Host | `host` (`.state.*`, `.notify`, `.notifyError`, `.navigate`, `.onEvent`, `.logs`, `.status`, `.restartGateway`, `.request`) |
-| Plugin contract | `HermesPlugin`, `PluginContext`, `PluginContribution`, `PluginStorage`, `PluginRestOptions`, `Contribution` |
+| Plugin contract | `HermesPlugin`, `PluginContext`, `PluginContribution`, `PluginStorage`, `PluginOs`, `PluginRestOptions`, `PluginNativeNotificationInput`, `Contribution` |
 | Area constants | `PANES_AREA`, `ROUTES_AREA`, `SIDEBAR_NAV_AREA`, `STATUSBAR_AREAS`, `TITLEBAR_AREAS`, `PALETTE_AREA`, `KEYBINDS_AREA`, `THEMES_AREA`, `COMPOSER_AREAS` |
 | Area payloads | `RouteContribution`, `SidebarNavContribution`, `StatusbarItem`, `TitlebarTool`, `PaletteContribution`, `KeybindContribution`, `ComposerMiddleware`, `ComposerAttachmentProvider` |
 | React / state | `useValue`, `atom`, `computed`, `useQuery`, `useMutation`, `useQueryClient`, `queryClient`, `Contribute` |

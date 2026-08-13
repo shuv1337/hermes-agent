@@ -66,33 +66,19 @@ def _resolve_requests_verify() -> bool | str:
             return val
     return True
 
-# Provider names that can appear as a "provider:" prefix before a model ID.
-# Only these are stripped — Ollama-style "model:tag" colons (e.g. "qwen3.5:27b")
-# are preserved so the full model name reaches cache lookups and server queries.
-_PROVIDER_PREFIXES: frozenset[str] = frozenset({
-    "openrouter", "nous", "openai-codex", "copilot", "copilot-acp",
-    "gemini", "ollama-cloud", "zai", "kimi-coding", "kimi-coding-cn", "stepfun", "minimax", "minimax-oauth", "minimax-cn", "anthropic", "deepseek", "deepinfra",
-    "opencode-zen", "opencode-go", "ai-gateway", "kilocode", "alibaba", "novita",
-    "qwen-oauth",
-    "xiaomi",
-    "arcee",
-    "gmi",
-    "tencent-tokenhub",
-    "custom", "local",
-    # Common aliases
-    "google", "google-gemini", "google-ai-studio",
-    "glm", "z-ai", "z.ai", "zhipu", "github", "github-copilot",
-    "github-models", "kimi", "moonshot", "kimi-cn", "moonshot-cn", "claude", "deep-seek", "deep-infra",
-    "ollama",
-    "stepfun", "opencode", "zen", "go", "vercel", "kilo", "dashscope", "aliyun", "qwen",
-    "mimo", "xiaomi-mimo",
-    "tencent", "tokenhub", "tencent-cloud", "tencentmaas",
-    "arcee-ai", "arceeai",
-    "gmi-cloud", "gmicloud",
-    "xai", "x-ai", "x.ai", "grok",
-    "nvidia", "nim", "nvidia-nim", "nemotron",
-    "qwen-portal", "novita-ai", "novitaai",
-})
+# Compatibility snapshot for callers that inspect this private constant.
+# Prefix routing below queries the registry live so later registrations work.
+try:
+    from providers import list_providers as _list_providers
+except Exception:
+    def _list_providers():
+        return []
+
+_PROVIDER_PREFIXES: frozenset[str] = frozenset(
+    value.lower()
+    for profile in _list_providers()
+    for value in (profile.name, *profile.aliases)
+)
 
 
 _OLLAMA_TAG_PATTERN = re.compile(
@@ -111,6 +97,9 @@ _TAILSCALE_CGNAT = ipaddress.IPv4Network("100.64.0.0/10")
 def _strip_provider_prefix(model: str) -> str:
     """Strip a recognised provider prefix from a model string.
 
+    Provider names and aliases come from the provider-profile registry, so
+    bundled and user plugins are recognised without a core catalog update.
+
     ``"local:my-model"`` → ``"my-model"``
     ``"qwen3.5:27b"``   → ``"qwen3.5:27b"``  (unchanged — not a provider prefix)
     ``"qwen:0.5b"``     → ``"qwen:0.5b"``    (unchanged — Ollama model:tag)
@@ -120,7 +109,13 @@ def _strip_provider_prefix(model: str) -> str:
         return model
     prefix, suffix = model.split(":", 1)
     prefix_lower = prefix.strip().lower()
-    if prefix_lower in _PROVIDER_PREFIXES:
+    try:
+        from providers import get_provider_profile
+
+        is_provider = get_provider_profile(prefix_lower) is not None
+    except Exception:
+        is_provider = False
+    if is_provider:
         # Don't strip if suffix looks like an Ollama tag (e.g. "7b", "latest", "q4_0")
         if _OLLAMA_TAG_PATTERN.match(suffix.strip()):
             return model
@@ -472,6 +467,7 @@ DEFAULT_CONTEXT_LENGTHS = {
     "llama": 131072,
     # Qwen — specific model families before the catch-all.
     # Official docs: https://help.aliyun.com/zh/model-studio/developer-reference/
+    "qwen3.8-max": 1_000_000,     # 1M context (OpenRouter & Nous portal, verified 2026-08-03)
     "qwen3.6-plus": 1048576,      # 1M context (DashScope/Alibaba & OpenRouter)
     "qwen3.7-plus": 1048576,      # 1M context (DashScope/Alibaba)
     "qwen3-coder-plus": 1000000,  # 1M context
@@ -510,6 +506,7 @@ DEFAULT_CONTEXT_LENGTHS = {
     "grok-2-vision": 8192,      # grok-2-vision, -1212, -latest
     "grok-4-fast": 2000000,     # grok-4-fast-(non-)reasoning, also matches -reasoning
     "grok-4.20": 2000000,       # grok-4.20-0309-(non-)reasoning, -multi-agent-0309
+    "grok-4.6": 500000,         # grok-4.6 — 500K context (OpenRouter / docs.x.ai)
     "grok-4.5": 500000,         # grok-4.5, grok-4.5-latest — 500K context per docs.x.ai
     "grok-4.3": 1000000,        # grok-4.3, grok-4.3-latest — 1M context per docs.x.ai
     "grok-4": 256000,           # grok-4, grok-4-0709
@@ -584,6 +581,8 @@ _GROK_EFFORT_CAPABLE_PREFIXES = (
     # "none" ("This model does not support `reasoning_effort` value `none`"),
     # unlike grok-4.3. models.dev agrees: effort values [low, medium, high].
     "grok-4.5",
+    # grok-4.6: drop-in successor of grok-4.5 (same effort dial).
+    "grok-4.6",
 )
 
 
@@ -703,7 +702,6 @@ _URL_TO_PROVIDER: Dict[str, str] = {
 # Auto-extend with hostnames derived from provider profiles.
 # Any provider with a base_url not already in the map gets added automatically.
 try:
-    from providers import list_providers as _list_providers
     for _pp in _list_providers():
         _host = _pp.get_hostname()
         if _host and _host not in _URL_TO_PROVIDER:
@@ -2139,11 +2137,36 @@ def _query_local_context_length_uncached(model: str, base_url: str, api_key: str
             if resp.status_code == 200:
                 data = resp.json()
                 models_list = data.get("data", [])
+                # Match by id; on single-model servers (e.g. llama.cpp) the
+                # configured name rarely equals the reported id (a GGUF path),
+                # so fall back to the sole model when nothing matches.
+                matched = None
                 for m in models_list:
                     if _model_id_matches(m.get("id", ""), model):
-                        ctx = m.get("max_model_len") or m.get("context_length") or m.get("max_tokens")
-                        if ctx and isinstance(ctx, (int, float)):
-                            return int(ctx)
+                        matched = m
+                        break
+                if matched is None and len(models_list) == 1:
+                    matched = models_list[0]
+                if matched is not None:
+                    # llama.cpp nests the runtime context under meta.n_ctx; the
+                    # vLLM/OpenAI keys are also checked. Runtime n_ctx is
+                    # preferred over n_ctx_train (the training maximum, which
+                    # can be larger than what the server actually allocates).
+                    for source in (matched, matched.get("meta") or {}):
+                        if not isinstance(source, dict):
+                            continue
+                        for key in (
+                            "n_ctx",
+                            "context_length",
+                            "context_window",
+                            "max_model_len",
+                            "max_context_length",
+                            "max_tokens",
+                            "n_ctx_train",
+                        ):
+                            val = source.get(key)
+                            if isinstance(val, (int, float)) and val:
+                                return int(val)
     except Exception as exc:
         if _is_connect_timeout(exc):
             _note_endpoint_blackholed(server_url)

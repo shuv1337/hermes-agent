@@ -287,6 +287,7 @@ export function useMessageStream({
       // stays as the fallback.
       const writeCost = performance.now() - startedAt
       lastFlushCostRef.current = writeCost
+
       // At most one measurement rAF may be pending: only the newest flush's
       // measurement matters (the guard below discards stale frames), and a
       // hidden renderer parks rAF callbacks — without cancellation a long
@@ -295,8 +296,10 @@ export function useMessageStream({
       if (measureRafRef.current !== null) {
         window.cancelAnimationFrame(measureRafRef.current)
       }
+
       measureRafRef.current = window.requestAnimationFrame(frameStart => {
         measureRafRef.current = null
+
         // A newer flush already started; its own measurement wins.
         if (lastFlushAtRef.current !== startedAt) {
           return
@@ -653,12 +656,21 @@ export function useMessageStream({
         const hasInlineError = nextMessages.some(m => m.role === 'assistant' && m.error && !m.hidden)
         const lastVisible = [...nextMessages].reverse().find(m => !m.hidden)
         const unresolvedUserTail = lastVisible?.role === 'user'
+        // Having streamed the reply normally means this window owns the whole
+        // turn and re-reading stored history would be wasted work. That only
+        // holds for a turn it STARTED: an adopted one (resumed onto a session
+        // already running elsewhere) arrives reply-first, with no prompt row,
+        // so it has to hydrate or the user's own message never shows up.
         shouldHydrate =
-          !completionError && !hasInlineError && !unresolvedUserTail && (!state.sawAssistantPayload || !finalText)
+          !completionError &&
+          !hasInlineError &&
+          !unresolvedUserTail &&
+          (state.adoptedRunningTurn || !state.sawAssistantPayload || !finalText)
 
         return {
           ...state,
           messages: nextMessages,
+          adoptedRunningTurn: false,
           streamId: null,
           pendingBranchGroup: null,
           awaitingResponse: false,

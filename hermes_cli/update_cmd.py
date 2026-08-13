@@ -85,6 +85,57 @@ def _reload_updated_runtime_modules() -> None:
     except Exception as exc:
         logger.debug("Could not refresh update runtime modules: %s", exc)
 
+
+def _reload_config_modules() -> None:
+    """Force-reload config modules from disk after git pull.
+
+    ``hermes update`` runs in the PRE-pull Python process. After ``git pull``
+    updates the source files on disk, modules already in ``sys.modules``
+    still hold the OLD code. Function-level imports return the cached module,
+    so ``DEFAULT_CONFIG["_config_version"]`` is the OLD value and
+    ``check_config_version()`` reports ``(33, 33)`` — "up to date" — even
+    though the freshly-pulled code has v34 with a migration to run.
+
+    This function force-reloads ``hermes_cli.config_defaults``,
+    ``hermes_cli.config``, and ``hermes_cli.config_migrations`` from disk
+    so subsequent imports read the UPDATED code.
+    """
+    import importlib
+
+    importlib.invalidate_caches()
+    for mod_name in ("hermes_cli.config_defaults", "hermes_cli.config", "hermes_cli.config_migrations"):
+        mod = sys.modules.get(mod_name)
+        if mod is not None:
+            try:
+                importlib.reload(mod)
+            except Exception as exc:
+                logger.debug("Could not reload %s for fresh config check: %s", mod_name, exc)
+
+
+def _run_config_check_fresh() -> tuple:
+    """Check config version using freshly-reloaded modules.
+
+    See ``_reload_config_modules`` for why this is necessary.
+    Returns ``(current_ver, latest_ver)``.
+    """
+    _reload_config_modules()
+    from hermes_cli.config import check_config_version
+
+    return check_config_version()
+
+
+def _run_migrate_config_fresh(*, interactive: bool = False, quiet: bool = False) -> dict:
+    """Run config migration using freshly-reloaded modules.
+
+    See ``_reload_config_modules`` for why this is necessary.
+    Returns the migration results dict.
+    """
+    _reload_config_modules()
+    from hermes_cli.config import migrate_config
+
+    return migrate_config(interactive=interactive, quiet=quiet)
+
+
 # Critical files that Hermes must be able to import immediately after an
 # update/install. Most are imported on every CLI startup; ``web_server.py``
 # is the desktop/dashboard backend path that a fresh Windows install launches
@@ -712,6 +763,16 @@ def _commit_staged_replacements(staged) -> None:
                 pass
 
 
+def _print_update_completion(message: str) -> None:
+    """Print an update outcome plus, when the dashboard launched this run
+    with an action id, a terminal receipt line the Desktop can match after
+    the dashboard restarts (see #47359 / #58764)."""
+    print(message)
+    action_id = os.environ.get("HERMES_ACTION_ID", "")
+    if len(action_id) == 32 and all(char in "0123456789abcdef" for char in action_id):
+        print(f"=== hermes-update completed {action_id} ===")
+
+
 def _update_via_zip(args):
     """Update Hermes Agent by downloading a ZIP archive.
 
@@ -879,6 +940,7 @@ def _update_via_zip(args):
             f"  ✓ Cleared {removed} stale __pycache__ director{'y' if removed == 1 else 'ies'}"
         )
     _m()._record_bytecode_fingerprint()
+    _m()._refresh_bootstrap_cache_scripts(branch)
 
     # Reinstall Python dependencies. Prefer .[all], but if one optional extra
     # breaks on this machine, keep base deps and reinstall the remaining extras
@@ -1059,7 +1121,7 @@ def _update_via_zip(args):
         print("  Code and Python deps are updated, but the dashboard/TUI may")
         print("  be in a mixed state until the Node deps are rebuilt.")
     else:
-        print("✓ Update complete!")
+        _print_update_completion("✓ Update complete!")
     try:
         _print_curator_first_run_notice()
     except Exception as e:
@@ -1248,7 +1310,15 @@ def _restore_stashed_changes(
         if input_fn is not None:
             response = input_fn("Restore local changes now? [Y/n]", "y")
         else:
-            response = input().strip().lower()
+            try:
+                response = input().strip().lower()
+            except (EOFError, UnicodeDecodeError):
+                # Mirror the config-migration prompt's fix: don't let a
+                # terminal-encoding issue or a closed stdin crash the
+                # update mid-restore. Falls through to the existing
+                # skip-restore path below, which already explains how to
+                # restore manually from git stash.
+                response = "n"
         if response not in {"", "y", "yes"}:
             print("Skipped restoring local changes.")
             print("Your changes are still preserved in git stash.")
@@ -1535,7 +1605,7 @@ def _sync_with_upstream_if_needed(git_cmd: list[str], cwd: Path) -> None:
             response = (
                 input("Add official repo as 'upstream' remote? [Y/n]: ").strip().lower()
             )
-        except (EOFError, KeyboardInterrupt):
+        except (EOFError, KeyboardInterrupt, UnicodeDecodeError):
             print()
             response = "n"
 
@@ -1953,12 +2023,13 @@ def _npm_manifest_paths() -> tuple[Path, ...]:
 
     The workspace list is pulled from the root package.json's `workspaces`
     globs (npm's own source of truth) rather than hardcoded, so adding a
-    workspace can never silently escape the skip key. The root install
-    (step 1, --workspaces=false) still hoists shared deps for EVERY
-    workspace — desktop included — so all of them belong in the key, not
-    just the ones step 2 installs. Falls back to hashing just root
-    manifests if package.json is unreadable (never skips more than main
-    would have installed).
+    workspace can never silently escape the skip key. Every workspace
+    manifest belongs in the key — desktop included, even though the
+    install only names ui-tui and web — because the single lockfile spans
+    the whole workspace graph, so any manifest edit can put the lockfile
+    out of sync and change what the install must do. Falls back to hashing
+    just root manifests if package.json is unreadable (never skips more
+    than main would have installed).
     """
     root_pkg = _m().PROJECT_ROOT / "package.json"
     paths = [_m().PROJECT_ROOT / "package-lock.json", root_pkg]
@@ -2032,7 +2103,7 @@ def _record_npm_lockfile_hash(hermes_root: Path) -> None:
         logger.debug("Could not write npm lockfile hash cache")
 
 def _update_node_dependencies() -> list[str]:
-    """Refresh Node deps in the repo root and update workspaces.
+    """Refresh Node deps for the ui-tui and web workspaces.
 
     Returns the list of labels whose npm install failed (empty on success),
     so the caller can treat a Node refresh failure as a partial update rather
@@ -2054,7 +2125,7 @@ def _update_node_dependencies() -> list[str]:
             print("  ⚠ Skipped: only a Windows npm is reachable from this WSL shell.")
             print("    Install Node.js inside the WSL distro (nvm, or your distro's")
             print("    package manager), then re-run `hermes update`.")
-            failed = ["repo root"]
+            failed = []
             if any(
                 (_m().PROJECT_ROOT / workspace / "package.json").exists()
                 for workspace in ("ui-tui", "web")
@@ -2069,16 +2140,31 @@ def _update_node_dependencies() -> list[str]:
     # Hermes profile using this checkout. Keep one per-checkout cache under the
     # shared Hermes root rather than rerunning npm once per named profile.
     shared_hermes_root = get_default_hermes_root()
+
+    # Best-effort: warm npx's cache for agent-browser (#43564). Runs before
+    # the lockfile-unchanged early return below since that's the common
+    # `hermes update` case. Synchronous and can block ~11s on a true cold
+    # cache (~0.4s once warm) — print first so that doesn't look like a hang.
+    print("→ Warming npx cache for agent-browser...")
+    try:
+        from tools.browser_tool import warm_agent_browser_npx_cache
+        warm_agent_browser_npx_cache()
+    except Exception:
+        pass
+
     if not _m()._npm_lockfile_changed(shared_hermes_root):
         logger.info("npm lockfile unchanged, skipping npm install")
         return []
 
-    # With a single workspace lockfile the root install would cover ALL
-    # workspaces — but apps/desktop pulls in Electron as a devDependency,
-    # and its postinstall downloads a ~200MB binary.  Most users don't
-    # need desktop during `hermes update`, so we install root-only first
-    # then add just the workspaces the CLI/TUI/web build actually requires.
-    # Desktop deps are installed on demand by the desktop launcher
+    # Root package.json has no dependencies of its own (agent-browser and
+    # @streamdown/math were moved out — see #43564): agent-browser resolves
+    # at runtime via `npx agent-browser` (tools/browser_tool.py), and
+    # @streamdown/math is a desktop-only import now declared in
+    # apps/desktop/package.json. That means a plain workspace-scoped install
+    # can never prune anything root-only, so we only need to name the
+    # workspaces the CLI/TUI/web build actually requires. apps/desktop pulls
+    # in Electron as a devDependency with a ~200MB postinstall download, so
+    # it's deliberately never named here — desktop deps install on demand
     # (see _desktop_build_needed).
     print("→ Updating Node.js dependencies...")
 
@@ -2089,53 +2175,46 @@ def _update_node_dependencies() -> list[str]:
         print("    deps). Fix npm and re-run `hermes update`.")
         return list(labels)
 
-    extra_args = ["--no-fund", "--no-audit", "--prefer-offline", "--progress=false"]
+    install_args = [
+        "--no-fund", "--no-audit", "--prefer-offline", "--progress=false",
+        "--workspace", "ui-tui", "--workspace", "web",
+        # Root package.json's own devDependencies (the shared ESLint flat
+        # config every workspace's eslint.config.mjs imports) are otherwise
+        # pruned by this scoped install, same as agent-browser/@streamdown
+        # math used to be before they moved out of root entirely (#43564).
+        # Unlike those, root's devDependencies have nowhere else to live —
+        # this flag still excludes apps/desktop, which is never named above.
+        "--include-workspace-root",
+    ]
 
     from hermes_constants import with_hermes_node_path
 
     nixos_env = with_hermes_node_path(_m()._nixos_build_env())
 
-    # Step 1: root install (no workspace recursion).
     # NOTE: capture_output=False here is deliberate (#18840) — optional
-    # postinstall scripts (e.g. @askjo/camofox-browser's browser-binary fetch)
-    # print download progress, and capturing it makes a long download look
-    # hung. The chatty npm-deprecation noise during `hermes update` comes from
-    # the *desktop* build, not this step; that one is captured to update.log.
-    root_args = [*extra_args, "--workspaces=false"]
-    root_result = _m()._run_npm_install_deterministic(
+    # postinstall scripts print download progress, and capturing it makes a
+    # long download look hung. The chatty npm-deprecation noise during
+    # `hermes update` comes from the *desktop* build, not this step; that
+    # one is captured to update.log.
+    result = _m()._run_npm_install_deterministic(
         npm,
         _m().PROJECT_ROOT,
-        extra_args=tuple(root_args),
+        extra_args=tuple(install_args),
         capture_output=False,
         env=nixos_env,
     )
-    if root_result.returncode != 0:
-        print("  ⚠ npm install failed in repo root")
-        stderr = (root_result.stderr or "").strip() if root_result.stderr else ""
+    if result.returncode == 0:
+        _record_npm_lockfile_hash(shared_hermes_root)
+        print("  ✓ ui-tui, web workspaces installed (desktop skipped)")
+        failures: list[str] = []
+    else:
+        print("  ⚠ npm install failed")
+        stderr = (result.stderr or "").strip() if result.stderr else ""
         if stderr:
             print(f"    {stderr.splitlines()[-1]}")
-        return _partial_update_failure("repo root")
+        failures = _partial_update_failure("ui-tui, web workspaces")
 
-    # Step 2: install only the workspaces update needs (ui-tui, web).
-    # --workspace selects specific workspaces; the rest (desktop) are skipped.
-    ws_args = [*extra_args, "--workspace", "ui-tui", "--workspace", "web"]
-    ws_result = _m()._run_npm_install_deterministic(
-        npm,
-        _m().PROJECT_ROOT,
-        extra_args=tuple(ws_args),
-        capture_output=False,
-        env=nixos_env,
-    )
-    if ws_result.returncode == 0:
-        _record_npm_lockfile_hash(shared_hermes_root)
-        print("  ✓ repo root + ui-tui, web workspaces (desktop skipped)")
-        return []
-
-    print("  ⚠ npm workspace install failed")
-    stderr = (ws_result.stderr or "").strip() if ws_result.stderr else ""
-    if stderr:
-        print(f"    {stderr.splitlines()[-1]}")
-    return _partial_update_failure("ui-tui, web workspaces")
+    return failures
 
 def _log_only_write(text: str) -> None:
     """Write ``text`` to ``~/.hermes/logs/update.log`` only, never the terminal.
@@ -2452,8 +2531,10 @@ def _ensure_acp_launcher() -> None:
     (venv wrapper, FHS symlink, pipx/pip console script) without having to
     reconstruct interpreter/entrypoint paths.
 
-    No-op on Windows (install.ps1 puts ``venv\\Scripts`` on the user PATH, so
-    ``hermes-acp.exe`` already resolves) and wherever a ``hermes-acp`` is
+    No-op on Windows (install.ps1 copies ``hermes.exe`` + ``hermes-acp.exe``
+    into ``$InstallDir\bin`` and puts THAT on the user PATH — never the whole
+    ``venv\Scripts`` dir, which would shadow the user's ``python`` (#83797) —
+    so ``hermes-acp.exe`` already resolves) and wherever a ``hermes-acp`` is
     already present next to the ``hermes`` command.  Unwritable directories
     (e.g. ``/usr/local/bin`` as non-root) are skipped silently.  Idempotent.
     """
@@ -2682,12 +2763,9 @@ def _run_pre_update_backup(args) -> Optional[str]:
         size_bytes = 0
 
     # Human-readable size
-    size_str = f"{size_bytes} B"
-    for unit in ("KB", "MB", "GB"):
-        if size_bytes < 1024:
-            break
-        size_bytes /= 1024
-        size_str = f"{size_bytes:.1f} {unit}"
+    from hermes_cli.sizefmt import format_bytes
+
+    size_str = format_bytes(size_bytes)
 
     # Render path using display_hermes_home so the user sees ~/.hermes/...
     try:
@@ -2911,7 +2989,13 @@ def _detect_venv_python_processes(
         if not is_holder:
             continue
         name = info.get("name") or Path(exe).name
-        matches.append((int(pid), str(name), cmdline_raw[:120]))
+        # Return the FULL cmdline: callers match against it (the Desktop
+        # preflight's pausable-gateway exemption parses for `gateway run`).
+        # Truncating here cut long managed-runtime interpreter paths before
+        # the `-m hermes_cli.main gateway run` argv, so autostarted gateways
+        # were misreported as blockers and the update dead-ended. Truncate
+        # only at display time.
+        matches.append((int(pid), str(name), cmdline_raw))
     return matches
 
 def _format_venv_python_holders_message(matches: list[tuple[int, str, str]]) -> str:
@@ -2926,7 +3010,7 @@ def _format_venv_python_holders_message(matches: list[tuple[int, str, str]]) -> 
             hint = "  ← Hermes Desktop backend (close the desktop app)"
         elif "gateway" in low:
             hint = "  ← gateway"
-        lines.append(f"  PID {pid}  {name}  {cmdline}{hint}")
+        lines.append(f"  PID {pid}  {name}  {cmdline[:120]}{hint}")
     if len(matches) > 6:
         lines.append(f"  ... and {len(matches) - 6} more")
     lines.append("")
@@ -3053,6 +3137,131 @@ def _leftover_pausable_gateway_pids(
             return None
         pids.append(int(pid))
     return pids
+
+
+def _orphaned_desktop_backend_pids(
+    matches: list[tuple[int, str, str]],
+) -> list[int] | None:
+    """PIDs from *matches* when every remaining holder is an ORPHANED backend.
+
+    The venv-holder guard refuses on the Desktop app's ``serve`` backend by
+    design: while the Desktop is open, killing its backend is futile (the app
+    supervises and respawns it within seconds), so the user must close the
+    app. But in the GUI-updater handoff path the Desktop has *already
+    exited* — by contract it tree-kills its backends and waits for the venv
+    shim before spawning hermes-setup, and the update-in-progress marker
+    parks any relaunched Desktop from spawning a fresh backend (#50238). A
+    ``serve`` backend still holding the venv at that point is a straggler
+    whose supervisor is gone: SIGTERM raced its spawn, or it belongs to a
+    crashed window. Nothing will respawn it, and refusing on it dead-ends
+    the update with "Hermes is still running" while the user stares at zero
+    open windows (ryanc's 2026-08-09 01:59/02:17 failures).
+
+    A holder qualifies only when BOTH hold:
+
+    - its cmdline is a Hermes backend (``hermes_cli.main`` + ``serve`` /
+      ``dashboard``), and
+    - its supervising parent is demonstrably gone: the parent PID no longer
+      exists, or the PID was reused (parent created *after* the child).
+
+    Tree-aware: the scanner can return an orphaned backend AND one of its
+    managed-runtime descendants (the ``.hermes-runtime`` interpreter child)
+    in the same holder set. That descendant has a live parent — the orphaned
+    backend itself — and isn't a ``serve`` cmdline, so per-process rules
+    would refuse a set that is entirely safe to reap. Holders that sit
+    inside an accepted orphan root's tree are therefore folded into that
+    root (only roots are returned; ``taskkill /T`` reaps the descendants).
+
+    Any other live-parent backend (the Desktop is still open), non-backend
+    holder outside an orphan tree, or unprovable case disqualifies the whole
+    set — the guard must keep refusing exactly as before. Returns ``None``
+    in that case, or when psutil is unavailable (can't prove orphanhood →
+    refuse). Never raises.
+    """
+    try:
+        import psutil  # type: ignore
+    except Exception:
+        return None
+
+    def _is_backend(argv_low: str) -> bool:
+        return "hermes_cli.main" in argv_low and (
+            " serve" in argv_low or " dashboard" in argv_low
+        )
+
+    # Pass 1: find orphaned backend ROOTS among the holders.
+    roots: list[int] = []
+    remaining: list[tuple[int, str]] = []  # (pid, argv_low) still to justify
+    for pid, _name, cmdline in matches:
+        argv = cmdline
+        try:
+            argv = " ".join(psutil.Process(int(pid)).cmdline()) or cmdline
+        except psutil.NoSuchProcess:
+            # Holder exited between scan and classification — nothing to
+            # reap, nothing blocking. Skip it.
+            continue
+        except Exception:
+            pass
+        low = argv.lower()
+        if not _is_backend(low):
+            remaining.append((int(pid), low))
+            continue
+        try:
+            proc = psutil.Process(int(pid))
+            ppid = proc.ppid()
+            parent = psutil.Process(ppid) if ppid else None
+            if parent is not None and parent.is_running():
+                # PID-reuse check: a "parent" created after its child is a
+                # recycled PID, not the real (dead) supervisor.
+                if parent.create_time() <= proc.create_time():
+                    # Live parent — NOT a root. But it may still be a
+                    # descendant of an orphan root: the venv python.exe is
+                    # a trampoline that re-execs the uv-managed interpreter
+                    # with the SAME backend argv, so the worker half of the
+                    # two-process chain lands here. Defer to pass 2 instead
+                    # of refusing outright.
+                    remaining.append((int(pid), low))
+                    continue
+        except psutil.NoSuchProcess:
+            pass  # parent gone → orphan
+        except Exception:
+            return None
+        roots.append(int(pid))
+
+    # Pass 2: every non-backend holder must be a descendant of an accepted
+    # orphan root — then it dies with the root's tree reap. Anything else
+    # (operator REPL, stray script) keeps the refusal.
+    root_set = set(roots)
+    for pid, _low in remaining:
+        if not root_set:
+            return None
+        try:
+            ancestors = {int(a.pid) for a in psutil.Process(pid).parents()}
+        except psutil.NoSuchProcess:
+            continue  # exited already
+        except Exception:
+            return None
+        if not (ancestors & root_set):
+            return None
+    return roots
+
+
+def _stop_process_trees(pids: list[int]) -> None:
+    """Force-stop each PID with its full child tree (Windows).
+
+    ``taskkill /T /F`` mirrors the Desktop's ``forceKillProcessTree`` and
+    install.ps1's venv sweep: stopping only the parent can leave a managed
+    ``.hermes-runtime`` interpreter child alive and holding the install open
+    (#70026). Best effort; never raises.
+    """
+    for pid in pids:
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(int(pid)), "/T", "/F"],
+                check=False,
+                capture_output=True,
+            )
+        except Exception as exc:
+            logger.debug("Could not stop process tree %s: %s", pid, exc)
 
 
 def _pause_windows_gateways_for_update() -> dict | None:
@@ -3327,6 +3536,84 @@ def _refresh_windows_gateway_launchers() -> None:
         print("  ✓ Refreshed Windows gateway launcher scripts")
     except Exception as exc:
         logger.debug("Could not refresh Windows gateway launchers after update: %s", exc)
+
+def _refresh_bootstrap_cache_scripts(branch: str = "main") -> None:
+    """Sync the installer's bootstrap-cache scripts from the fresh checkout.
+
+    The Desktop GUI updater (``hermes-setup.exe``) executes
+    ``$HERMES_HOME/bootstrap-cache/install-<ref>.ps1`` (or ``.sh``) for its
+    repair/bootstrap stages. Installer binaries built before the #67193
+    cache-refresh fix (June 2026 and earlier) NEVER re-download a cached
+    branch-ref script — ``install-main.ps1`` cached at install time is
+    reused forever, executing months-stale code with long-fixed bugs (the
+    2026-08-09 incident: a June 4 cached script's venv stage lacked the
+    #81327 process-tree sweep and died on ``Access denied``). The binary
+    has no self-update path, so the poisoned cache outlives every
+    ``hermes update``.
+
+    Overwriting the cached script for *branch* with the freshly pulled
+    ``scripts/install.ps1`` / ``scripts/install.sh`` on every update turns
+    the stale binary's unconditional reuse into a feature: it "reuses" a
+    file this function keeps permanently current. Post-#67193 installers
+    re-download on each run anyway, so for them this is a harmless
+    pre-seed of the same bytes.
+
+    Scope guards, mirroring ``install_script.rs``:
+
+    - Only the cache key for the update-target *branch* is rewritten
+      (``sanitize_ref``: non ``[A-Za-z0-9._-]`` chars become ``_``, so
+      ``bb/gui`` → ``install-bb_gui.ps1``). Sibling mutable refs cache
+      DIFFERENT branches' scripts — updating main must not clobber
+      ``install-bb_gui.ps1`` with main's script.
+    - Commit-SHA pins are immutable by design and never touched. The
+      installer's ``is_valid_commit()`` accepts **7–40** hex chars, so an
+      abbreviated pin like ``install-4ce1994.ps1`` is just as immutable as
+      a full 40-hex one; the sanitized *branch* is additionally required
+      to not itself look like a commit pin (defense in depth against a
+      caller passing a SHA as the branch).
+
+    The .ps1 copy gets a UTF-8 BOM to match the installer's cache format
+    (#67193 encoding fix). Best-effort: a failed refresh must never fail
+    the update.
+    """
+    try:
+        import re as _re
+
+        cache_dir = Path(_m().get_hermes_home()) / "bootstrap-cache"
+        if not cache_dir.is_dir():
+            return
+        # Mirror install_script.rs::sanitize_ref().
+        safe_ref = _re.sub(r"[^A-Za-z0-9._-]", "_", str(branch or "main"))
+        # Mirror install_script.rs::is_valid_commit(): 7-40 hex chars is an
+        # immutable commit pin — abbreviated SHAs included. Never rewrite.
+        if _re.fullmatch(r"[0-9a-fA-F]{7,40}", safe_ref):
+            return
+        refreshed = []
+        for kind, src_name in (("ps1", "install.ps1"), ("sh", "install.sh")):
+            src = _m().PROJECT_ROOT / "scripts" / src_name
+            if not src.is_file():
+                continue
+            cached = cache_dir / f"install-{safe_ref}.{kind}"
+            if not cached.is_file():
+                continue  # this ref was never bootstrap-cached — nothing to heal
+            data = src.read_bytes()
+            if kind == "ps1" and not data.startswith(b"\xef\xbb\xbf"):
+                # Match the installer's cache format: PowerShell needs the
+                # UTF-8 BOM or localized/em-dash text mis-decodes (#67193).
+                data = b"\xef\xbb\xbf" + data
+            if cached.read_bytes() == data:
+                continue  # already current
+            tmp = cached.with_suffix(cached.suffix + ".tmp")
+            tmp.write_bytes(data)
+            os.replace(tmp, cached)
+            refreshed.append(cached.name)
+        if refreshed:
+            print(
+                "  ✓ Refreshed installer bootstrap-cache script(s): "
+                + ", ".join(sorted(refreshed))
+            )
+    except Exception as exc:
+        logger.debug("Could not refresh bootstrap-cache scripts after update: %s", exc)
 
 def _resume_windows_gateways_after_update(token: dict | None) -> None:
     """Restart Windows profile gateways previously paused for update."""
@@ -3653,6 +3940,26 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 _time.sleep(1.0)
                 _venv_holders = _m()._detect_venv_python_processes()
         if _venv_holders:
+            _orphan_backends = _m()._orphaned_desktop_backend_pids(_venv_holders)
+            if _orphan_backends:
+                # Every remaining holder is a Desktop `serve` backend whose
+                # supervising app is GONE — the GUI-updater handoff race:
+                # Electron's teardown lost the SIGTERM race, exited, and left
+                # its backend (and any .hermes-runtime child) holding the
+                # venv. Nothing will respawn an orphan, so reap the tree and
+                # re-check instead of dead-ending with "Hermes is still
+                # running" while no window is open. Backends whose Desktop
+                # is still alive never reach here (_orphaned_desktop_
+                # backend_pids returns None for them) — that path keeps the
+                # refusal, because the app would just respawn what we kill.
+                print(
+                    f"  ⚠ {len(_orphan_backends)} orphaned Desktop backend "
+                    "process(es) still hold the venv; stopping their trees"
+                )
+                _m()._stop_process_trees(_orphan_backends)
+                _time.sleep(1.0)
+                _venv_holders = _m()._detect_venv_python_processes()
+        if _venv_holders:
             print(_format_venv_python_holders_message(_venv_holders))
             _m()._resume_windows_gateways_after_update(_windows_gateway_resume)
             sys.exit(2)
@@ -3916,11 +4223,12 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 healthy_after, detail_after = _venv_core_imports_healthy()
                 if healthy_after:
                     print("✓ Dependencies repaired!")
+                    _print_update_completion("✓ Update complete!")
                 else:
                     print(f"⚠ Venv still unhealthy after repair: {detail_after}")
                     print("  Close all Hermes windows/gateways and re-run: hermes update")
             else:
-                print("✓ Already up to date!")
+                _print_update_completion("✓ Already up to date!")
             if runtime_repaired is not None and not _m()._is_windows():
                 print()
                 print(
@@ -4059,6 +4367,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 f"  ✓ Cleared {removed} stale __pycache__ director{'y' if removed == 1 else 'ies'}"
             )
         _m()._record_bytecode_fingerprint()
+        _m()._refresh_bootstrap_cache_scripts(branch)
 
         # Fork upstream sync logic (only for main branch on forks)
         if is_fork and branch == "main":
@@ -4148,6 +4457,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 f"  ✓ Cleared {removed} stale __pycache__ director{'y' if removed == 1 else 'ies'}"
             )
         _m()._record_bytecode_fingerprint()
+        _m()._refresh_bootstrap_cache_scripts(branch)
         _m()._reload_updated_runtime_modules()
 
         # Upgrade pip before lazy refreshes — stale pip can fail source builds
@@ -4440,20 +4750,36 @@ def _cmd_update_impl(args, gateway_mode: bool):
         except Exception:
             pass  # honcho plugin not installed or not configured
 
-        # Check for config migrations
+        # Check for config migrations.
+        #
+        # CRITICAL: check_config_version and migrate_config must use
+        # freshly-reloaded modules, not the sys.modules cache. The
+        # ``hermes update`` process is the PRE-pull Python process — its
+        # ``sys.modules`` cache holds the OLD ``hermes_cli.config`` and
+        # ``hermes_cli.config_migrations`` from before ``git pull`` updated
+        # the source files. A function-level ``from hermes_cli.config import
+        # check_config_version`` returns the cached module, so
+        # ``DEFAULT_CONFIG["_config_version"]`` is the OLD value and
+        # ``check_config_version()`` reports ``(33, 33)`` — "up to date" —
+        # even though the freshly-pulled code has v34 with a migration to
+        # run. The personality reset migration (#81946) was silently skipped
+        # this way, leaving ``display.personality: kawaii`` active after
+        # updates that should have reset it.
         print()
         print("→ Checking configuration for new options...")
+
+        # Reload config modules BEFORE any config reads so get_missing_*,
+        # check_config_version, and migrate_config all use the updated code.
+        _reload_config_modules()
 
         from hermes_cli.config import (
             get_missing_env_vars,
             get_missing_config_fields,
-            check_config_version,
-            migrate_config,
         )
 
         missing_env = get_missing_env_vars(required_only=True)
         missing_config = get_missing_config_fields()
-        current_ver, latest_ver = check_config_version()
+        current_ver, latest_ver = _run_config_check_fresh()
 
         has_new_options = bool(missing_env or missing_config)
         version_bump_only = (
@@ -4472,7 +4798,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 f"  ℹ Updating config format (v{current_ver} → v{latest_ver})…"
             )
             try:
-                migrate_config(interactive=False, quiet=True)
+                _run_migrate_config_fresh(interactive=False, quiet=True)
                 print("  ✓ Config format updated (no new settings to configure)")
             except Exception as _mig_err:
                 print(f"  ⚠️  Config format update failed: {_mig_err}")
@@ -4537,6 +4863,16 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     )
                 except EOFError:
                     response = "n"
+                except UnicodeDecodeError:
+                    # input() can raise this when the terminal encoding can't
+                    # decode the byte sequence (e.g. a non-UTF-8 locale, or an
+                    # embedded terminal). Without this, the exception escapes
+                    # here and crashes the update at this prompt.
+                    print(
+                        "  ⚠ Could not read input (encoding issue). Skipping. "
+                        "Run 'hermes config migrate' manually to configure."
+                    )
+                    response = "n"
 
             if response in {"", "y", "yes", "auto"}:
                 print()
@@ -4548,7 +4884,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 interactive_migration = not (
                     gateway_mode or assume_yes or response == "auto"
                 )
-                results = migrate_config(interactive=interactive_migration, quiet=False)
+                results = _run_migrate_config_fresh(interactive=interactive_migration, quiet=False)
 
                 if results["env_added"] or results["config_added"]:
                     print()
@@ -4591,7 +4927,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             print("  Code and Python deps are updated, but the dashboard/TUI may")
             print("  be in a mixed state until the Node deps are rebuilt.")
         else:
-            print("✓ Update complete!")
+            _print_update_completion("✓ Update complete!")
 
         # Search-index optimization notice (v23). Existing installs keep their
         # working search index untouched on update; the compact v23 layout —
