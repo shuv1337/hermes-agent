@@ -120,14 +120,16 @@ void main() {
       expect(again.map((s) => s.id), ['s1']);
     });
 
-    test('bypassTtl (explicit user pull-to-refresh) still hits the network',
-        () async {
-      await apiRepo.syncSessions();
-      expect(adapter.calls, 1);
+    test(
+      'bypassTtl (explicit user pull-to-refresh) still hits the network',
+      () async {
+        await apiRepo.syncSessions();
+        expect(adapter.calls, 1);
 
-      await apiRepo.syncSessions(bypassTtl: true);
-      expect(adapter.calls, 2);
-    });
+        await apiRepo.syncSessions(bypassTtl: true);
+        expect(adapter.calls, 2);
+      },
+    );
   });
 }
 

@@ -71,8 +71,9 @@ class _ContextUsageBodyState extends State<_ContextUsageBody> {
         .clamp(0, 100)
         .round();
     final categories = b?.categories ?? const <ContextUsageCategory>[];
-    final segmentTotal =
-        categories.fold<int>(0, (s, c) => s + c.tokens).clamp(1, 1 << 30);
+    final segmentTotal = categories
+        .fold<int>(0, (s, c) => s + c.tokens)
+        .clamp(1, 1 << 30);
 
     return SafeArea(
       child: Padding(
@@ -129,9 +130,7 @@ class _ContextUsageBodyState extends State<_ContextUsageBody> {
                   child: Text(
                     l10n.contextUsageLoading,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(
-                        alpha: 0.5,
-                      ),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -285,11 +284,9 @@ class ContextUsageChip extends StatelessWidget {
     final theme = Theme.of(context);
     final used = breakdown?.contextUsed ?? usage?.contextUsed ?? 0;
     final max = breakdown?.contextMax ?? usage?.contextMax ?? 0;
-    final pct =
-        (breakdown?.contextPercent ?? usage?.contextPercent ?? 0).round().clamp(
-          0,
-          100,
-        );
+    final pct = (breakdown?.contextPercent ?? usage?.contextPercent ?? 0)
+        .round()
+        .clamp(0, 100);
     final label = max > 0
         ? '${compactTokenCount(used)}/${compactTokenCount(max)}'
         : (usage != null && usage!.total > 0
@@ -297,8 +294,9 @@ class ContextUsageChip extends StatelessWidget {
               : '—');
 
     final cats = breakdown?.categories ?? const <ContextUsageCategory>[];
-    final segmentTotal =
-        cats.fold<int>(0, (s, c) => s + c.tokens).clamp(1, 1 << 30);
+    final segmentTotal = cats
+        .fold<int>(0, (s, c) => s + c.tokens)
+        .clamp(1, 1 << 30);
 
     return Material(
       color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
