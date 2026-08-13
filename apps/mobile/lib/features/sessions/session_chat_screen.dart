@@ -177,7 +177,31 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   bool? _sessionFastMode;
   Future<void>? _runtimeHydration;
 
+  /// Memo for [_knownArtifactPaths] — the transcript the current index was
+  /// built from, compared by identity.
+  List<HermesMessage>? _artifactPathsSource;
+  SessionArtifactPaths _artifactPaths = SessionArtifactPaths.empty;
+
   HermesSession get session => _session;
+
+  /// The session's known written-artifact paths, so a backticked filename in
+  /// assistant prose can be resolved to the real path before it becomes a
+  /// tappable chip (see `artifact_detection.dart`).
+  ///
+  /// Rebuilt only when the transcript list is replaced — every `_messages`
+  /// mutation assigns a fresh list — so message bubbles never rescan the
+  /// transcript themselves. Streaming replaces the list on every token, but
+  /// the previous index is fed back in so unchanged tool results are reused
+  /// rather than re-decoded.
+  SessionArtifactPaths _knownArtifactPaths(List<HermesMessage> messages) {
+    if (identical(_artifactPathsSource, messages)) return _artifactPaths;
+    _artifactPathsSource = messages;
+    _artifactPaths = SessionArtifactPaths.fromMessages(
+      messages,
+      previous: _artifactPaths,
+    );
+    return _artifactPaths;
+  }
 
   /// Show typing/thinking row until first stream token arrives.
   bool get _showThinkingBubble {
@@ -1584,6 +1608,7 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     // scroll offset during layout (see the `standby()` call sites), not by
     // holding back what gets rendered.
     final renderMessages = _messages;
+    final artifactPaths = _knownArtifactPaths(renderMessages);
     final showThinking = _showThinkingBubble;
     final renderSending = _sending;
     final statusText = _showStatusStrip ? _toolStatus : null;
@@ -1723,6 +1748,7 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
                           final apiError = _isApiErrorMessage(msg);
                           return _MessageBubble(
                             message: msg,
+                            knownArtifactPaths: artifactPaths,
                             unanswered: unanswered,
                             showRetryActions: unanswered || apiError,
                             onLongPress: () => _onMessageLongPress(msg),
@@ -1971,6 +1997,7 @@ class _ThinkingBubbleState extends State<_ThinkingBubble>
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
+    this.knownArtifactPaths = SessionArtifactPaths.empty,
     this.onLongPress,
     this.onResend,
     this.onEdit,
@@ -1979,6 +2006,10 @@ class _MessageBubble extends StatelessWidget {
   });
 
   final HermesMessage message;
+
+  /// Session-wide artifact paths, computed once per transcript change by the
+  /// screen — a bubble must not rebuild it, it rebuilds on every token.
+  final SessionArtifactPaths knownArtifactPaths;
   final VoidCallback? onLongPress;
   final VoidCallback? onResend;
   final VoidCallback? onEdit;
@@ -1991,7 +2022,10 @@ class _MessageBubble extends StatelessWidget {
     final isUser = message.isUser;
     final isTool = message.isTool;
     final isSystem = message.isSystem;
-    final artifacts = detectArtifactsInMessage(message);
+    final artifacts = detectArtifactsInMessage(
+      message,
+      known: knownArtifactPaths,
+    );
     // Slash/system status — strip `slash:/cmd` prefix for a cleaner label.
     var body = message.content?.trim() ?? '';
     String? slashLabel;
