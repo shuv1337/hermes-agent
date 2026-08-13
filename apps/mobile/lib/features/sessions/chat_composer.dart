@@ -350,7 +350,9 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
   }
 
   Future<void> _toggleMic() async {
-    if (!widget.enabled || widget.sending) return;
+    // Dictation writes into the same controller the user can otherwise type
+    // into mid-stream — no reason to block it while a turn is in flight.
+    if (!widget.enabled) return;
 
     // Stop if already listening (UI flag or plugin still hot).
     if (_listening || _speech.isListening) {
@@ -430,7 +432,9 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
   }
 
   Future<void> _showAttachSheet() async {
-    if (!widget.enabled || widget.sending) return;
+    // Attachments picked mid-stream just wait in `widget.attachments` for
+    // the *next* send (mirrors the text draft) — no need to block them.
+    if (!widget.enabled) return;
     final choice = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -752,9 +756,7 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
                             shape: const CircleBorder(),
                             child: InkWell(
                               customBorder: const CircleBorder(),
-                              onTap: widget.sending
-                                  ? null
-                                  : () => _removeAttachment(a.id),
+                              onTap: () => _removeAttachment(a.id),
                               child: Icon(
                                 Icons.cancel,
                                 size: 22,
@@ -840,15 +842,18 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
                             visualDensity: VisualDensity.compact,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                          onPressed: widget.enabled && !widget.sending
-                              ? _showAttachSheet
-                              : null,
+                          onPressed: widget.enabled ? _showAttachSheet : null,
                           icon: const Icon(Icons.add_circle_outline, size: 24),
                         ),
                         Expanded(
                           child: TextField(
                             controller: widget.controller,
-                            enabled: widget.enabled && !widget.sending,
+                            // Stays editable through the whole agent turn —
+                            // only the send *action* is gated on `sending`
+                            // (see the trailing button below). Users can
+                            // keep composing their next message while the
+                            // reply streams in, same as Desktop/Claude/GPT.
+                            enabled: widget.enabled,
                             minLines: 1,
                             maxLines: 6,
                             textInputAction: TextInputAction.newline,
@@ -904,8 +909,9 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
                             icon: Icon(
                               _listening ? Icons.mic : Icons.mic_none,
                               size: 24,
-                              color:
-                                  _listening ? theme.colorScheme.error : null,
+                              color: _listening
+                                  ? theme.colorScheme.error
+                                  : null,
                             ),
                           ),
                           if (widget.onReadAloudChanged != null)
@@ -917,8 +923,7 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
                                 fixedSize: const Size(40, 40),
                                 padding: EdgeInsets.zero,
                                 visualDensity: VisualDensity.compact,
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                               onPressed: () {
                                 hermesHaptic(HapticIntent.selection);
@@ -948,10 +953,7 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
                                   foregroundColor: theme.colorScheme.onError,
                                 ),
                                 onPressed: widget.onStop,
-                                icon: const Icon(
-                                  Icons.stop_rounded,
-                                  size: 22,
-                                ),
+                                icon: const Icon(Icons.stop_rounded, size: 22),
                               )
                             : IconButton.filled(
                                 style: IconButton.styleFrom(
@@ -961,9 +963,7 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
                                   tapTargetSize:
                                       MaterialTapTargetSize.shrinkWrap,
                                   backgroundColor: theme.colorScheme.onSurface
-                                      .withValues(
-                                        alpha: canSend ? 0.92 : 0.3,
-                                      ),
+                                      .withValues(alpha: canSend ? 0.92 : 0.3),
                                   foregroundColor:
                                       theme.scaffoldBackgroundColor,
                                   disabledBackgroundColor: theme
@@ -972,10 +972,7 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
                                       .withValues(alpha: 0.2),
                                 ),
                                 onPressed: canSend ? widget.onSend : null,
-                                icon: const Icon(
-                                  Icons.arrow_upward,
-                                  size: 20,
-                                ),
+                                icon: const Icon(Icons.arrow_upward, size: 20),
                               ),
                       ],
                     ),

@@ -23,6 +23,72 @@ import 'package:hermes_mobile/features/sessions/context_usage_sheet.dart';
 import 'package:hermes_mobile/features/sessions/message_markdown.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
+/// Distance (logical px) from the message list's "latest message" anchor
+/// within which the user still counts as pinned to the bottom — i.e. the
+/// scroll-anchoring threshold for autoscroll during streaming (matches the
+/// Claude/ChatGPT/iMessage convention of a small tolerance rather than
+/// requiring an exact-zero offset).
+const double kAutoscrollPinThresholdPx = 96;
+
+/// Pure decision function for scroll-anchoring: is [pixels] close enough to
+/// the latest-message anchor to keep autoscrolling?
+///
+/// The message list below renders with `reverse: true` so that new content
+/// stays glued to the bottom for free (index 0 is the newest message and
+/// sits at scroll offset 0). That inverts the usual "bottom == maxScrollExtent"
+/// convention — here "pinned to latest" means the offset is close to *zero*,
+/// not close to the max extent. Extracted as a standalone function (no
+/// BuildContext / ScrollController) so the threshold logic has a plain unit
+/// test independent of widget pumping.
+bool isPinnedToBottom(
+  double pixels, {
+  double threshold = kAutoscrollPinThresholdPx,
+}) {
+  return pixels <= threshold;
+}
+
+/// Pure helper for the growth-compensation step: while the user is *not*
+/// pinned and a reply is actively streaming, the streaming message growing
+/// shifts every older item's position in the reversed list's coordinate
+/// space, even though the user's own `pixels` offset hasn't changed — which
+/// silently swaps in different content under a stationary viewport. Returns
+/// the `pixels` value that keeps the same content in view, or `null` when no
+/// correction should happen.
+///
+/// Deliberately takes the streaming bubble's *own measured height* — not
+/// `ScrollPosition.maxScrollExtent` — as the growth signal.
+/// `maxScrollExtent` on a lazily-built `ListView.builder` is an *estimate*
+/// derived from whatever children have been laid out so far; it moves
+/// simply from scrolling into not-yet-built items, with zero content
+/// growth (verified empirically: scrolling a static reversed list of 500
+/// fixed-height items moved `maxScrollExtent` by thousands of pixels with
+/// nothing on screen ever resizing). Using that delta as "how much did the
+/// message grow" turned every upward swipe into a feedback loop: scroll up
+/// → more items lay out → extent estimate jumps → code reads that as
+/// growth → `jumpTo` shoves the viewport back down → which lays out more
+/// items → extent jumps again. Measuring the one item that can actually
+/// grow avoids that entirely.
+///
+/// All gating lives here (rather than only at the call site) so it has a
+/// single, exhaustively unit-testable surface: pinned, not streaming, or a
+/// user drag/fling in progress must all hard-skip compensation, no
+/// exceptions.
+double? compensatedScrollOffset({
+  required bool pinnedToBottom,
+  required bool isStreaming,
+  required bool userIsScrolling,
+  required double pixels,
+  required double? oldStreamingHeight,
+  required double? newStreamingHeight,
+  required double maxScrollExtent,
+}) {
+  if (pinnedToBottom || !isStreaming || userIsScrolling) return null;
+  if (oldStreamingHeight == null || newStreamingHeight == null) return null;
+  final delta = newStreamingHeight - oldStreamingHeight;
+  if (delta.abs() < 0.5) return null;
+  return (pixels + delta).clamp(0.0, maxScrollExtent);
+}
+
 /// Full-screen chat for an existing session (pushed from drawer / deep link).
 class SessionChatScreen extends ConsumerStatefulWidget {
   const SessionChatScreen({
@@ -64,6 +130,36 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   final _scroll = ScrollController();
   final _speaker = ReplySpeaker();
 
+  /// Whether the viewport is currently anchored to the newest message. Drives
+  /// both "should new content autoscroll" and "show the jump-to-latest chip".
+  bool _pinnedToBottom = true;
+
+  /// Guards [_scrollToBottom]'s own `jumpTo`/`animateTo` calls so the
+  /// `_scroll` listener that recomputes [_pinnedToBottom] doesn't mistake
+  /// our programmatic correction for the user scrolling away.
+  bool _programmaticScroll = false;
+
+  /// True while the user's finger is actively dragging the list, or the
+  /// resulting fling is still settling. Set from a `ScrollNotification`
+  /// listener wrapping the list (see [_handleScrollNotification]).
+  /// [_preserveScrollOffsetAcrossGrowth] must hard-skip while this is true —
+  /// nudging `pixels` mid-gesture can cancel or corrupt the drag/ballistic
+  /// simulation, which is what made the list feel "stuck" or "yanked back".
+  bool _userScrolling = false;
+
+  /// Height (logical px) of the live streaming message bubble as of the
+  /// last frame — the sole growth signal for
+  /// [_preserveScrollOffsetAcrossGrowth]. Measured via [_streamingBubbleKey]
+  /// rather than derived from `maxScrollExtent` (see [compensatedScrollOffset]
+  /// doc for why). `null` whenever nothing is streaming or the bubble isn't
+  /// currently laid out.
+  double? _lastStreamingHeight;
+
+  /// Attached to the one list item currently holding the live-streaming
+  /// message (id `stream_partial`) so its rendered height can be measured
+  /// directly, independent of the list's lazy layout elsewhere.
+  final GlobalKey _streamingBubbleKey = GlobalKey();
+
   List<HermesMessage> _messages = const [];
   List<PendingImage> _attachments = const [];
   bool _loading = true;
@@ -99,6 +195,18 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     return !hasStream;
   }
 
+  /// True only while a reply is actively streaming tokens — i.e. there is a
+  /// live `stream_*` assistant message with content. This is the gate for
+  /// [_preserveScrollOffsetAcrossGrowth]: outside of this window nothing
+  /// above the viewport is changing size, so there is nothing to
+  /// compensate and the code must not touch the scroll offset at all.
+  /// Narrower than [_sending], which also covers the pre-first-token wait
+  /// (no growing bubble exists yet during that phase).
+  bool get _isStreamingContent {
+    if (!_sending) return false;
+    return _messages.any((m) => m.isAssistant && m.id.startsWith('stream_'));
+  }
+
   /// Generic waiting copy — covered by the dots bubble; don't also print it.
   bool get _toolStatusIsGeneric {
     final s = (_toolStatus ?? '').trim().toLowerCase();
@@ -125,6 +233,7 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     _session = widget.session;
     _sessionModel = widget.session.model;
     _attachments = List.of(widget.initialAttachments);
+    _scroll.addListener(_onScroll);
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _listenLive();
@@ -275,6 +384,13 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
         unawaited(_softReloadMessages());
       } else {
         _messages = const [];
+        // A genuinely different session's transcript is unrelated content —
+        // reset scroll-anchoring so we don't compare heights across two
+        // different message lists (which would misfire the growth
+        // compensation) and so the new session opens pinned to its bottom.
+        _pinnedToBottom = true;
+        _lastStreamingHeight = null;
+        _userScrolling = false;
         _load();
       }
     }
@@ -450,6 +566,104 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     if (text.isEmpty) return;
     _lastSpokenAssistantId = lastAssistant.id;
     unawaited(_speaker.speak(text));
+  }
+
+  /// Real-time pin/unpin — fires on every drag, fling, and programmatic
+  /// scroll. Programmatic corrections are skipped via [_programmaticScroll]
+  /// so our own compensation jumps can't be misread as "user scrolled away".
+  void _onScroll() {
+    if (_programmaticScroll || !_scroll.hasClients) return;
+    final pinned = isPinnedToBottom(_scroll.position.pixels);
+    if (pinned != _pinnedToBottom && mounted) {
+      setState(() => _pinnedToBottom = pinned);
+    }
+  }
+
+  /// Explicit user action (sending a message, tapping "jump to latest") —
+  /// always animates back to the newest message and re-pins, regardless of
+  /// where the user had scrolled to.
+  Future<void> _scrollToBottom({bool animate = true}) async {
+    if (!_scroll.hasClients) {
+      _pinnedToBottom = true;
+      return;
+    }
+    if (mounted) setState(() => _pinnedToBottom = true);
+    _programmaticScroll = true;
+    try {
+      if (animate) {
+        await _scroll.animateTo(
+          0,
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+        );
+      } else {
+        _scroll.jumpTo(0);
+      }
+    } catch (_) {
+      // Controller may detach mid-animation (screen popped) — harmless.
+    } finally {
+      _programmaticScroll = false;
+    }
+  }
+
+  /// Called once per frame (from [build]'s post-frame callback). The message
+  /// list renders `reverse: true` so the newest message (index 0) sits at
+  /// scroll offset 0 and grows "outward" as tokens stream in; while pinned,
+  /// that keeps the latest content glued to the bottom for free. But when the
+  /// user has scrolled *up* to read earlier content while a reply is
+  /// streaming, growth of the streaming message still shifts every older
+  /// item's position in the list's coordinate space by the same amount —
+  /// with the user's absolute `pixels` unchanged, that silently swaps in
+  /// different content underneath them (the reported "jarring" drift).
+  /// Compensate by nudging `pixels` by exactly the streaming bubble's own
+  /// height delta so the same content stays under the viewport.
+  ///
+  /// Measuring the bubble directly (via [_streamingBubbleKey]) — instead of
+  /// `ScrollPosition.maxScrollExtent` — is what keeps this from reproducing
+  /// the "can't scroll up" regression: see [compensatedScrollOffset]'s doc
+  /// for why `maxScrollExtent` is the wrong signal on a lazy list.
+  void _preserveScrollOffsetAcrossGrowth() {
+    if (!_scroll.hasClients) return;
+    final renderBox =
+        _streamingBubbleKey.currentContext?.findRenderObject() as RenderBox?;
+    final newHeight = (renderBox?.hasSize ?? false)
+        ? renderBox!.size.height
+        : null;
+    final target = compensatedScrollOffset(
+      pinnedToBottom: _pinnedToBottom,
+      isStreaming: _isStreamingContent,
+      userIsScrolling: _userScrolling,
+      pixels: _scroll.position.pixels,
+      oldStreamingHeight: _lastStreamingHeight,
+      newStreamingHeight: newHeight,
+      maxScrollExtent: _scroll.position.maxScrollExtent,
+    );
+    _lastStreamingHeight = newHeight;
+    if (target == null) return;
+    _programmaticScroll = true;
+    _scroll.jumpTo(target);
+    _programmaticScroll = false;
+  }
+
+  /// Tracks whether the user is currently dragging the list or riding out
+  /// the fling that follows a drag. A `ScrollStartNotification` carries
+  /// non-null `dragDetails` only when it is directly caused by a user drag;
+  /// because a released fling continues the same underlying "scrolling"
+  /// activity (no new Start notification is dispatched for the ballistic
+  /// phase that follows), the matching `ScrollEndNotification` — regardless
+  /// of its own `dragDetails` — is the correct signal that the whole
+  /// gesture, drag *and* fling, has actually settled. Our own
+  /// `jumpTo`-based compensation does not toggle this (jumpTo doesn't
+  /// dispatch a drag-attributed start notification), so it can't false-flag
+  /// itself as "the user is scrolling".
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _userScrolling = true;
+    } else if (notification is ScrollEndNotification) {
+      _userScrolling = false;
+    }
+    return false;
   }
 
   Future<void> _stopGeneration() async {
@@ -908,6 +1122,9 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
         ),
       ];
     });
+    // Explicit user action — always jump back to latest, even if they'd
+    // scrolled up to read history.
+    unawaited(_scrollToBottom());
 
     try {
       final result = await sync.runSlashCommand(
@@ -1050,6 +1267,9 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
       }
       _messages = dedupeAdjacentUserMessages(_messages);
     });
+    // Explicit user action — always jump back to latest, even if they'd
+    // scrolled up to read history.
+    unawaited(_scrollToBottom());
 
     try {
       await _uploadAttachments(sync);
@@ -1286,6 +1506,15 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Re-check scroll-anchoring after *every* build (message added, message
+    // grew mid-stream, thinking bubble swapped in/out, …) rather than only
+    // from specific callbacks — cheap (two double comparisons) and catches
+    // every content-length change uniformly instead of chasing each call
+    // site that can touch `_messages`. Post-frame so the new layout (and
+    // thus the new `maxScrollExtent`) has already landed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _preserveScrollOffsetAcrossGrowth();
+    });
     // Existing sessions render their own runtime identity. The global sticky
     // pick is only a fallback for a brand-new session with no model yet.
     final modelId =
@@ -1364,59 +1593,88 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
           color: theme.colorScheme.outline.withValues(alpha: 0.35),
         ),
         Expanded(
-          child: _loading && _messages.isEmpty
-              ? const Center(child: CircularProgressIndicator())
-              : _messages.isEmpty
-              ? GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                  child: Center(
-                    child: Text(
-                      context.l10n.sendAMessageToContinue,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.45,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _handleScrollNotification,
+            child: Stack(
+              children: [
+                _loading && _messages.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : _messages.isEmpty
+                    ? GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        child: Center(
+                          child: Text(
+                            context.l10n.sendAMessageToContinue,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.45,
+                              ),
+                            ),
+                          ),
                         ),
+                      )
+                    // reverse:true → newest at bottom, open already scrolled
+                    // there; scroll-anchoring (pin/compensate/jump-to-latest)
+                    // lives in _onScroll / _preserveScrollOffsetAcrossGrowth.
+                    : ListView.builder(
+                        controller: _scroll,
+                        reverse: true,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                        // +1 thinking/typing row while waiting for first token.
+                        itemCount:
+                            _messages.length + (_showThinkingBubble ? 1 : 0),
+                        itemBuilder: (context, i) {
+                          if (_showThinkingBubble && i == 0) {
+                            // reverse list: index 0 is visual bottom.
+                            return const _ThinkingBubble();
+                          }
+                          final msgIndex = _showThinkingBubble
+                              ? _messages.length - i
+                              : _messages.length - 1 - i;
+                          final msg = _messages[msgIndex];
+                          final unanswered =
+                              msg.isUser && _isUnansweredUser(msg);
+                          final apiError = _isApiErrorMessage(msg);
+                          return _MessageBubble(
+                            // Only the live-streaming bubble carries the key —
+                            // lets _preserveScrollOffsetAcrossGrowth measure
+                            // its real height directly instead of inferring
+                            // growth from the lazy list's maxScrollExtent.
+                            key: msg.id == 'stream_partial'
+                                ? _streamingBubbleKey
+                                : null,
+                            message: msg,
+                            unanswered: unanswered,
+                            showRetryActions: unanswered || apiError,
+                            onLongPress: () => _onMessageLongPress(msg),
+                            onResend: () => unawaited(_retryFrom(msg)),
+                            onEdit: () {
+                              final target = msg.isUser
+                                  ? msg
+                                  : _precedingUser(msg);
+                              if (target != null) {
+                                unawaited(_editUserMessage(target));
+                              }
+                            },
+                          );
+                        },
                       ),
+                if (!_pinnedToBottom && _messages.isNotEmpty)
+                  Positioned(
+                    right: 12,
+                    bottom: 12,
+                    child: _JumpToLatestButton(
+                      onTap: () => unawaited(_scrollToBottom()),
                     ),
                   ),
-                )
-              // reverse:true → newest at bottom, open already scrolled there.
-              : ListView.builder(
-                  controller: _scroll,
-                  reverse: true,
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                  // +1 thinking/typing row while waiting for first token.
-                  itemCount: _messages.length + (_showThinkingBubble ? 1 : 0),
-                  itemBuilder: (context, i) {
-                    if (_showThinkingBubble && i == 0) {
-                      // reverse list: index 0 is visual bottom.
-                      return const _ThinkingBubble();
-                    }
-                    final msgIndex = _showThinkingBubble
-                        ? _messages.length - i
-                        : _messages.length - 1 - i;
-                    final msg = _messages[msgIndex];
-                    final unanswered = msg.isUser && _isUnansweredUser(msg);
-                    final apiError = _isApiErrorMessage(msg);
-                    return _MessageBubble(
-                      message: msg,
-                      unanswered: unanswered,
-                      showRetryActions: unanswered || apiError,
-                      onLongPress: () => _onMessageLongPress(msg),
-                      onResend: () => unawaited(_retryFrom(msg)),
-                      onEdit: () {
-                        final target = msg.isUser ? msg : _precedingUser(msg);
-                        if (target != null) {
-                          unawaited(_editUserMessage(target));
-                        }
-                      },
-                    );
-                  },
-                ),
+              ],
+            ),
+          ),
         ),
         if (_showStatusStrip)
           Padding(
@@ -1513,6 +1771,41 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   }
 }
 
+/// Floating "scroll to latest" affordance shown while the user has scrolled
+/// away from the newest message. Icon-only (no label) so it doesn't need a
+/// new l10n string — the down-arrow-into-a-pill is a widely understood chat
+/// convention (Claude/ChatGPT/iMessage all use the same shape).
+class _JumpToLatestButton extends StatelessWidget {
+  const _JumpToLatestButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh,
+      elevation: 3,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () {
+          hermesHaptic(HapticIntent.selection);
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(
+            Icons.arrow_downward_rounded,
+            size: 20,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Claude-style “thinking” row: pulsing dots + label while the agent works
 /// before the first assistant token.
 class _ThinkingBubble extends StatefulWidget {
@@ -1599,6 +1892,7 @@ class _ThinkingBubbleState extends State<_ThinkingBubble>
 
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
+    super.key,
     required this.message,
     this.onLongPress,
     this.onResend,

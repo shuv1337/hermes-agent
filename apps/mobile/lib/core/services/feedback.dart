@@ -34,6 +34,31 @@ class FeedbackService {
   final AudioPlayer _player = AudioPlayer();
   bool muted = false;
 
+  /// A short UI chime should mix into whatever the user is already
+  /// listening to (music, a podcast, a video) instead of pausing or ducking
+  /// it — audioplayers' defaults are an exclusive iOS `playback` session and
+  /// an Android focus request, both of which interrupt other audio.
+  ///
+  /// - iOS: `ambient` mixes with other audio *and* (unlike `playback` +
+  ///   `mixWithOthers`) respects the hardware mute switch, which is the
+  ///   correct behavior for a notification-style chime.
+  /// - Android: `AndroidAudioFocus.none` requests no focus at all, so
+  ///   nothing else gets paused/ducked; `sonification`/`assistanceSonification`
+  ///   is the content/usage pairing for a short UI sound effect.
+  ///
+  /// Passed only via the `ctx:` argument to this player's own `play()` call
+  /// (see [playCompletionSound]) rather than set globally, so it can't
+  /// affect `flutter_tts` (a separate plugin/session) even if that ever
+  /// changes.
+  static final AudioContext _chimeAudioContext = AudioContext(
+    android: const AudioContextAndroid(
+      audioFocus: AndroidAudioFocus.none,
+      contentType: AndroidContentType.sonification,
+      usageType: AndroidUsageType.assistanceSonification,
+    ),
+    iOS: AudioContextIOS(category: AVAudioSessionCategory.ambient),
+  );
+
   DateTime _lastSelectionAt = DateTime.fromMillisecondsSinceEpoch(0);
   final List<DateTime> _recentFires = [];
 
@@ -78,7 +103,10 @@ class FeedbackService {
       // Desktop default "Two-note comfort" (E4 then C4) as a short PCM WAV.
       final wav = _twoNoteComfortWav();
       await _player.stop();
-      await _player.play(BytesSource(wav, mimeType: 'audio/wav'));
+      await _player.play(
+        BytesSource(wav, mimeType: 'audio/wav'),
+        ctx: _chimeAudioContext,
+      );
     } catch (e) {
       debugPrint('Feedback: completion sound failed: $e');
     }
