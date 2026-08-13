@@ -87,6 +87,12 @@ bool transcriptHasErrorAssistant(
   return false;
 }
 
+/// Id prefix for the locally-generated assistant error bubbles this file
+/// mints. They are a client artifact, never server history — the sync merge
+/// keys off this prefix to stop an expired one outliving the failure it
+/// describes (see `SessionSyncRepository.syncMessages`).
+const kLocalErrorIdPrefix = 'local_error_';
+
 /// Append an assistant error bubble when the transcript is missing it.
 List<HermesMessage> ensureErrorAssistantMessage(
   List<HermesMessage> messages, {
@@ -100,7 +106,7 @@ List<HermesMessage> ensureErrorAssistantMessage(
   return [
     ...messages,
     HermesMessage(
-      id: 'local_error_${DateTime.now().microsecondsSinceEpoch}',
+      id: '$kLocalErrorIdPrefix${DateTime.now().microsecondsSinceEpoch}',
       sessionId: sessionId,
       role: 'assistant',
       content: text,

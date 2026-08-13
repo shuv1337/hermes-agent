@@ -3721,12 +3721,24 @@ class $DeletedMessagesTable extends DeletedMessages
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _fingerprintMeta = const VerificationMeta(
+    'fingerprint',
+  );
+  @override
+  late final GeneratedColumn<String> fingerprint = GeneratedColumn<String>(
+    'fingerprint',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     gatewayId,
     sessionId,
     messageId,
     deletedAt,
+    fingerprint,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3772,6 +3784,15 @@ class $DeletedMessagesTable extends DeletedMessages
     } else if (isInserting) {
       context.missing(_deletedAtMeta);
     }
+    if (data.containsKey('fingerprint')) {
+      context.handle(
+        _fingerprintMeta,
+        fingerprint.isAcceptableOrUnknown(
+          data['fingerprint']!,
+          _fingerprintMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3797,6 +3818,10 @@ class $DeletedMessagesTable extends DeletedMessages
         DriftSqlType.dateTime,
         data['${effectivePrefix}deleted_at'],
       )!,
+      fingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fingerprint'],
+      ),
     );
   }
 
@@ -3811,11 +3836,28 @@ class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
   final String sessionId;
   final String messageId;
   final DateTime deletedAt;
+
+  /// Content-derived identity for the deleted message (`role` + a stable hash
+  /// of the body — see `SessionSyncRepository.messageFingerprint`).
+  ///
+  /// [messageId] alone is **not** stable across a server-side rewind: a
+  /// gateway edit/retry calls `replace_messages(..., archive_dropped=True)`
+  /// (`hermes_state.py`), which soft-archives the old rows and re-inserts the
+  /// surviving prefix as **fresh** rows with new AUTOINCREMENT ids. Every
+  /// message id in the session changes, the tombstone stops matching, and the
+  /// message the user deleted silently reappears. The fingerprint lets a pull
+  /// re-point the tombstone at the message's new id (and garbage-collect the
+  /// tombstone when the message is genuinely gone from server history).
+  ///
+  /// Null on rows written before schema v5 — those degrade to id-only
+  /// matching, exactly the pre-v5 behaviour.
+  final String? fingerprint;
   const DeletedMessage({
     required this.gatewayId,
     required this.sessionId,
     required this.messageId,
     required this.deletedAt,
+    this.fingerprint,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3824,6 +3866,9 @@ class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
     map['session_id'] = Variable<String>(sessionId);
     map['message_id'] = Variable<String>(messageId);
     map['deleted_at'] = Variable<DateTime>(deletedAt);
+    if (!nullToAbsent || fingerprint != null) {
+      map['fingerprint'] = Variable<String>(fingerprint);
+    }
     return map;
   }
 
@@ -3833,6 +3878,9 @@ class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
       sessionId: Value(sessionId),
       messageId: Value(messageId),
       deletedAt: Value(deletedAt),
+      fingerprint: fingerprint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fingerprint),
     );
   }
 
@@ -3846,6 +3894,7 @@ class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
       sessionId: serializer.fromJson<String>(json['sessionId']),
       messageId: serializer.fromJson<String>(json['messageId']),
       deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+      fingerprint: serializer.fromJson<String?>(json['fingerprint']),
     );
   }
   @override
@@ -3856,6 +3905,7 @@ class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
       'sessionId': serializer.toJson<String>(sessionId),
       'messageId': serializer.toJson<String>(messageId),
       'deletedAt': serializer.toJson<DateTime>(deletedAt),
+      'fingerprint': serializer.toJson<String?>(fingerprint),
     };
   }
 
@@ -3864,11 +3914,13 @@ class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
     String? sessionId,
     String? messageId,
     DateTime? deletedAt,
+    Value<String?> fingerprint = const Value.absent(),
   }) => DeletedMessage(
     gatewayId: gatewayId ?? this.gatewayId,
     sessionId: sessionId ?? this.sessionId,
     messageId: messageId ?? this.messageId,
     deletedAt: deletedAt ?? this.deletedAt,
+    fingerprint: fingerprint.present ? fingerprint.value : this.fingerprint,
   );
   DeletedMessage copyWithCompanion(DeletedMessagesCompanion data) {
     return DeletedMessage(
@@ -3876,6 +3928,9 @@ class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
       sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
       messageId: data.messageId.present ? data.messageId.value : this.messageId,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      fingerprint: data.fingerprint.present
+          ? data.fingerprint.value
+          : this.fingerprint,
     );
   }
 
@@ -3885,13 +3940,15 @@ class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
           ..write('gatewayId: $gatewayId, ')
           ..write('sessionId: $sessionId, ')
           ..write('messageId: $messageId, ')
-          ..write('deletedAt: $deletedAt')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('fingerprint: $fingerprint')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(gatewayId, sessionId, messageId, deletedAt);
+  int get hashCode =>
+      Object.hash(gatewayId, sessionId, messageId, deletedAt, fingerprint);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3899,7 +3956,8 @@ class DeletedMessage extends DataClass implements Insertable<DeletedMessage> {
           other.gatewayId == this.gatewayId &&
           other.sessionId == this.sessionId &&
           other.messageId == this.messageId &&
-          other.deletedAt == this.deletedAt);
+          other.deletedAt == this.deletedAt &&
+          other.fingerprint == this.fingerprint);
 }
 
 class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
@@ -3907,12 +3965,14 @@ class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
   final Value<String> sessionId;
   final Value<String> messageId;
   final Value<DateTime> deletedAt;
+  final Value<String?> fingerprint;
   final Value<int> rowid;
   const DeletedMessagesCompanion({
     this.gatewayId = const Value.absent(),
     this.sessionId = const Value.absent(),
     this.messageId = const Value.absent(),
     this.deletedAt = const Value.absent(),
+    this.fingerprint = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DeletedMessagesCompanion.insert({
@@ -3920,6 +3980,7 @@ class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
     required String sessionId,
     required String messageId,
     required DateTime deletedAt,
+    this.fingerprint = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : gatewayId = Value(gatewayId),
        sessionId = Value(sessionId),
@@ -3930,6 +3991,7 @@ class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
     Expression<String>? sessionId,
     Expression<String>? messageId,
     Expression<DateTime>? deletedAt,
+    Expression<String>? fingerprint,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3937,6 +3999,7 @@ class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
       if (sessionId != null) 'session_id': sessionId,
       if (messageId != null) 'message_id': messageId,
       if (deletedAt != null) 'deleted_at': deletedAt,
+      if (fingerprint != null) 'fingerprint': fingerprint,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3946,6 +4009,7 @@ class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
     Value<String>? sessionId,
     Value<String>? messageId,
     Value<DateTime>? deletedAt,
+    Value<String?>? fingerprint,
     Value<int>? rowid,
   }) {
     return DeletedMessagesCompanion(
@@ -3953,6 +4017,7 @@ class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
       sessionId: sessionId ?? this.sessionId,
       messageId: messageId ?? this.messageId,
       deletedAt: deletedAt ?? this.deletedAt,
+      fingerprint: fingerprint ?? this.fingerprint,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3972,6 +4037,9 @@ class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
     if (deletedAt.present) {
       map['deleted_at'] = Variable<DateTime>(deletedAt.value);
     }
+    if (fingerprint.present) {
+      map['fingerprint'] = Variable<String>(fingerprint.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3985,6 +4053,7 @@ class DeletedMessagesCompanion extends UpdateCompanion<DeletedMessage> {
           ..write('sessionId: $sessionId, ')
           ..write('messageId: $messageId, ')
           ..write('deletedAt: $deletedAt, ')
+          ..write('fingerprint: $fingerprint, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5740,6 +5809,7 @@ typedef $$DeletedMessagesTableCreateCompanionBuilder =
       required String sessionId,
       required String messageId,
       required DateTime deletedAt,
+      Value<String?> fingerprint,
       Value<int> rowid,
     });
 typedef $$DeletedMessagesTableUpdateCompanionBuilder =
@@ -5748,6 +5818,7 @@ typedef $$DeletedMessagesTableUpdateCompanionBuilder =
       Value<String> sessionId,
       Value<String> messageId,
       Value<DateTime> deletedAt,
+      Value<String?> fingerprint,
       Value<int> rowid,
     });
 
@@ -5777,6 +5848,11 @@ class $$DeletedMessagesTableFilterComposer
 
   ColumnFilters<DateTime> get deletedAt => $composableBuilder(
     column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fingerprint => $composableBuilder(
+    column: $table.fingerprint,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -5809,6 +5885,11 @@ class $$DeletedMessagesTableOrderingComposer
     column: $table.deletedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get fingerprint => $composableBuilder(
+    column: $table.fingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DeletedMessagesTableAnnotationComposer
@@ -5831,6 +5912,11 @@ class $$DeletedMessagesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get deletedAt =>
       $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get fingerprint => $composableBuilder(
+    column: $table.fingerprint,
+    builder: (column) => column,
+  );
 }
 
 class $$DeletedMessagesTableTableManager
@@ -5874,12 +5960,14 @@ class $$DeletedMessagesTableTableManager
                 Value<String> sessionId = const Value.absent(),
                 Value<String> messageId = const Value.absent(),
                 Value<DateTime> deletedAt = const Value.absent(),
+                Value<String?> fingerprint = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DeletedMessagesCompanion(
                 gatewayId: gatewayId,
                 sessionId: sessionId,
                 messageId: messageId,
                 deletedAt: deletedAt,
+                fingerprint: fingerprint,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5888,12 +5976,14 @@ class $$DeletedMessagesTableTableManager
                 required String sessionId,
                 required String messageId,
                 required DateTime deletedAt,
+                Value<String?> fingerprint = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DeletedMessagesCompanion.insert(
                 gatewayId: gatewayId,
                 sessionId: sessionId,
                 messageId: messageId,
                 deletedAt: deletedAt,
+                fingerprint: fingerprint,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

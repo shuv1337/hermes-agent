@@ -74,6 +74,22 @@ class DeletedMessages extends Table {
   TextColumn get messageId => text()();
   DateTimeColumn get deletedAt => dateTime()();
 
+  /// Content-derived identity for the deleted message (`role` + a stable hash
+  /// of the body — see `SessionSyncRepository.messageFingerprint`).
+  ///
+  /// [messageId] alone is **not** stable across a server-side rewind: a
+  /// gateway edit/retry calls `replace_messages(..., archive_dropped=True)`
+  /// (`hermes_state.py`), which soft-archives the old rows and re-inserts the
+  /// surviving prefix as **fresh** rows with new AUTOINCREMENT ids. Every
+  /// message id in the session changes, the tombstone stops matching, and the
+  /// message the user deleted silently reappears. The fingerprint lets a pull
+  /// re-point the tombstone at the message's new id (and garbage-collect the
+  /// tombstone when the message is genuinely gone from server history).
+  ///
+  /// Null on rows written before schema v5 — those degrade to id-only
+  /// matching, exactly the pre-v5 behaviour.
+  TextColumn get fingerprint => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {gatewayId, sessionId, messageId};
 }
@@ -152,7 +168,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -167,6 +183,12 @@ class AppDatabase extends _$AppDatabase {
       if (from < 4) {
         await m.addColumn(cachedMessages, cachedMessages.displayKind);
         await m.createTable(deletedMessages);
+      }
+      if (from < 5) {
+        // Additive only: a nullable column on an existing table (plain
+        // `ALTER TABLE ... ADD COLUMN`). No row is rewritten or dropped, and
+        // pre-v5 tombstones keep working with a null fingerprint.
+        await m.addColumn(deletedMessages, deletedMessages.fingerprint);
       }
     },
   );
@@ -195,6 +217,22 @@ class AppDatabase extends _$AppDatabase {
     return into(cachedSessions).insertOnConflictUpdate(row);
   }
 
+  /// Statuses [replaceSessions] must never clobber with a server row: local
+  /// intent the gateway has not accepted (or not yet confirmed) yet.
+  static const _localOnlySessionStatuses = ['pending', 'deleted_pending'];
+
+  /// Apply a successful server session list.
+  ///
+  /// Server wins for everything it has accepted, with two local-intent
+  /// exceptions that must survive the replace:
+  ///
+  /// - `pending` — a session created offline that the gateway has never seen.
+  /// - `deleted_pending` — a session the user deleted here while the delete op
+  ///   is still in the outbox. The gateway still lists it, so a blind replace
+  ///   re-inserted it as `synced` and the deleted session **reappeared in the
+  ///   list** until (and only if) the queued delete happened to land. The
+  ///   tombstone now wins until a pull confirms the session is gone
+  ///   server-side, mirroring [mergeJobsFromServer].
   Future<void> replaceSessions(
     String gatewayId,
     List<CachedSessionsCompanion> rows,
@@ -208,13 +246,40 @@ class AppDatabase extends _$AppDatabase {
                     r.syncStatus.equals('pending'),
               ))
               .get();
+      final tombstoned =
+          (await (select(cachedSessions)..where(
+                    (r) =>
+                        r.gatewayId.equals(gatewayId) &
+                        r.syncStatus.equals('deleted_pending'),
+                  ))
+                  .get())
+              .map((r) => r.id)
+              .toSet();
+      final remoteIds = {for (final r in rows) r.id.value};
       await (delete(cachedSessions)..where(
             (r) =>
                 r.gatewayId.equals(gatewayId) &
-                r.syncStatus.isNotValue('pending'),
+                r.syncStatus.isNotIn(_localOnlySessionStatuses),
           ))
           .go();
-      await batch((b) => b.insertAllOnConflictUpdate(cachedSessions, rows));
+      // Server no longer lists a locally-deleted session → delete confirmed,
+      // drop the tombstone row (and its cached transcript) for real.
+      for (final id in tombstoned) {
+        if (remoteIds.contains(id)) continue;
+        await (delete(
+          cachedSessions,
+        )..where((r) => r.gatewayId.equals(gatewayId) & r.id.equals(id))).go();
+        await (delete(cachedMessages)..where(
+              (r) => r.gatewayId.equals(gatewayId) & r.sessionId.equals(id),
+            ))
+            .go();
+      }
+      await batch(
+        (b) => b.insertAllOnConflictUpdate(cachedSessions, [
+          for (final r in rows)
+            if (!tombstoned.contains(r.id.value)) r,
+        ]),
+      );
       // Re-apply pending if not overwritten by server id collision.
       for (final p in pending) {
         final exists = rows.any((r) => r.id.value == p.id);
@@ -340,6 +405,25 @@ class AppDatabase extends _$AppDatabase {
     return into(cachedMessages).insertOnConflictUpdate(row);
   }
 
+  /// Drop one cached message row without writing a tombstone.
+  ///
+  /// For local-only artifacts (an expired `local_error_*` bubble), **not** for
+  /// user deletes — those must go through [tombstoneMessage] or the next
+  /// server pull puts the message straight back.
+  Future<void> deleteMessage(
+    String gatewayId,
+    String sessionId,
+    String messageId,
+  ) {
+    return (delete(cachedMessages)..where(
+          (r) =>
+              r.gatewayId.equals(gatewayId) &
+              r.sessionId.equals(sessionId) &
+              r.id.equals(messageId),
+        ))
+        .go();
+  }
+
   // ── Local message deletion (tombstones) ──────────────────────────────
 
   /// Record a local-only delete and drop the cached row. The tombstone
@@ -349,8 +433,9 @@ class AppDatabase extends _$AppDatabase {
   Future<void> tombstoneMessage(
     String gatewayId,
     String sessionId,
-    String messageId,
-  ) {
+    String messageId, {
+    String? fingerprint,
+  }) {
     return transaction(() async {
       await into(deletedMessages).insertOnConflictUpdate(
         DeletedMessagesCompanion.insert(
@@ -358,6 +443,7 @@ class AppDatabase extends _$AppDatabase {
           sessionId: sessionId,
           messageId: messageId,
           deletedAt: DateTime.now().toUtc(),
+          fingerprint: Value(fingerprint),
         ),
       );
       await (delete(cachedMessages)..where(
@@ -370,14 +456,68 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<Set<String>> tombstonedMessageIds(String gatewayId, String sessionId) async {
-    final rows =
-        await (select(deletedMessages)..where(
-              (r) =>
-                  r.gatewayId.equals(gatewayId) & r.sessionId.equals(sessionId),
-            ))
-            .get();
+  Future<Set<String>> tombstonedMessageIds(
+    String gatewayId,
+    String sessionId,
+  ) async {
+    final rows = await tombstonesForSession(gatewayId, sessionId);
     return rows.map((r) => r.messageId).toSet();
+  }
+
+  Future<List<DeletedMessage>> tombstonesForSession(
+    String gatewayId,
+    String sessionId,
+  ) {
+    return (select(deletedMessages)..where(
+          (r) => r.gatewayId.equals(gatewayId) & r.sessionId.equals(sessionId),
+        ))
+        .get();
+  }
+
+  /// Move a tombstone from [fromId] to [toId] after a server-side rewind
+  /// re-stamped the message's row id (see [DeletedMessages.fingerprint]).
+  Future<void> retargetTombstone(
+    String gatewayId,
+    String sessionId, {
+    required String fromId,
+    required String toId,
+    String? fingerprint,
+  }) {
+    if (fromId == toId) return Future<void>.value();
+    return transaction(() async {
+      await into(deletedMessages).insertOnConflictUpdate(
+        DeletedMessagesCompanion.insert(
+          gatewayId: gatewayId,
+          sessionId: sessionId,
+          messageId: toId,
+          deletedAt: DateTime.now().toUtc(),
+          fingerprint: Value(fingerprint),
+        ),
+      );
+      await removeTombstone(gatewayId, sessionId, fromId);
+      await (delete(cachedMessages)..where(
+            (r) =>
+                r.gatewayId.equals(gatewayId) &
+                r.sessionId.equals(sessionId) &
+                r.id.equals(toId),
+          ))
+          .go();
+    });
+  }
+
+  /// Drop a tombstone whose message the gateway no longer has at all.
+  Future<void> removeTombstone(
+    String gatewayId,
+    String sessionId,
+    String messageId,
+  ) {
+    return (delete(deletedMessages)..where(
+          (r) =>
+              r.gatewayId.equals(gatewayId) &
+              r.sessionId.equals(sessionId) &
+              r.messageId.equals(messageId),
+        ))
+        .go();
   }
 
   // ── Outbox ─────────────────────────────────────────────────────────
@@ -393,14 +533,24 @@ class AppDatabase extends _$AppDatabase {
   /// genuinely-still-queued send apart from one the background/foreground
   /// flush already resolved, so the UI can drop a stale "Queued for sync"
   /// banner instead of leaving it stuck forever.
-  Future<bool> hasPendingOpsForSession(String gatewayId, String sessionId) async {
-    final row =
-        await (select(pendingOps)..where(
-              (r) =>
-                  r.gatewayId.equals(gatewayId) & r.sessionId.equals(sessionId),
-            ))
-            .getSingleOrNull();
-    return row != null;
+  Future<bool> hasPendingOpsForSession(
+    String gatewayId,
+    String sessionId,
+  ) async {
+    // `..limit(1)` + `get()`, never `getSingleOrNull()`: a session can hold
+    // several queued ops at once (two offline sends, or a create followed by a
+    // chat). `getSingleOrNull` throws on >1 row, so the "is this send still
+    // queued?" check blew up in exactly the case it exists for.
+    final rows =
+        await (select(pendingOps)
+              ..where(
+                (r) =>
+                    r.gatewayId.equals(gatewayId) &
+                    r.sessionId.equals(sessionId),
+              )
+              ..limit(1))
+            .get();
+    return rows.isNotEmpty;
   }
 
   Future<void> enqueueOp(PendingOpsCompanion row) {

@@ -129,8 +129,42 @@ class SessionSyncRepository {
     String sessionId,
     String messageId,
   ) async {
-    await _db.tombstoneMessage(gatewayId, sessionId, messageId);
+    final rows = await _db.messagesForSession(gatewayId, sessionId);
+    final row = rows.where((m) => m.id == messageId).firstOrNull;
+    await _db.tombstoneMessage(
+      gatewayId,
+      sessionId,
+      messageId,
+      // Recorded so the tombstone survives a server-side rewind re-stamping
+      // the row id — see [_reanchorTombstones].
+      fingerprint: row == null
+          ? null
+          : messageFingerprint(row.role, row.content),
+    );
     return loadMessagesLocal(sessionId);
+  }
+
+  /// Stable, content-derived identity for one message.
+  ///
+  /// The gateway's message id is an `AUTOINCREMENT` row id, and a server-side
+  /// rewind (edit / retry / undo from any client) re-inserts the surviving
+  /// prefix as fresh rows — see `replace_messages(..., archive_dropped=True)`
+  /// in `hermes_state.py`. Every id in the session changes, so anything the
+  /// client wants to keep pinned to a specific message across that event needs
+  /// a second, content-derived key.
+  ///
+  /// FNV-1a over `role<NUL>content`, deliberately **not** `String.hashCode`:
+  /// that is not guaranteed stable across Dart VM versions and this value is
+  /// persisted in SQLite across app upgrades.
+  static String messageFingerprint(String role, String? content) {
+    final normalizedRole = role.trim().toLowerCase();
+    final bytes = utf8.encode('$normalizedRole\u0000${(content ?? '').trim()}');
+    var hash = 0x811c9dc5;
+    for (final b in bytes) {
+      hash = (hash ^ b) & 0xffffffff;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return '$normalizedRole:${hash.toRadixString(16)}';
   }
 
   /// Whether [sessionId] still has an outbox op in flight — lets the UI tell
@@ -229,6 +263,10 @@ class SessionSyncRepository {
       await flushOutbox();
       final remote = await _pullMessages(sessionId);
       if (remote == null) return local;
+      // Server view is authoritative for history — reconcile local delete
+      // intent against it BEFORE the cache is rebuilt below, so a rewind that
+      // re-stamped every row id can't resurrect a deleted message.
+      await _reanchorTombstones(sessionId, remote);
       final authoritative = preserveTerminalErrorAfterSync(remote, local);
 
       // Preserve local pending rows the server has not echoed yet (mid-turn
@@ -241,22 +279,9 @@ class SessionSyncRepository {
           .where((t) => t.isNotEmpty)
           .toSet();
       final localRows = await _db.messagesForSession(gatewayId, sessionId);
-      final orphanCompanions = <CachedMessagesCompanion>[];
-      for (final row in localRows) {
-        final pending =
-            row.syncStatus == 'pending' ||
-            row.syncStatus == 'queued' ||
-            row.id.startsWith('local_') ||
-            row.id.startsWith('stream_');
-        if (!pending) continue;
-        if (remoteIds.contains(row.id)) continue;
-        final text = (row.content ?? '').trim();
-        if (row.role == 'user' &&
-            text.isNotEmpty &&
-            remoteUserTexts.contains(text)) {
-          continue; // server already has this user turn under another id
-        }
-        orphanCompanions.add(
+      final keptIds = {for (final m in authoritative) m.id};
+
+      CachedMessagesCompanion carry(CachedMessage row) =>
           CachedMessagesCompanion.insert(
             gatewayId: gatewayId,
             sessionId: sessionId,
@@ -272,8 +297,55 @@ class SessionSyncRepository {
             toolCallsJson: Value(row.toolCallsJson),
             sortIndex: Value(row.sortIndex),
             syncStatus: Value(row.syncStatus),
-          ),
-        );
+          );
+
+      final orphanCompanions = <CachedMessagesCompanion>[];
+      final localErrorRows = <CachedMessage>[];
+      for (final row in localRows) {
+        final pending =
+            row.syncStatus == 'pending' ||
+            row.syncStatus == 'queued' ||
+            row.id.startsWith('local_') ||
+            row.id.startsWith('stream_');
+        if (!pending) continue;
+        if (remoteIds.contains(row.id)) continue;
+        // Error bubbles are decided after the real orphans — see below.
+        if (row.id.startsWith(kLocalErrorIdPrefix)) {
+          localErrorRows.add(row);
+          continue;
+        }
+        final text = (row.content ?? '').trim();
+        if (row.role == 'user' &&
+            text.isNotEmpty &&
+            remoteUserTexts.contains(text)) {
+          continue; // server already has this user turn under another id
+        }
+        orphanCompanions.add(carry(row));
+      }
+
+      // A terminal-error bubble is a client annotation on the tail of the
+      // transcript, not server history. Two things may keep it alive:
+      //
+      // - [preserveTerminalErrorAfterSync] put it back into `authoritative`
+      //   (the server still has no reply after its last user turn), or
+      // - there is still undelivered local intent being carried above it —
+      //   the user's own message that never reached the gateway. Dropping the
+      //   explanation while keeping the unsent message would be the silent
+      //   half of this bug.
+      //
+      // Otherwise it has expired and must be DELETED, not merely left out of
+      // the merge: `AppDatabase.replaceMessages` deliberately preserves
+      // `pending` rows, so an expired bubble used to survive every single pull
+      // and stay pinned below every later successful turn — the chat kept
+      // insisting the last thing that happened was a failure.
+      final keepErrors = orphanCompanions.isNotEmpty;
+      for (final row in localErrorRows) {
+        if (keptIds.contains(row.id)) continue;
+        if (keepErrors) {
+          orphanCompanions.add(carry(row));
+          continue;
+        }
+        await _db.deleteMessage(gatewayId, sessionId, row.id);
       }
 
       final mergedCompanions = <CachedMessagesCompanion>[
@@ -331,6 +403,89 @@ class SessionSyncRepository {
     } catch (e, st) {
       debugPrint('SessionSync: pull messages failed: $e\n$st');
       return local;
+    }
+  }
+
+  /// Page size the dashboard messages endpoint caps a transcript pull at
+  /// (`hermes_cli/web_routers/sessions.py` — `_limit = 500` when the client
+  /// sends no explicit `limit`, which is what [_pullMessages] does).
+  static const messagesPageCap = 500;
+
+  /// Reconcile local message tombstones against an authoritative server pull.
+  ///
+  /// **The conflict.** A tombstone is local-only intent ("hide this message on
+  /// this phone") keyed on the gateway's message id. That id is a SQLite
+  /// `AUTOINCREMENT` row id, and any edit / retry / undo — from Desktop, the
+  /// CLI, or this phone — runs
+  /// `replace_messages(..., archive_dropped=True)` server-side, which
+  /// soft-archives the live rows and re-inserts the surviving prefix as
+  /// **fresh rows with new ids** (`hermes_state.py`; the gateway even returns
+  /// `survivor_user_row_ids` so clients can rebind, see
+  /// `tui_gateway/methods_prompt.py`). After that every cached id in the
+  /// session is stale, the tombstone matches nothing, and the message the user
+  /// deleted here silently reappears in the transcript.
+  ///
+  /// **The resolution.** The gateway is the source of truth for history, so
+  /// each tombstone is re-decided against the pulled transcript:
+  ///
+  /// - id still present remotely → nothing to do (the common case).
+  /// - id gone, but an un-tombstoned remote message carries the same
+  ///   [messageFingerprint] → that is the same message under its new id;
+  ///   re-point the tombstone (and drop the row the pull is about to insert).
+  /// - id gone and no fingerprint match → the gateway does not have this
+  ///   message at all any more (the rewind cut past it); drop the tombstone
+  ///   so it cannot later hide an unrelated row.
+  ///
+  /// Skipped when the pull came back full ([messagesPageCap]): an id missing
+  /// from a truncated page proves nothing about the server's history. Also
+  /// skipped for pre-v5 tombstones with no fingerprint, which keep their
+  /// existing id-only behaviour rather than being guessed at.
+  Future<void> _reanchorTombstones(
+    String sessionId,
+    List<HermesMessage> remote,
+  ) async {
+    if (remote.length >= messagesPageCap) return;
+    final tombstones = await _db.tombstonesForSession(gatewayId, sessionId);
+    if (tombstones.isEmpty) return;
+    final remoteIds = {for (final m in remote) m.id};
+    // Never re-anchor onto a row another tombstone already owns.
+    final claimed = {for (final t in tombstones) t.messageId};
+
+    for (final tombstone in tombstones) {
+      if (remoteIds.contains(tombstone.messageId)) continue;
+      final fingerprint = tombstone.fingerprint;
+      if (fingerprint == null || fingerprint.isEmpty) continue;
+
+      HermesMessage? match;
+      for (final message in remote) {
+        if (claimed.contains(message.id)) continue;
+        if (messageFingerprint(message.role, message.content) != fingerprint) {
+          continue;
+        }
+        match = message;
+        break;
+      }
+
+      if (match == null) {
+        await _db.removeTombstone(gatewayId, sessionId, tombstone.messageId);
+        debugPrint(
+          'SessionSync: dropped stale tombstone ${tombstone.messageId} '
+          '(session $sessionId no longer has that message server-side)',
+        );
+        continue;
+      }
+      claimed.add(match.id);
+      await _db.retargetTombstone(
+        gatewayId,
+        sessionId,
+        fromId: tombstone.messageId,
+        toId: match.id,
+        fingerprint: fingerprint,
+      );
+      debugPrint(
+        'SessionSync: re-anchored tombstone ${tombstone.messageId} → '
+        '${match.id} (session $sessionId history was rewritten server-side)',
+      );
     }
   }
 
@@ -2352,6 +2507,19 @@ class SessionSyncRepository {
 
   // ── Outbox flush ───────────────────────────────────────────────────
 
+  /// How many times one outbox op may fail before the client stops replaying
+  /// it and surfaces the failure instead.
+  ///
+  /// Both flush paths only run against a reachable gateway
+  /// ([flushPendingOverWs] gates on a live socket, [flushOutbox] on a bound
+  /// `HermesApi`), so attempts accrue only while the phone *can* talk to the
+  /// gateway — this counts "the gateway keeps refusing this", never "the user
+  /// was offline for a week". Without a ceiling, `AppDatabase.bumpOpFailure`
+  /// rescheduled a doomed op every ~40s forever behind a permanent
+  /// "will send when WebSocket reconnects" banner, and nothing ever told the
+  /// user their message was never delivered.
+  static const maxOutboxAttempts = 8;
+
   Future<void> flushOutbox() async {
     final api = _api;
     if (api == null || _flushing) return;
@@ -2368,6 +2536,7 @@ class SessionSyncRepository {
           await _db.removeOp(op.id);
           _notifyOutboxOpResolved(op);
         } catch (e) {
+          if (await _abandonHopelessOp(op, e)) continue;
           await _db.bumpOpFailure(op.id, '$e');
           debugPrint('SessionSync: op ${op.opType} failed: $e');
         }
@@ -2375,6 +2544,57 @@ class SessionSyncRepository {
     } finally {
       _flushing = false;
     }
+  }
+
+  /// Whether a `create_session` op is still queued for [localSessionId].
+  Future<bool> _hasQueuedCreateFor(String localSessionId) async {
+    final ops = await _db.pendingOpsForGateway(gatewayId);
+    return ops.any(
+      (o) =>
+          o.opType == 'create_session' &&
+          (o.sessionId == localSessionId ||
+              o.payloadJson.contains(localSessionId)),
+    );
+  }
+
+  /// Stop replaying a queued op the gateway can never accept, loudly.
+  ///
+  /// Two give-up conditions, both meaning "retrying cannot help":
+  /// - the gateway is live and explicitly, permanently rejecting this exact
+  ///   request ([_isTerminalGatewayRejection] / [_isSessionNotFound]);
+  /// - the op has burned [maxOutboxAttempts] against a reachable gateway.
+  ///
+  /// The op is dropped and a durable terminal-error bubble is written into the
+  /// session so the user learns the message was not delivered. Silently
+  /// retrying forever is the failure this replaces — the user's own message
+  /// row stays in the transcript, so their text is never discarded, only the
+  /// false promise that it is still on its way.
+  ///
+  /// Returns true when the op was abandoned (caller must not also bump it).
+  Future<bool> _abandonHopelessOp(PendingOp op, Object error) async {
+    final terminal =
+        _isTerminalGatewayRejection(error) || _isSessionNotFound(error);
+    final attempts = op.attemptCount + 1;
+    if (!terminal && attempts < maxOutboxAttempts) return false;
+
+    await _db.removeOp(op.id);
+    final detail = formatTurnErrorForUser('$error');
+    final reason = terminal
+        ? detail
+        : 'Not delivered after $attempts attempts: $detail';
+    final sid = op.sessionId;
+    if (sid != null && sid.isNotEmpty) {
+      try {
+        await _persistTerminalError(sid, reason);
+      } catch (e) {
+        debugPrint('SessionSync: could not persist abandoned-op error: $e');
+      }
+    }
+    _notifyOutboxOpResolved(op);
+    debugPrint(
+      'SessionSync: gave up on outbox op ${op.opType} (${op.id}): $reason',
+    );
+    return true;
   }
 
   /// A queued op just resolved (sent successfully, or dropped after reaching
@@ -2417,6 +2637,7 @@ class SessionSyncRepository {
           _notifyOutboxOpResolved(op);
           debugPrint('SessionSync: WS op ${op.opType} ran but failed: $e');
         } catch (e) {
+          if (await _abandonHopelessOp(op, e)) continue;
           await _db.bumpOpFailure(op.id, '$e');
           debugPrint('SessionSync: WS op ${op.opType} failed: $e');
         }
@@ -2441,13 +2662,34 @@ class SessionSyncRepository {
         break;
       case 'chat':
         var sid = '${payload['session_id']}';
-        if (sid.startsWith('local_')) {
-          // Create may not have flushed yet — next loop iteration after create.
-          throw StateError('chat still bound to local session $sid');
-        }
         final input = '${payload['input']}';
         final model = payload['model'] as String?;
         final provider = payload['provider'] as String?;
+        if (sid.startsWith('local_')) {
+          if (await _hasQueuedCreateFor(sid)) {
+            // A create op is queued ahead of us and hasn't landed yet — ops
+            // run in createdAt order, so retry after it does.
+            throw StateError('chat still bound to local session $sid');
+          }
+          // No create op exists and none ever will: [createSession] only
+          // enqueues `create_session` when a legacy `HermesApi` is bound, and
+          // the shipped cookie/session auth mode never has one. The draft was
+          // therefore stranded — this op threw the same StateError on every
+          // reconnect, forever, while the composer promised "will send when
+          // WebSocket reconnects". Promote the draft here instead:
+          // `_ensureLiveSessionId` does `session.create` + `_remapSessionId`
+          // for a `local_*` id, which also rewrites this op's own payload.
+          final live = await _ensureLiveSessionId(
+            sid,
+            model: model,
+            provider: provider,
+          );
+          final promoted = _storedByLive[live] ?? live;
+          debugPrint(
+            'SessionSync: promoted stranded offline draft $sid → $promoted',
+          );
+          sid = promoted;
+        }
         final userMsgId = payload['local_user_message_id'] as String?;
         // Replay at the queued user row's real position — a hardcoded 0
         // collides with existing rows 0/1 and scrambles the transcript until
