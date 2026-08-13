@@ -74,8 +74,21 @@ class DemoGatewayHolder {
   /// Starts the demo gateway if it isn't already running, and returns its
   /// base URL (`http://127.0.0.1:<port>`). Calling this while already
   /// running is a cheap no-op that returns the existing URL.
+  ///
+  /// The scripted turn runs at its real ~8-15s pace by default. That is short
+  /// enough that UI automation (tap, swipe, screenshot round-trips) routinely
+  /// misses the streaming window entirely, which makes streaming-only
+  /// behaviour — scroll anchoring above all — effectively unobservable in a
+  /// simulator. `--dart-define=DEMO_SPEED=4` stretches every scripted delay so
+  /// a turn can actually be watched. Release builds never pass it, so the
+  /// shipped pace is unchanged.
+  static const _speedOverride = String.fromEnvironment('DEMO_SPEED');
+
   Future<Uri> ensureRunning() async {
-    final server = _server ??= DemoGatewayServer();
+    final factor = double.tryParse(_speedOverride) ?? 1.0;
+    final server = _server ??= DemoGatewayServer(
+      demoSpeedFactor: factor > 0 ? factor : 1.0,
+    );
     final uri = await server.start();
     _baseUri = uri;
     return uri;
