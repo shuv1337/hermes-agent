@@ -410,5 +410,21 @@
   "couldNotLoadModels": "Modelle konnten nicht geladen werden:\n{detail}",
   "@couldNotLoadModels": {"placeholders": {"detail": {"type": "String"}}},
   "noModelsFromGateway": "Keine Modelle von diesem Gateway.\nDesktop verwendet GET /api/model/options (Sitzungscookies). Konfiguriere Anbieter auf dem Host, wenn die Liste wirklich leer ist.",
-  "notificationsTitle": "Benachrichtigungen"
+  "notificationsTitle": "Benachrichtigungen",
+
+  "artifactOpenTooltip": "{name} öffnen",
+  "@artifactOpenTooltip": {"placeholders": {"name": {"type": "String"}}},
+  "artifactKindMarkdown": "Markdown",
+  "artifactKindHtml": "HTML",
+  "artifactReload": "Neu laden",
+  "artifactNotFound": "Datei nicht gefunden. Sie wurde möglicherweise auf dem Gateway verschoben oder gelöscht.",
+  "artifactAccessDenied": "Der Zugriff auf diese Datei ist nicht erlaubt.",
+  "artifactTooLarge": "Diese Datei ist zu groß für eine Vorschau.",
+  "artifactLoadFailed": "Datei konnte nicht geladen werden.",
+  "artifactEnableJs": "JavaScript aktivieren",
+  "artifactEnableJsWarning": "Standardmäßig aus und wird nie gespeichert — aktiviere dies nur für Dokumente, denen du vertraust.",
+  "artifactOpenLinkTitle": "Link öffnen?",
+  "artifactOpenLinkBody": "Dies öffnet {url} in deinem Browser und verlässt Hermes Go.",
+  "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
+  "artifactOpenLinkAction": "Im Browser öffnen"
 }

@@ -382,5 +382,25 @@
     "placeholders": {"detail": {"type": "String"}}
   },
   "noModelsFromGateway": "No models from this gateway.\nDesktop uses GET /api/model/options (session cookies). Configure providers on the host if the list is truly empty.",
-  "notificationsTitle": "Notifications"
+  "notificationsTitle": "Notifications",
+
+  "artifactOpenTooltip": "Open {name}",
+  "@artifactOpenTooltip": {
+    "placeholders": {"name": {"type": "String"}}
+  },
+  "artifactKindMarkdown": "Markdown",
+  "artifactKindHtml": "HTML",
+  "artifactReload": "Reload",
+  "artifactNotFound": "File not found. It may have been moved or deleted on the gateway.",
+  "artifactAccessDenied": "Access to this file is not allowed.",
+  "artifactTooLarge": "This file is too large to preview here.",
+  "artifactLoadFailed": "Couldn't load this file.",
+  "artifactEnableJs": "Enable JavaScript",
+  "artifactEnableJsWarning": "Off by default, and never remembered — only turn this on for documents you trust.",
+  "artifactOpenLinkTitle": "Open link?",
+  "artifactOpenLinkBody": "This opens {url} in your browser, leaving Hermes Go.",
+  "@artifactOpenLinkBody": {
+    "placeholders": {"url": {"type": "String"}}
+  },
+  "artifactOpenLinkAction": "Open in Browser"
 }

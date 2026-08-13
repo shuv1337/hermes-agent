@@ -410,5 +410,21 @@
   "couldNotLoadModels": "无法加载模型：\n{detail}",
   "@couldNotLoadModels": {"placeholders": {"detail": {"type": "String"}}},
   "noModelsFromGateway": "此网关没有模型。\nDesktop 使用 GET /api/model/options（会话 Cookie）。如果列表确实为空，请在主机上配置提供商。",
-  "notificationsTitle": "通知"
+  "notificationsTitle": "通知",
+
+  "artifactOpenTooltip": "打开 {name}",
+  "@artifactOpenTooltip": {"placeholders": {"name": {"type": "String"}}},
+  "artifactKindMarkdown": "Markdown",
+  "artifactKindHtml": "HTML",
+  "artifactReload": "重新加载",
+  "artifactNotFound": "未找到文件。它可能已在网关上被移动或删除。",
+  "artifactAccessDenied": "不允许访问此文件。",
+  "artifactTooLarge": "此文件过大，无法在此预览。",
+  "artifactLoadFailed": "无法加载此文件。",
+  "artifactEnableJs": "启用 JavaScript",
+  "artifactEnableJsWarning": "默认关闭，且不会被记住 — 仅对你信任的文档启用。",
+  "artifactOpenLinkTitle": "打开链接？",
+  "artifactOpenLinkBody": "这将在浏览器中打开 {url}，并离开 Hermes Go。",
+  "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
+  "artifactOpenLinkAction": "在浏览器中打开"
 }

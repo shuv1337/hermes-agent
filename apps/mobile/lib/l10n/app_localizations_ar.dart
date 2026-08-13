@@ -853,4 +853,49 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get notificationsTitle => 'الإشعارات';
+
+  @override
+  String artifactOpenTooltip(String name) {
+    return 'فتح $name';
+  }
+
+  @override
+  String get artifactKindMarkdown => 'Markdown';
+
+  @override
+  String get artifactKindHtml => 'HTML';
+
+  @override
+  String get artifactReload => 'إعادة التحميل';
+
+  @override
+  String get artifactNotFound =>
+      'الملف غير موجود. ربما تم نقله أو حذفه على البوابة.';
+
+  @override
+  String get artifactAccessDenied => 'الوصول إلى هذا الملف غير مسموح.';
+
+  @override
+  String get artifactTooLarge => 'هذا الملف كبير جدًا للمعاينة هنا.';
+
+  @override
+  String get artifactLoadFailed => 'تعذر تحميل هذا الملف.';
+
+  @override
+  String get artifactEnableJs => 'تفعيل JavaScript';
+
+  @override
+  String get artifactEnableJsWarning =>
+      'معطّل افتراضيًا ولا يُحفظ أبدًا — فعّله فقط للمستندات التي تثق بها.';
+
+  @override
+  String get artifactOpenLinkTitle => 'فتح الرابط؟';
+
+  @override
+  String artifactOpenLinkBody(String url) {
+    return 'سيؤدي هذا إلى فتح $url في متصفحك، مغادرًا Hermes Go.';
+  }
+
+  @override
+  String get artifactOpenLinkAction => 'فتح في المتصفح';
 }

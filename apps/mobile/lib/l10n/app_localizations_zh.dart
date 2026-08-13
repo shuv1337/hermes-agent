@@ -844,4 +844,47 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get notificationsTitle => '通知';
+
+  @override
+  String artifactOpenTooltip(String name) {
+    return '打开 $name';
+  }
+
+  @override
+  String get artifactKindMarkdown => 'Markdown';
+
+  @override
+  String get artifactKindHtml => 'HTML';
+
+  @override
+  String get artifactReload => '重新加载';
+
+  @override
+  String get artifactNotFound => '未找到文件。它可能已在网关上被移动或删除。';
+
+  @override
+  String get artifactAccessDenied => '不允许访问此文件。';
+
+  @override
+  String get artifactTooLarge => '此文件过大，无法在此预览。';
+
+  @override
+  String get artifactLoadFailed => '无法加载此文件。';
+
+  @override
+  String get artifactEnableJs => '启用 JavaScript';
+
+  @override
+  String get artifactEnableJsWarning => '默认关闭，且不会被记住 — 仅对你信任的文档启用。';
+
+  @override
+  String get artifactOpenLinkTitle => '打开链接？';
+
+  @override
+  String artifactOpenLinkBody(String url) {
+    return '这将在浏览器中打开 $url，并离开 Hermes Go。';
+  }
+
+  @override
+  String get artifactOpenLinkAction => '在浏览器中打开';
 }

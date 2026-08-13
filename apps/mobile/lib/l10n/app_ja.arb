@@ -410,5 +410,21 @@
   "couldNotLoadModels": "モデルを読み込めませんでした:\n{detail}",
   "@couldNotLoadModels": {"placeholders": {"detail": {"type": "String"}}},
   "noModelsFromGateway": "このゲートウェイからモデルがありません。\nDesktop は GET /api/model/options（セッション Cookie）を使用します。リストが本当に空の場合はホストでプロバイダーを設定してください。",
-  "notificationsTitle": "通知"
+  "notificationsTitle": "通知",
+
+  "artifactOpenTooltip": "{name} を開く",
+  "@artifactOpenTooltip": {"placeholders": {"name": {"type": "String"}}},
+  "artifactKindMarkdown": "Markdown",
+  "artifactKindHtml": "HTML",
+  "artifactReload": "再読み込み",
+  "artifactNotFound": "ファイルが見つかりません。ゲートウェイ上で移動または削除された可能性があります。",
+  "artifactAccessDenied": "このファイルへのアクセスは許可されていません。",
+  "artifactTooLarge": "このファイルは大きすぎてここではプレビューできません。",
+  "artifactLoadFailed": "このファイルを読み込めませんでした。",
+  "artifactEnableJs": "JavaScriptを有効にする",
+  "artifactEnableJsWarning": "既定でオフで、記憶されません — 信頼できるドキュメントのみで有効にしてください。",
+  "artifactOpenLinkTitle": "リンクを開きますか？",
+  "artifactOpenLinkBody": "Hermes Goを離れてブラウザで{url}を開きます。",
+  "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
+  "artifactOpenLinkAction": "ブラウザで開く"
 }

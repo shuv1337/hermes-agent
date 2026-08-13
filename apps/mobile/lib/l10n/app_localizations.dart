@@ -1617,6 +1617,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Notifications'**
   String get notificationsTitle;
+
+  /// No description provided for @artifactOpenTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Open {name}'**
+  String artifactOpenTooltip(String name);
+
+  /// No description provided for @artifactKindMarkdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Markdown'**
+  String get artifactKindMarkdown;
+
+  /// No description provided for @artifactKindHtml.
+  ///
+  /// In en, this message translates to:
+  /// **'HTML'**
+  String get artifactKindHtml;
+
+  /// No description provided for @artifactReload.
+  ///
+  /// In en, this message translates to:
+  /// **'Reload'**
+  String get artifactReload;
+
+  /// No description provided for @artifactNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'File not found. It may have been moved or deleted on the gateway.'**
+  String get artifactNotFound;
+
+  /// No description provided for @artifactAccessDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Access to this file is not allowed.'**
+  String get artifactAccessDenied;
+
+  /// No description provided for @artifactTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'This file is too large to preview here.'**
+  String get artifactTooLarge;
+
+  /// No description provided for @artifactLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this file.'**
+  String get artifactLoadFailed;
+
+  /// No description provided for @artifactEnableJs.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable JavaScript'**
+  String get artifactEnableJs;
+
+  /// No description provided for @artifactEnableJsWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Off by default, and never remembered — only turn this on for documents you trust.'**
+  String get artifactEnableJsWarning;
+
+  /// No description provided for @artifactOpenLinkTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Open link?'**
+  String get artifactOpenLinkTitle;
+
+  /// No description provided for @artifactOpenLinkBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This opens {url} in your browser, leaving Hermes Go.'**
+  String artifactOpenLinkBody(String url);
+
+  /// No description provided for @artifactOpenLinkAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in Browser'**
+  String get artifactOpenLinkAction;
 }
 
 class _AppLocalizationsDelegate

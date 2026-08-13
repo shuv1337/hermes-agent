@@ -846,4 +846,48 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get notificationsTitle => '通知';
+
+  @override
+  String artifactOpenTooltip(String name) {
+    return '$name を開く';
+  }
+
+  @override
+  String get artifactKindMarkdown => 'Markdown';
+
+  @override
+  String get artifactKindHtml => 'HTML';
+
+  @override
+  String get artifactReload => '再読み込み';
+
+  @override
+  String get artifactNotFound => 'ファイルが見つかりません。ゲートウェイ上で移動または削除された可能性があります。';
+
+  @override
+  String get artifactAccessDenied => 'このファイルへのアクセスは許可されていません。';
+
+  @override
+  String get artifactTooLarge => 'このファイルは大きすぎてここではプレビューできません。';
+
+  @override
+  String get artifactLoadFailed => 'このファイルを読み込めませんでした。';
+
+  @override
+  String get artifactEnableJs => 'JavaScriptを有効にする';
+
+  @override
+  String get artifactEnableJsWarning =>
+      '既定でオフで、記憶されません — 信頼できるドキュメントのみで有効にしてください。';
+
+  @override
+  String get artifactOpenLinkTitle => 'リンクを開きますか？';
+
+  @override
+  String artifactOpenLinkBody(String url) {
+    return 'Hermes Goを離れてブラウザで$urlを開きます。';
+  }
+
+  @override
+  String get artifactOpenLinkAction => 'ブラウザで開く';
 }

@@ -26,7 +26,14 @@ import 'package:hermes_mobile/core/network/gateway_auth.dart';
 ///
 /// Do **not** use API_SERVER `:8642` `/v1/*` shapes for these.
 class DashboardClient {
-  DashboardClient({required this.profile});
+  /// [dio] is a test-only injection point (mirrors `HermesApi`'s
+  /// constructor) — when set, [_ensureDio] returns it directly instead of
+  /// building one from the persistent cookie jar, so tests can exercise
+  /// request/response handling without a real profile/keystore. Named `dio`
+  /// (not `_dio`) so it's a usable public parameter; that mismatch is why
+  /// this can't be an initializing formal.
+  // ignore: prefer_initializing_formals
+  DashboardClient({required this.profile, Dio? dio}) : _dio = dio;
 
   final ConnectionProfile profile;
 
@@ -480,6 +487,115 @@ class DashboardClient {
     );
     return parsed;
   }
+
+  /// Reads an agent-written file for the in-app artifact viewer — Desktop's
+  /// managed-files surface, `GET /api/files/read?path=...`
+  /// (`hermes_cli/web_server.py:2413`). The bytes come back base64-encoded
+  /// inside `data_url`; fetching them here (through the same authenticated
+  /// client as every other dashboard call) means the artifact viewer's
+  /// WebView never has to be pointed at a gateway URL, so session cookies
+  /// never enter untrusted rendered content.
+  ///
+  /// Throws [ManagedFileException] for the three documented failure modes
+  /// (404 missing, 403 sensitive-path block, 413 over the gateway's size
+  /// cap) so callers can show a specific message instead of a generic
+  /// network error.
+  ///
+  /// Deliberately does **not** route through [_throwIfAuth] for 403 the way
+  /// every other method here does: on this endpoint a 403 means
+  /// `_is_sensitive_path` blocked the specific path
+  /// (`hermes_cli/web_server.py`), not an expired session — conflating the
+  /// two would surface a "sign in again" prompt for a request that has
+  /// nothing to do with auth. 401 still goes through the shared auth check.
+  Future<ManagedFileContent> readManagedFile(String path) async {
+    lastError = null;
+    final dio = await _ensureDio();
+    final res = await dio.get<dynamic>(
+      '/api/files/read',
+      queryParameters: {'path': path},
+    );
+    if (res.statusCode == 401) _throwIfAuth(res);
+    final status = res.statusCode ?? 0;
+    if (status == 404) {
+      lastError = 'readManagedFile: file not found';
+      throw ManagedFileException(ManagedFileErrorKind.notFound, lastError!);
+    }
+    if (status == 403) {
+      lastError = 'readManagedFile: access denied';
+      throw ManagedFileException(ManagedFileErrorKind.forbidden, lastError!);
+    }
+    if (status == 413) {
+      lastError = 'readManagedFile: file is too large';
+      throw ManagedFileException(ManagedFileErrorKind.tooLarge, lastError!);
+    }
+    if (status != 200 || res.data is! Map) {
+      lastError = 'readManagedFile HTTP $status: ${res.data}';
+      throw DioException(
+        requestOptions: res.requestOptions,
+        response: res,
+        message: lastError,
+      );
+    }
+    final body = (res.data as Map).cast<String, dynamic>();
+    return ManagedFileContent.fromJson(body);
+  }
+}
+
+/// Result of `GET /api/files/read` — bytes always arrive base64-encoded
+/// inside `dataUrl` (`data:<mime>;base64,<...>`), per
+/// `hermes_cli/web_server.py:2413`.
+class ManagedFileContent {
+  const ManagedFileContent({
+    required this.name,
+    required this.path,
+    required this.size,
+    required this.mimeType,
+    required this.dataUrl,
+  });
+
+  final String name;
+  final String path;
+  final int size;
+  final String mimeType;
+  final String dataUrl;
+
+  factory ManagedFileContent.fromJson(Map<String, dynamic> json) {
+    final rawSize = json['size'];
+    final size = rawSize is int
+        ? rawSize
+        : int.tryParse('${rawSize ?? ''}') ?? 0;
+    return ManagedFileContent(
+      name: '${json['name'] ?? ''}',
+      path: '${json['path'] ?? ''}',
+      size: size,
+      mimeType: '${json['mime_type'] ?? 'application/octet-stream'}',
+      dataUrl: '${json['data_url'] ?? ''}',
+    );
+  }
+
+  /// Decodes the base64 payload as UTF-8 text. Returns an empty string
+  /// (rather than throwing) on a missing/malformed data URL, so callers can
+  /// show an error state instead of crashing on a hostile or truncated
+  /// response.
+  String decodeText() {
+    final comma = dataUrl.indexOf(',');
+    if (comma < 0) return '';
+    try {
+      return utf8.decode(base64.decode(dataUrl.substring(comma + 1)));
+    } catch (_) {
+      return '';
+    }
+  }
+}
+
+enum ManagedFileErrorKind { notFound, forbidden, tooLarge }
+
+class ManagedFileException implements Exception {
+  ManagedFileException(this.kind, this.message);
+  final ManagedFileErrorKind kind;
+  final String message;
+  @override
+  String toString() => message;
 }
 
 /// Dashboard / Desktop model picker payload.

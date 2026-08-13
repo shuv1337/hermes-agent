@@ -410,5 +410,21 @@
   "couldNotLoadModels": "No se pudieron cargar los modelos:\n{detail}",
   "@couldNotLoadModels": {"placeholders": {"detail": {"type": "String"}}},
   "noModelsFromGateway": "No hay modelos de este gateway.\nDesktop usa GET /api/model/options (cookies de sesión). Configura proveedores en el host si la lista está realmente vacía.",
-  "notificationsTitle": "Notificaciones"
+  "notificationsTitle": "Notificaciones",
+
+  "artifactOpenTooltip": "Abrir {name}",
+  "@artifactOpenTooltip": {"placeholders": {"name": {"type": "String"}}},
+  "artifactKindMarkdown": "Markdown",
+  "artifactKindHtml": "HTML",
+  "artifactReload": "Recargar",
+  "artifactNotFound": "Archivo no encontrado. Puede que se haya movido o eliminado en el gateway.",
+  "artifactAccessDenied": "No se permite el acceso a este archivo.",
+  "artifactTooLarge": "Este archivo es demasiado grande para previsualizarlo aquí.",
+  "artifactLoadFailed": "No se pudo cargar este archivo.",
+  "artifactEnableJs": "Activar JavaScript",
+  "artifactEnableJsWarning": "Desactivado de forma predeterminada y nunca se recuerda — actívalo solo para documentos de confianza.",
+  "artifactOpenLinkTitle": "¿Abrir enlace?",
+  "artifactOpenLinkBody": "Esto abrirá {url} en tu navegador, saliendo de Hermes Go.",
+  "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
+  "artifactOpenLinkAction": "Abrir en el navegador"
 }

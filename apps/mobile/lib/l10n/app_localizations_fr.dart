@@ -854,4 +854,50 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get notificationsTitle => 'Notifications';
+
+  @override
+  String artifactOpenTooltip(String name) {
+    return 'Ouvrir $name';
+  }
+
+  @override
+  String get artifactKindMarkdown => 'Markdown';
+
+  @override
+  String get artifactKindHtml => 'HTML';
+
+  @override
+  String get artifactReload => 'Recharger';
+
+  @override
+  String get artifactNotFound =>
+      'Fichier introuvable. Il a peut-être été déplacé ou supprimé sur la passerelle.';
+
+  @override
+  String get artifactAccessDenied => 'L’accès à ce fichier n’est pas autorisé.';
+
+  @override
+  String get artifactTooLarge =>
+      'Ce fichier est trop volumineux pour être prévisualisé ici.';
+
+  @override
+  String get artifactLoadFailed => 'Impossible de charger ce fichier.';
+
+  @override
+  String get artifactEnableJs => 'Activer JavaScript';
+
+  @override
+  String get artifactEnableJsWarning =>
+      'Désactivé par défaut et jamais mémorisé — n’activez ceci que pour des documents de confiance.';
+
+  @override
+  String get artifactOpenLinkTitle => 'Ouvrir le lien ?';
+
+  @override
+  String artifactOpenLinkBody(String url) {
+    return 'Cela ouvrira $url dans votre navigateur, en quittant Hermes Go.';
+  }
+
+  @override
+  String get artifactOpenLinkAction => 'Ouvrir dans le navigateur';
 }

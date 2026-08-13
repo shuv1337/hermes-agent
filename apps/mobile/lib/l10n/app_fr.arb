@@ -410,5 +410,21 @@
   "couldNotLoadModels": "Impossible de charger les modèles :\n{detail}",
   "@couldNotLoadModels": {"placeholders": {"detail": {"type": "String"}}},
   "noModelsFromGateway": "Aucun modèle sur cette passerelle.\nDesktop utilise GET /api/model/options (cookies de session). Configurez les fournisseurs sur l’hôte si la liste est vraiment vide.",
-  "notificationsTitle": "Notifications"
+  "notificationsTitle": "Notifications",
+
+  "artifactOpenTooltip": "Ouvrir {name}",
+  "@artifactOpenTooltip": {"placeholders": {"name": {"type": "String"}}},
+  "artifactKindMarkdown": "Markdown",
+  "artifactKindHtml": "HTML",
+  "artifactReload": "Recharger",
+  "artifactNotFound": "Fichier introuvable. Il a peut-être été déplacé ou supprimé sur la passerelle.",
+  "artifactAccessDenied": "L’accès à ce fichier n’est pas autorisé.",
+  "artifactTooLarge": "Ce fichier est trop volumineux pour être prévisualisé ici.",
+  "artifactLoadFailed": "Impossible de charger ce fichier.",
+  "artifactEnableJs": "Activer JavaScript",
+  "artifactEnableJsWarning": "Désactivé par défaut et jamais mémorisé — n’activez ceci que pour des documents de confiance.",
+  "artifactOpenLinkTitle": "Ouvrir le lien ?",
+  "artifactOpenLinkBody": "Cela ouvrira {url} dans votre navigateur, en quittant Hermes Go.",
+  "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
+  "artifactOpenLinkAction": "Ouvrir dans le navigateur"
 }

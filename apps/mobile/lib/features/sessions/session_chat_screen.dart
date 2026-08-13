@@ -16,6 +16,8 @@ import 'package:hermes_mobile/core/sync/completion_errors.dart';
 import 'package:hermes_mobile/core/sync/session_sync_repository.dart';
 import 'package:hermes_mobile/core/sync/session_touch.dart';
 import 'package:hermes_mobile/core/theme/hermes_skins.dart';
+import 'package:hermes_mobile/features/artifacts/artifact_detection.dart';
+import 'package:hermes_mobile/features/artifacts/artifact_viewer_screen.dart';
 import 'package:hermes_mobile/features/models/model_picker_sheet.dart';
 import 'package:hermes_mobile/features/skills/skills_picker_sheet.dart';
 import 'package:hermes_mobile/features/sessions/chat_composer.dart';
@@ -2011,6 +2013,7 @@ class _MessageBubble extends StatelessWidget {
     final isUser = message.isUser;
     final isTool = message.isTool;
     final isSystem = message.isSystem;
+    final artifacts = detectArtifactsInMessage(message);
     // Slash/system status — strip `slash:/cmd` prefix for a cleaner label.
     var body = message.content?.trim() ?? '';
     String? slashLabel;
@@ -2131,6 +2134,17 @@ class _MessageBubble extends StatelessWidget {
                   // Selection fights long-press; copy lives in the sheet.
                   selectable: false,
                 ),
+              if (artifacts.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: artifacts
+                        .map((a) => _ArtifactChip(artifact: a))
+                        .toList(),
+                  ),
+                ),
             ],
           ),
         ),
@@ -2181,6 +2195,81 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tappable row for a `.md`/`.html` file the agent produced this turn (see
+/// `detectArtifactsInMessage`) — opens [ArtifactViewerScreen]. Sits inside
+/// the tool/assistant bubble, below the body, in the same
+/// Material+InkWell idiom as the rest of this screen's tappable rows
+/// (e.g. `_JumpToLatestButton`, the bubble itself).
+class _ArtifactChip extends StatelessWidget {
+  const _ArtifactChip({required this.artifact});
+
+  final DetectedArtifact artifact;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final icon = artifact.kind == ArtifactFileKind.markdown
+        ? Icons.description_outlined
+        : Icons.language_outlined;
+    final kindLabel = artifact.kind == ArtifactFileKind.markdown
+        ? context.l10n.artifactKindMarkdown
+        : context.l10n.artifactKindHtml;
+
+    return Tooltip(
+      message: context.l10n.artifactOpenTooltip(artifact.name),
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () {
+            hermesHaptic(HapticIntent.selection);
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ArtifactViewerScreen(artifact: artifact),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: theme.colorScheme.secondary),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        artifact.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        kindLabel,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.6,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
