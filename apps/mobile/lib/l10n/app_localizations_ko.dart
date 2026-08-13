@@ -77,6 +77,26 @@ class AppLocalizationsKo extends AppLocalizations {
       'Removes the saved gateway from this phone. Host agents are not affected.';
 
   @override
+  String get exitSampleWorkspace => '샘플 작업 공간 종료';
+
+  @override
+  String get exitSampleWorkspaceSubtitle => '샌드박스를 중지하고 이 휴대폰에서 제거합니다';
+
+  @override
+  String get exitSampleWorkspaceConfirmTitle => '샘플 작업 공간을 종료하시겠습니까?';
+
+  @override
+  String get exitSampleWorkspaceConfirmBody =>
+      '내장된 샘플 게이트웨이를 중지하고 이 휴대폰에서 세션을 지웁니다. 기기 밖으로 전송되는 데이터는 없습니다.';
+
+  @override
+  String get sampleWorkspaceAboutLine =>
+      '샘플 작업 공간 — 게이트웨이를 설정하지 않고 Hermes Go를 사용해 보려면 demo.hermes.go(사용자 demo, 비밀번호 demo)에 연결하세요.';
+
+  @override
+  String get sampleWorkspaceBadge => '샘플';
+
+  @override
   String get cancel => '취소';
 
   @override

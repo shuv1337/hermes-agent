@@ -77,6 +77,28 @@ class AppLocalizationsFr extends AppLocalizations {
       'Removes the saved gateway from this phone. Host agents are not affected.';
 
   @override
+  String get exitSampleWorkspace => 'Quitter l\'espace d\'exemple';
+
+  @override
+  String get exitSampleWorkspaceSubtitle =>
+      'Arrêter le bac à sable et le supprimer de ce téléphone';
+
+  @override
+  String get exitSampleWorkspaceConfirmTitle =>
+      'Quitter l\'espace d\'exemple ?';
+
+  @override
+  String get exitSampleWorkspaceConfirmBody =>
+      'Arrête la passerelle d\'exemple intégrée et efface ses sessions de ce téléphone. Rien ne quitte l\'appareil.';
+
+  @override
+  String get sampleWorkspaceAboutLine =>
+      'Espace d\'exemple — connectez-vous à demo.hermes.go (utilisateur demo, mot de passe demo) pour essayer Hermes Go sans configurer de passerelle.';
+
+  @override
+  String get sampleWorkspaceBadge => 'Exemple';
+
+  @override
   String get cancel => 'Annuler';
 
   @override

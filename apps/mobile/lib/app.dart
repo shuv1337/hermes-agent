@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:hermes_mobile/core/demo/demo_mode.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/core/services/app_lifecycle.dart';
 import 'package:hermes_mobile/core/services/result_notifier.dart';
@@ -150,6 +151,7 @@ class _RootGateState extends ConsumerState<_RootGate>
       case AppLifecycleState.resumed:
         // Re-assert notification permission path after returning.
         unawaited(ResultNotifier.instance.init(requestPermission: false));
+        unawaited(_resumeDemoIfNeeded());
         BackgroundSync.run(reason: 'resume').then((_) {
           if (!mounted) return;
           ref.read(sessionsProvider.notifier).refresh();
@@ -158,6 +160,22 @@ class _RootGateState extends ConsumerState<_RootGate>
       case AppLifecycleState.detached:
         break;
     }
+  }
+
+  /// iOS may reclaim the demo server's loopback socket while the app is
+  /// backgrounded. If the active profile is the demo sandbox and its server
+  /// died, re-boot it and rewrite the stale `baseUrl` *before* the realtime
+  /// layer (`GatewayShell`'s own resume handler) tries to reconnect —
+  /// otherwise it reconnects a dead port and chat looks offline until a
+  /// manual reconnect. Force-reconnecting here covers that race even though
+  /// `GatewayShell` fires its own resume hook independently.
+  Future<void> _resumeDemoIfNeeded() async {
+    final profile = ref.read(connectionProfileProvider).value;
+    if (profile == null || !isDemoProfileId(profile.id)) return;
+    if (DemoGatewayHolder.instance.isRunning) return;
+    await ref.read(gatewayBookProvider.notifier).rehydrateDemoIfNeeded();
+    if (!mounted) return;
+    unawaited(ref.read(gatewayRealtimeProvider)?.ensureLive(force: true));
   }
 
   @override

@@ -238,6 +238,42 @@ abstract class AppLocalizations {
   /// **'Removes the saved gateway from this phone. Host agents are not affected.'**
   String get disconnectConfirmBody;
 
+  /// No description provided for @exitSampleWorkspace.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit sample workspace'**
+  String get exitSampleWorkspace;
+
+  /// No description provided for @exitSampleWorkspaceSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop the sandbox and remove it from this phone'**
+  String get exitSampleWorkspaceSubtitle;
+
+  /// No description provided for @exitSampleWorkspaceConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit sample workspace?'**
+  String get exitSampleWorkspaceConfirmTitle;
+
+  /// No description provided for @exitSampleWorkspaceConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Stops the built-in sample gateway and clears its sessions from this phone. Nothing leaves the device.'**
+  String get exitSampleWorkspaceConfirmBody;
+
+  /// No description provided for @sampleWorkspaceAboutLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Sample workspace — connect to demo.hermes.go (user demo, password demo) to try Hermes Go without setting up a gateway.'**
+  String get sampleWorkspaceAboutLine;
+
+  /// No description provided for @sampleWorkspaceBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Sample'**
+  String get sampleWorkspaceBadge;
+
   /// No description provided for @cancel.
   ///
   /// In en, this message translates to:

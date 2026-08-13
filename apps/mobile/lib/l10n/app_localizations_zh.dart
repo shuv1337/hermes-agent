@@ -77,6 +77,25 @@ class AppLocalizationsZh extends AppLocalizations {
       'Removes the saved gateway from this phone. Host agents are not affected.';
 
   @override
+  String get exitSampleWorkspace => '退出示例工作区';
+
+  @override
+  String get exitSampleWorkspaceSubtitle => '停止沙盒并从此手机中移除';
+
+  @override
+  String get exitSampleWorkspaceConfirmTitle => '退出示例工作区?';
+
+  @override
+  String get exitSampleWorkspaceConfirmBody => '停止内置示例网关并清除此手机上的会话。数据不会离开设备。';
+
+  @override
+  String get sampleWorkspaceAboutLine =>
+      '示例工作区 — 连接到 demo.hermes.go(用户名 demo,密码 demo)即可在无需配置网关的情况下试用 Hermes Go。';
+
+  @override
+  String get sampleWorkspaceBadge => '示例';
+
+  @override
   String get cancel => '取消';
 
   @override

@@ -77,6 +77,28 @@ class AppLocalizationsAr extends AppLocalizations {
       'Removes the saved gateway from this phone. Host agents are not affected.';
 
   @override
+  String get exitSampleWorkspace => 'الخروج من مساحة العمل التجريبية';
+
+  @override
+  String get exitSampleWorkspaceSubtitle =>
+      'إيقاف بيئة التجربة وإزالتها من هذا الهاتف';
+
+  @override
+  String get exitSampleWorkspaceConfirmTitle =>
+      'الخروج من مساحة العمل التجريبية؟';
+
+  @override
+  String get exitSampleWorkspaceConfirmBody =>
+      'يوقف بوابة العينة المدمجة ويمسح جلساتها من هذا الهاتف. لا تُرسل أي بيانات خارج الجهاز.';
+
+  @override
+  String get sampleWorkspaceAboutLine =>
+      'مساحة عمل تجريبية — اتصل بـ demo.hermes.go (المستخدم demo، كلمة المرور demo) لتجربة Hermes Go بدون إعداد بوابة.';
+
+  @override
+  String get sampleWorkspaceBadge => 'تجريبي';
+
+  @override
   String get cancel => 'إلغاء';
 
   @override

@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:hermes_mobile/core/demo/demo_mode.dart';
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/network/gateway_auth.dart';
 import 'package:hermes_mobile/core/providers.dart';
@@ -48,6 +49,11 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   GatewayAuthProbe? _probe;
   String? _providerName;
 
+  /// True when the probed/saved URL is the reserved demo-gateway host —
+  /// stamps [demoProfileId] on the saved profile instead of a random id.
+  /// Set inside [_probeUrl], before any network call.
+  bool _isDemo = false;
+
   @override
   void initState() {
     super.initState();
@@ -82,7 +88,24 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       _probe = null;
     });
 
-    final baseUrl = _urlCtrl.text.trim().replaceAll(RegExp(r'/+$'), '');
+    var baseUrl = _urlCtrl.text.trim().replaceAll(RegExp(r'/+$'), '');
+    // Reserved demo host — boot the in-process sandbox and dial its loopback
+    // URL instead. `demo.hermes.go` is not expected to resolve and must
+    // never reach DNS or a real network call.
+    _isDemo = isDemoGatewayUrl(baseUrl);
+    if (_isDemo) {
+      try {
+        final demoUri = await DemoGatewayHolder.instance.ensureRunning();
+        baseUrl = demoUri.toString().replaceAll(RegExp(r'/+$'), '');
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _error = e.toString();
+          _busy = false;
+        });
+        return;
+      }
+    }
     try {
       final probe = await GatewayAuthClient.probe(baseUrl);
       if (!mounted) return;
@@ -131,10 +154,12 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         .read(connectionActionsProvider)
         .save(
           ConnectionProfile(
-            id: store.newGatewayId(),
+            id: _isDemo ? demoProfileId : store.newGatewayId(),
             baseUrl: probe.baseUrl,
             authMode: 'open',
-            label: Uri.tryParse(probe.baseUrl)?.host,
+            label: _isDemo
+                ? 'Hermes Go sample'
+                : Uri.tryParse(probe.baseUrl)?.host,
             displayName: probe.version,
           ),
         );
@@ -165,8 +190,12 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
 
     try {
       final store = ref.read(connectionStoreProvider);
-      // Reauth keeps the same gateway id (cookie jar path + pins).
-      final gatewayId = widget.existingProfile?.id ?? store.newGatewayId();
+      // Reauth keeps the same gateway id (cookie jar path + pins). A fresh
+      // demo-host connect always stamps the sentinel id so Settings can
+      // recognize + tear down the sandbox later.
+      final gatewayId = _isDemo
+          ? demoProfileId
+          : (widget.existingProfile?.id ?? store.newGatewayId());
       final jar = await GatewayAuthClient.persistentJar(gatewayId);
       await jar.deleteAll(); // start clean after expiry/kick
       final auth = GatewayAuthClient(baseUrl: probe.baseUrl, cookieJar: jar);
@@ -190,7 +219,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
               authMode: 'session',
               username: username,
               provider: provider,
-              label: existing?.label ?? Uri.tryParse(probe.baseUrl)?.host,
+              label: _isDemo
+                  ? 'Hermes Go sample'
+                  : (existing?.label ?? Uri.tryParse(probe.baseUrl)?.host),
               displayName: probe.version ?? existing?.displayName,
             ),
           );
@@ -312,6 +343,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       validator: (v) {
                         final t = v?.trim() ?? '';
                         if (t.isEmpty) return context.l10n.required;
+                        // The reserved demo host is typed bare (no scheme),
+                        // which fails the normal gateway-URL shape checks.
+                        if (isDemoGatewayUrl(t)) return null;
                         return GatewayAuthClient.validateBaseUrl(t);
                       },
                       onChanged: (_) {

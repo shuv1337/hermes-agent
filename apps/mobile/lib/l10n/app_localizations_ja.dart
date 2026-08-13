@@ -77,6 +77,26 @@ class AppLocalizationsJa extends AppLocalizations {
       'Removes the saved gateway from this phone. Host agents are not affected.';
 
   @override
+  String get exitSampleWorkspace => 'サンプルワークスペースを終了';
+
+  @override
+  String get exitSampleWorkspaceSubtitle => 'サンドボックスを停止してこの端末から削除します';
+
+  @override
+  String get exitSampleWorkspaceConfirmTitle => 'サンプルワークスペースを終了しますか?';
+
+  @override
+  String get exitSampleWorkspaceConfirmBody =>
+      '内蔵のサンプルゲートウェイを停止し、この端末からセッションを消去します。データは端末の外に送信されません。';
+
+  @override
+  String get sampleWorkspaceAboutLine =>
+      'サンプルワークスペース — ゲートウェイを用意せずに Hermes Go を試すには、demo.hermes.go に接続してください(ユーザー名 demo、パスワード demo)。';
+
+  @override
+  String get sampleWorkspaceBadge => 'サンプル';
+
+  @override
   String get cancel => 'キャンセル';
 
   @override

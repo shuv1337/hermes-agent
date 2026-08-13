@@ -77,6 +77,28 @@ class AppLocalizationsDe extends AppLocalizations {
       'Removes the saved gateway from this phone. Host agents are not affected.';
 
   @override
+  String get exitSampleWorkspace => 'Beispielarbeitsbereich verlassen';
+
+  @override
+  String get exitSampleWorkspaceSubtitle =>
+      'Sandbox stoppen und vom Telefon entfernen';
+
+  @override
+  String get exitSampleWorkspaceConfirmTitle =>
+      'Beispielarbeitsbereich verlassen?';
+
+  @override
+  String get exitSampleWorkspaceConfirmBody =>
+      'Stoppt das integrierte Beispiel-Gateway und löscht dessen Sitzungen von diesem Telefon. Es verlässt nichts das Gerät.';
+
+  @override
+  String get sampleWorkspaceAboutLine =>
+      'Beispielarbeitsbereich — verbinde dich mit demo.hermes.go (Benutzer demo, Passwort demo), um Hermes Go ohne Gateway-Einrichtung auszuprobieren.';
+
+  @override
+  String get sampleWorkspaceBadge => 'Beispiel';
+
+  @override
   String get cancel => 'Abbrechen';
 
   @override

@@ -77,6 +77,27 @@ class AppLocalizationsPt extends AppLocalizations {
       'Removes the saved gateway from this phone. Host agents are not affected.';
 
   @override
+  String get exitSampleWorkspace => 'Sair do espaço de amostra';
+
+  @override
+  String get exitSampleWorkspaceSubtitle =>
+      'Parar o sandbox e removê-lo deste telefone';
+
+  @override
+  String get exitSampleWorkspaceConfirmTitle => 'Sair do espaço de amostra?';
+
+  @override
+  String get exitSampleWorkspaceConfirmBody =>
+      'Interrompe o gateway de amostra integrado e limpa suas sessões deste telefone. Nada sai do dispositivo.';
+
+  @override
+  String get sampleWorkspaceAboutLine =>
+      'Espaço de amostra — conecte-se a demo.hermes.go (usuário demo, senha demo) para experimentar o Hermes Go sem configurar um gateway.';
+
+  @override
+  String get sampleWorkspaceBadge => 'Amostra';
+
+  @override
   String get cancel => 'Cancelar';
 
   @override

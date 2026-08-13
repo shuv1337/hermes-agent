@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:hermes_mobile/core/demo/demo_mode.dart';
 import 'package:hermes_mobile/core/network/gateway_auth.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/core/services/feedback.dart';
@@ -152,36 +153,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 subtitle: Text(context.l10n.refreshSignInSubtitle),
                 onTap: () => _showReloginSheet(context, ref),
               ),
-            ListTile(
-              leading: Icon(Icons.link_off, color: theme.colorScheme.error),
-              title: Text(
-                context.l10n.disconnect,
-                style: TextStyle(color: theme.colorScheme.error),
+            if (isDemoProfileId(profile.id))
+              ListTile(
+                leading: Icon(
+                  Icons.exit_to_app,
+                  color: theme.colorScheme.error,
+                ),
+                title: Text(
+                  context.l10n.exitSampleWorkspace,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+                subtitle: Text(context.l10n.exitSampleWorkspaceSubtitle),
+                onTap: () => _exitSampleWorkspace(context),
+              )
+            else
+              ListTile(
+                leading: Icon(Icons.link_off, color: theme.colorScheme.error),
+                title: Text(
+                  context.l10n.disconnect,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+                subtitle: Text(context.l10n.disconnectSubtitle),
+                onTap: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: Text(context.l10n.disconnectConfirmTitle),
+                      content: Text(context.l10n.disconnectConfirmBody),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: Text(context.l10n.cancel),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: Text(context.l10n.disconnect),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    await ref.read(connectionActionsProvider).disconnect();
+                  }
+                },
               ),
-              subtitle: Text(context.l10n.disconnectSubtitle),
-              onTap: () async {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: Text(context.l10n.disconnectConfirmTitle),
-                    content: Text(context.l10n.disconnectConfirmBody),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: Text(context.l10n.cancel),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: Text(context.l10n.disconnect),
-                      ),
-                    ],
-                  ),
-                );
-                if (ok == true) {
-                  await ref.read(connectionActionsProvider).disconnect();
-                }
-              },
-            ),
           ],
           const Divider(),
           ListTile(
@@ -279,7 +294,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             subtitle: Text(context.l10n.commandCheatSheetSubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const CommandCheatSheetScreen()),
+              MaterialPageRoute(
+                builder: (_) => const CommandCheatSheetScreen(),
+              ),
             ),
           ),
           ListTile(
@@ -295,6 +312,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(context.l10n.aboutBody),
+                const SizedBox(height: 8),
+                // Discloses the sample workspace to every user (not just App
+                // Review) — see APP_REVIEW_NOTES.md. This line + the review
+                // notes are the only two places the demo host is mentioned;
+                // the connect screen never advertises it.
+                Text(
+                  context.l10n.sampleWorkspaceAboutLine,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 const SizedBox(height: 8),
                 Semantics(
                   container: true,
@@ -322,6 +348,45 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _mask(String key) {
     if (key.length <= 8) return '••••••••';
     return '${key.substring(0, 4)}…${key.substring(key.length - 4)}';
+  }
+
+  /// Tears down the sample workspace and returns to the connect screen
+  /// clean: stops the in-process server, wipes its cached sessions/jobs/
+  /// skills, and removes the saved profile via the same path a normal
+  /// gateway removal uses (which also clears its cookie jar).
+  Future<void> _exitSampleWorkspace(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.l10n.exitSampleWorkspaceConfirmTitle),
+        content: Text(context.l10n.exitSampleWorkspaceConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(context.l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(context.l10n.exitSampleWorkspace),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(gatewayRealtimeProvider)?.stop();
+    } catch (e) {
+      debugPrint('exitSampleWorkspace: realtime stop failed: $e');
+    }
+    await DemoGatewayHolder.instance.shutdown();
+    try {
+      await ref.read(appDatabaseProvider).clearGatewayData(demoProfileId);
+    } catch (e) {
+      debugPrint('exitSampleWorkspace: clear local data failed: $e');
+    }
+    // Same removal path as any other saved gateway — also clears the
+    // gateway's persistent cookie jar.
+    await ref.read(gatewayBookProvider.notifier).remove(demoProfileId);
   }
 }
 

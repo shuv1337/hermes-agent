@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'package:hermes_mobile/core/demo/demo_mode.dart';
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/network/dashboard_client.dart';
 import 'package:hermes_mobile/core/providers.dart';
@@ -202,6 +203,9 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
     // Sticky pick, or gateway default from /api/model/options.
     final model = ref.watch(resolvedModelLabelProvider);
     final active = _active;
+    final isDemo = isDemoProfileId(
+      ref.watch(connectionProfileProvider).value?.id ?? '',
+    );
 
     // One-shot seed + mark open chat read. Defer provider writes to the next
     // frame so we never invalidate/read-map during this build (Riverpod 3
@@ -272,6 +276,24 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
+          // Tasteful, unobtrusive — a reviewer/user must never mistake a
+          // scripted sample reply for their real agent. Not shown anywhere
+          // else in the app chrome; the connect screen stays silent about
+          // the demo host (see APP_REVIEW_NOTES.md).
+          if (isDemo)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Center(
+                child: Chip(
+                  label: Text(context.l10n.sampleWorkspaceBadge),
+                  labelStyle: Theme.of(context).textTheme.labelSmall,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  side: BorderSide.none,
+                ),
+              ),
+            ),
           if (active != null)
             IconButton(
               tooltip: context.l10n.newChat,

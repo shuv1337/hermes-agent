@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:hermes_mobile/core/config/reasoning_effort.dart';
 import 'package:hermes_mobile/core/db/app_database.dart';
+import 'package:hermes_mobile/core/demo/demo_mode.dart';
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/network/connection_store.dart';
 import 'package:hermes_mobile/core/network/dashboard_client.dart'
@@ -49,11 +50,49 @@ class GatewayBookNotifier extends AsyncNotifier<GatewayBook> {
     debugPrint(
       'Startup: gateway profile ready in ${elapsed.elapsedMilliseconds}ms',
     );
-    return book;
+    // The demo gateway binds a fresh ephemeral port every process launch, so
+    // a previously-saved demo profile's baseUrl is dead by the time the app
+    // reopens. Boot the sandbox and rewrite the stored URL *before* this
+    // provider resolves — every client (dashboard/WS/session-sync) is built
+    // off `connectionProfileProvider`, which only sees this book once build()
+    // returns, so nothing gets constructed against the stale port.
+    return _rehydrateDemoInBook(book);
   }
 
   Future<void> reload() async {
     state = AsyncData(await ref.read(connectionStoreProvider).readBook());
+  }
+
+  /// Boots the demo sandbox (if needed) and rewrites the resolved demo
+  /// profile's `baseUrl` in place. No-op for a non-demo active profile, or a
+  /// demo profile whose stored URL is already current.
+  ///
+  /// Public so app-resume (iOS may reclaim the loopback socket while
+  /// backgrounded) can re-run the same fixup — see
+  /// `_RootGateState.didChangeAppLifecycleState` in `app.dart`.
+  Future<void> rehydrateDemoIfNeeded() async {
+    final current = state.value;
+    if (current == null) return;
+    final next = await _rehydrateDemoInBook(current);
+    if (!identical(next, current)) {
+      state = AsyncData(next);
+    }
+  }
+
+  Future<GatewayBook> _rehydrateDemoInBook(GatewayBook book) async {
+    final resolved = book.resolved;
+    if (resolved == null || !isDemoProfileId(resolved.id)) return book;
+    try {
+      final uri = await DemoGatewayHolder.instance.ensureRunning();
+      final freshBaseUrl = uri.toString();
+      if (resolved.baseUrl == freshBaseUrl) return book;
+      return await ref
+          .read(connectionStoreProvider)
+          .upsertGateway(resolved.copyWith(baseUrl: freshBaseUrl));
+    } catch (e) {
+      debugPrint('GatewayBookNotifier: demo rehydrate failed: $e');
+      return book;
+    }
   }
 
   Future<void> saveAsPrimary(ConnectionProfile profile) async {
