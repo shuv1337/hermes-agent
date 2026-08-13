@@ -93,6 +93,86 @@ bool isUnansweredUserAt(
   return true;
 }
 
+/// True when [a] and [b] would *render* identically — same length, and no
+/// pair differs in any field `_MessageBubble` actually displays (id, role,
+/// content, tool name, finish reason, and the synthetic-marker tag).
+///
+/// Used to short-circuit a background resync that changed nothing on
+/// screen (see [SessionChatScreenState._replaceMessages]): the debounced
+/// tool-event resync fires on almost every tool call in a turn, and without
+/// this it would call `standby()`/`setState()` that often for content that
+/// never actually changed.
+///
+/// Deliberately conservative — `toolCalls` (`dynamic`, not safely
+/// comparable by value) and `timestamp`/`tokenCount`/`reasoning` (not
+/// rendered) are not compared, so this can return `false` for a resync that
+/// is in fact a no-op. That only costs a missed optimization, never
+/// correctness: the caller falls through to the normal bracket-and-setState
+/// path either way.
+bool sameRenderedTranscript(List<HermesMessage> a, List<HermesMessage> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    final x = a[i];
+    final y = b[i];
+    if (x.id != y.id ||
+        x.role != y.role ||
+        x.content != y.content ||
+        x.toolName != y.toolName ||
+        x.finishReason != y.finishReason ||
+        x.displayKind != y.displayKind) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// How a *wholesale* replacement of the transcript — a background
+/// resync/reload, or the server-confirmed transcript landing at the end of
+/// a turn — should be signalled to `ChatScrollObserver.standby()`, given
+/// only the old and new list lengths.
+///
+/// This is a different situation from a single insert / remove /
+/// generative-growth mutation (which each map onto one `standby()` call
+/// directly — see the call sites in [SessionChatScreenState]): a wholesale
+/// replacement can grow, shrink, or edit content in place all within one
+/// assignment (dedup, an optimistic id swapped for its server id, a
+/// truncate-and-resend, …), so there is no single obviously-correct
+/// `standby()` call. This classifies by net length change against the
+/// package's own primitives (read from the published source, not guessed):
+///
+/// * Net growth → [WholesaleReplaceMode.insertAtHead]. Every source that
+///   can grow `_messages` appends to the end of the chronological list,
+///   which is visual index 0 in this `reverse: true` list. That is
+///   `ChatScrollObserverHandleMode.normal`'s built-in assumption (the
+///   package's own doc comment on that mode: "Regular mode ... Such as
+///   inserting or deleting messages."), so callers signal this with
+///   `standby(changeCount: newLength - oldLength)`.
+/// * Net shrink → [WholesaleReplaceMode.remove]. *Which* message(s)
+///   disappeared isn't knowable from a count alone (dedup collapsing
+///   entries, a message getting merged into another, …), so callers signal
+///   this with `standby(isRemove: true)` — the package's own convention for
+///   exactly this ambiguity: `ChatObserverScrollPhysicsMixin` skips the
+///   position-preserving delta entirely whenever `observer.isRemove` is
+///   true and falls back to the platform's default clamping, rather than
+///   risk anchoring to the wrong item.
+/// * Same length → [WholesaleReplaceMode.none]. Almost always an in-place
+///   content swap (e.g. an optimistic id becoming its server id with
+///   identical text), which moves no item's `layoutOffset` — there is
+///   nothing to correct. It is also not a case for `generative` mode: that
+///   mode assumes a single, already-known item is the one growing, which
+///   isn't true for an arbitrary same-length replacement.
+enum WholesaleReplaceMode { insertAtHead, remove, none }
+
+WholesaleReplaceMode classifyWholesaleReplace({
+  required int oldLength,
+  required int newLength,
+}) {
+  if (newLength > oldLength) return WholesaleReplaceMode.insertAtHead;
+  if (newLength < oldLength) return WholesaleReplaceMode.remove;
+  return WholesaleReplaceMode.none;
+}
+
 /// Full-screen chat for an existing session (pushed from drawer / deep link).
 class SessionChatScreen extends ConsumerStatefulWidget {
   const SessionChatScreen({
@@ -156,6 +236,57 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   /// mutation is signalled (insert / remove / generative growth).
   late final ChatScrollObserver _chatObserver;
 
+  /// Every site in this class that assigns `_messages`, classified. The
+  /// list always renders live (there is no frozen snapshot to hide a
+  /// mutation behind any more — see [_chatObserver]), so *every* assignment
+  /// is a candidate for shoving a reader who has scrolled away, regardless
+  /// of whether `_sending` happens to be true at that instant.
+  ///
+  /// * **Bracketed with `standby()`** — a real content change that isn't
+  ///   provably safe another way:
+  ///   * [_appendSystem] — single insert, `standby(changeCount: 1)`.
+  ///   * [_deleteMessage] — single removal, `standby(isRemove: true)`.
+  ///   * `onAssistantDelta` in [_send] — the streaming bubble growing in
+  ///     place, `standby(mode: generative)`.
+  ///   * [_applyReloadedMessages] and all four assignments in [_load] — a
+  ///     background resync/reload can grow, shrink, or edit content in
+  ///     place all in one replacement, so these route through
+  ///     [_replaceMessages], which skips the whole thing when the merged
+  ///     list would render identically to what's on screen (via
+  ///     [sameRenderedTranscript] — this is the fix for the debounced
+  ///     `tool.start`/`tool.complete` resync in `gateway_realtime.dart`
+  ///     landing while a reader is scrolled away mid-turn: it used to reach
+  ///     `_applyReloadedMessages` with no bracket at all) and otherwise
+  ///     classifies the net change via [classifyWholesaleReplace].
+  ///   * The final `_messages = next;` in [_send] (end of turn) — the
+  ///     server-confirmed transcript replacing the optimistic one. Not
+  ///     covered by the send-time re-pin below (that already ran, and the
+  ///     user may have scrolled away again during the stream that
+  ///     followed), so it goes through [_standbyForWholesaleReplace]
+  ///     directly (the `setState` around it is unconditional regardless —
+  ///     `_sending`/`_toolStatus`/etc. always change — so there's no
+  ///     `setState` to skip the way [_replaceMessages] skips one).
+  /// * **Safe because an explicit re-pin follows in the same synchronous
+  ///   stretch of code** (the mutating `setState` and the subsequent
+  ///   `unawaited(_scrollToBottom())` both run before this build ever
+  ///   yields to the frame scheduler, so the first frame that lays out the
+  ///   mutated list already has the scroll-to-bottom animation in flight —
+  ///   this is also always a *direct result of the user's own action*
+  ///   [send / retry / edit / run a slash command], so an animated jump to
+  ///   the bottom is expected, not a surprise):
+  ///   * The optimistic user-bubble append + dedupe in [_send].
+  ///   * The optimistic append in [_runSlash].
+  ///   * The optimistic truncate-and-replace in [_retryFrom] and
+  ///     [_editUserMessage] (both call into [_send], which re-pins).
+  /// * **Position-neutral — no `standby()`, no re-pin needed:**
+  ///   * [didUpdateWidget]'s session-id-remap branch — same ids, same
+  ///     content, same count, only `sessionId` changes; nothing
+  ///     `_MessageBubble` renders differs, so no item's `layoutOffset`
+  ///     moves.
+  ///   * [didUpdateWidget]'s session-switch branch — resets to `const []`
+  ///     for a genuinely different, unrelated session and forces
+  ///     `_pinnedToBottom = true`; there is no old reading position that
+  ///     belongs to the new session to preserve.
   List<HermesMessage> _messages = const [];
   List<PendingImage> _attachments = const [];
   bool _loading = true;
@@ -425,6 +556,11 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
       _runtimeHydration = _hydrateSessionRuntime();
       unawaited(_runtimeHydration);
       if (wasSending && keep != null) {
+        // No standby() bracket — every field copied here is what
+        // `_MessageBubble` renders *except* `sessionId`, so this is a
+        // position-neutral remap (see the classification comment above the
+        // `_messages` field): same ids, same content, same count, nothing
+        // on screen moves.
         _messages = [
           for (final m in keep)
             HermesMessage(
@@ -444,9 +580,10 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
         // Background refresh only — do not clear the chat.
         unawaited(_softReloadMessages());
       } else {
+        // No standby() bracket — a genuinely different session's transcript
+        // is unrelated content, so there is no old reading position that
+        // belongs to it. Pinned to its bottom explicitly.
         _messages = const [];
-        // A genuinely different session's transcript is unrelated content —
-        // open the new session pinned to its bottom.
         _pinnedToBottom = true;
         _load();
       }
@@ -523,12 +660,52 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
       }
     }
     if (!mounted || _sending) return;
+    _replaceMessages(
+      _mergePreserveInflight(incoming),
+      extra: (_queuedHint && !stillQueued)
+          ? () {
+              _queuedHint = false;
+              if (_error == L10n.current.savedWaitingWs) _error = null;
+            }
+          : null,
+    );
+  }
+
+  /// Tells [_chatObserver] a wholesale replacement of `_messages` is about
+  /// to land, via [classifyWholesaleReplace]. See the classification
+  /// comment above the `_messages` field for why this exists and where it
+  /// is (and isn't) used.
+  void _standbyForWholesaleReplace(List<HermesMessage> incoming) {
+    switch (classifyWholesaleReplace(
+      oldLength: _messages.length,
+      newLength: incoming.length,
+    )) {
+      case WholesaleReplaceMode.insertAtHead:
+        _chatObserver.standby(changeCount: incoming.length - _messages.length);
+      case WholesaleReplaceMode.remove:
+        _chatObserver.standby(isRemove: true);
+      case WholesaleReplaceMode.none:
+        break;
+    }
+  }
+
+  /// Replaces `_messages` the way every background resync/reload needs to:
+  /// skip the whole thing — no `standby()`, no `setState()` — when
+  /// [incoming] would render identically to what's already on screen (see
+  /// [sameRenderedTranscript]; this matters because the debounced
+  /// `tool.start`/`tool.complete` resync in `gateway_realtime.dart` fires on
+  /// almost every tool call in a turn), and otherwise briefs
+  /// [_chatObserver] via [_standbyForWholesaleReplace] before the swap so a
+  /// reader scrolled away isn't shoved by it landing. [extra] runs inside
+  /// the same `setState` for callers that also flip another field alongside
+  /// the transcript.
+  void _replaceMessages(List<HermesMessage> incoming, {VoidCallback? extra}) {
+    final changed = !sameRenderedTranscript(_messages, incoming);
+    if (!changed && extra == null) return;
+    if (changed) _standbyForWholesaleReplace(incoming);
     setState(() {
-      _messages = _mergePreserveInflight(incoming);
-      if (_queuedHint && !stillQueued) {
-        _queuedHint = false;
-        if (_error == L10n.current.savedWaitingWs) _error = null;
-      }
+      _messages = incoming;
+      extra?.call();
     });
   }
 
@@ -585,26 +762,25 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     final local = await sync.loadMessagesLocal(_session.id);
     if (!mounted) return;
     // Initial auto-send can race this load — never clobber an in-flight turn.
+    // `_loading` must flip regardless of whether the transcript itself
+    // changed, so `extra` always runs — see [_replaceMessages].
     if (_sending) {
-      setState(() {
-        _loading = false;
-        _messages = _mergePreserveInflight(local);
-      });
+      _replaceMessages(
+        _mergePreserveInflight(local),
+        extra: () => _loading = false,
+      );
       return;
     }
-    setState(() {
-      _messages = local;
-      _loading = false;
-    });
+    _replaceMessages(local, extra: () => _loading = false);
 
     try {
       final merged = await sync.syncMessages(_session.id);
       if (!mounted) return;
       if (_sending) {
-        setState(() => _messages = _mergePreserveInflight(merged));
+        _replaceMessages(_mergePreserveInflight(merged));
         return;
       }
-      setState(() => _messages = merged);
+      _replaceMessages(merged);
     } catch (e) {
       if (!mounted) return;
       if (_messages.isEmpty) {
@@ -788,7 +964,10 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     await _waitUntilIdle();
     if (!mounted) return;
 
-    // Optimistic truncate: keep messages before this user turn.
+    // Optimistic truncate: keep messages before this user turn. No
+    // standby() bracket needed — the [_send] call right below always
+    // re-pins to the bottom before this build yields a frame (see the
+    // classification comment above the `_messages` field).
     final userIdx = _messages.indexWhere((m) => m.id == user.id);
     if (userIdx >= 0) {
       setState(() {
@@ -853,6 +1032,8 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
 
     await _waitUntilIdle();
 
+    // No standby() bracket needed here either — same reasoning as
+    // [_retryFrom]'s truncate: the [_send] call right below re-pins.
     final userIdx = _messages.indexWhere((m) => m.id == message.id);
     if (userIdx >= 0) {
       setState(() {
@@ -1188,6 +1369,9 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     final provider = _sessionProvider;
 
     hermesHaptic(HapticIntent.submit);
+    // No standby() bracket — this optimistic append is immediately followed
+    // by the re-pin below, in the same synchronous stretch of code (see the
+    // classification comment above the `_messages` field).
     setState(() {
       _composer.clear();
       _sending = true;
@@ -1315,6 +1499,9 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
     hermesHaptic(HapticIntent.submit);
     hermesHaptic(HapticIntent.streamStart);
 
+    // No standby() bracket — the optimistic append + dedupe below is
+    // immediately followed by the re-pin further down (see the
+    // classification comment above the `_messages` field).
     setState(() {
       if (text == null) _composer.clear();
       _sending = true;
@@ -1441,51 +1628,66 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
       FeedbackService.instance.streamDone();
       _maybeSpeakAssistant(result.messages);
     }
+    // Prefer server transcript, but keep optimistic user/stream if sync was
+    // empty. Computed outside `setState` (pure — reads `_messages` but
+    // doesn't touch it) so [_standbyForWholesaleReplace] can brief the
+    // observer with the *old* `_messages.length` before the swap below.
+    var next = dedupeAdjacentUserMessages(result.messages);
+    final hasUser = next.any((m) => m.isUser);
+    if (next.isEmpty || !hasUser) {
+      final preserved = [
+        for (final m in _messages)
+          if (m.isUser || (m.isAssistant && m.id.startsWith('stream_'))) m,
+      ];
+      next = dedupeAdjacentUserMessages([
+        ...preserved,
+        for (final m in next)
+          if (!preserved.any(
+            (p) =>
+                p.id == m.id ||
+                (p.isUser &&
+                    m.isUser &&
+                    (p.content ?? '').trim() == (m.content ?? '').trim()) ||
+                (p.isAssistant &&
+                    m.isAssistant &&
+                    (p.content ?? '').trim() == (m.content ?? '').trim()),
+          ))
+            m,
+      ]);
+    }
+
+    // Desktop parity: API failures must appear as an assistant bubble, e.g.
+    // "API call failed after 3 retries: Connection error."
+    String? resolvedError;
+    if (result.error != null && result.error!.trim().isNotEmpty) {
+      final userFacing = formatTurnErrorForUser(result.error);
+      next = ensureErrorAssistantMessage(
+        next,
+        sessionId: _session.id,
+        errorText: userFacing,
+      );
+      // Prefer the in-transcript banner; keep a short strip only if missing.
+      resolvedError = transcriptHasErrorAssistant(next, errorText: userFacing)
+          ? null
+          : userFacing;
+    } else if (result.queued) {
+      resolvedError = L10n.current.savedWaitingWs;
+    } else {
+      resolvedError = null;
+    }
+
+    // End-of-turn wholesale replace: not covered by the send-time re-pin
+    // (that already ran, and the user may have scrolled away again during
+    // the stream that followed), so it needs its own bracket. The `setState`
+    // below is unconditional regardless of whether the transcript itself
+    // changed (`_sending`/`_toolStatus`/etc. always do), so this calls
+    // [_standbyForWholesaleReplace] directly rather than going through
+    // [_replaceMessages] (which would also decide whether to skip a
+    // `setState` this call site can't skip anyway).
+    _standbyForWholesaleReplace(next);
+
     setState(() {
-      // Prefer server transcript, but keep optimistic user/stream if sync was empty.
-      var next = dedupeAdjacentUserMessages(result.messages);
-      final hasUser = next.any((m) => m.isUser);
-      if (next.isEmpty || !hasUser) {
-        final preserved = [
-          for (final m in _messages)
-            if (m.isUser || (m.isAssistant && m.id.startsWith('stream_'))) m,
-        ];
-        next = dedupeAdjacentUserMessages([
-          ...preserved,
-          for (final m in next)
-            if (!preserved.any(
-              (p) =>
-                  p.id == m.id ||
-                  (p.isUser &&
-                      m.isUser &&
-                      (p.content ?? '').trim() == (m.content ?? '').trim()) ||
-                  (p.isAssistant &&
-                      m.isAssistant &&
-                      (p.content ?? '').trim() == (m.content ?? '').trim()),
-            ))
-              m,
-        ]);
-      }
-
-      // Desktop parity: API failures must appear as an assistant bubble, e.g.
-      // "API call failed after 3 retries: Connection error."
-      if (result.error != null && result.error!.trim().isNotEmpty) {
-        final userFacing = formatTurnErrorForUser(result.error);
-        next = ensureErrorAssistantMessage(
-          next,
-          sessionId: _session.id,
-          errorText: userFacing,
-        );
-        // Prefer the in-transcript banner; keep a short strip only if missing.
-        _error = transcriptHasErrorAssistant(next, errorText: userFacing)
-            ? null
-            : userFacing;
-      } else if (result.queued) {
-        _error = L10n.current.savedWaitingWs;
-      } else {
-        _error = null;
-      }
-
+      _error = resolvedError;
       _messages = next;
       _sending = false;
       _toolStatus = null;

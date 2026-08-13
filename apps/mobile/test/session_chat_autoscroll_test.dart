@@ -42,8 +42,14 @@ import 'package:hermes_mobile/features/sessions/session_chat_screen.dart';
 ///
 /// What remains as this screen's *own* pure decision surface — and what this
 /// file covers — is [isPinnedToBottom] (pin/unpin threshold for the
-/// jump-to-latest affordance) and [isUnansweredUserAt] (the "No response
-/// yet" + Resend/Edit chip logic).
+/// jump-to-latest affordance), [isUnansweredUserAt] (the "No response yet" +
+/// Resend/Edit chip logic), [sameRenderedTranscript] and
+/// [classifyWholesaleReplace] (whether/how a background resync — reload
+/// button, initial `_load`, or the debounced `tool.start`/`tool.complete`
+/// resync in `gateway_realtime.dart` — needs to brief `ChatScrollObserver`
+/// before it lands; see the classification comment above the `_messages`
+/// field in `session_chat_screen.dart` for the full audit of every
+/// `_messages` mutation site).
 void main() {
   group('isPinnedToBottom', () {
     test('exactly at the newest-message anchor (offset 0) is pinned', () {
@@ -165,6 +171,189 @@ void main() {
       expect(isUnansweredUserAt([marker], 0, sending: false), isFalse);
       final messages = [user('u1'), marker, assistant('a1', 'reply')];
       expect(isUnansweredUserAt(messages, 0, sending: false), isFalse);
+    });
+  });
+
+  group('sameRenderedTranscript', () {
+    HermesMessage msg(
+      String id, {
+      String role = 'assistant',
+      String? content,
+      String? toolName,
+      String? finishReason,
+      String? displayKind,
+      String? timestamp,
+      int? tokenCount,
+      String? reasoning,
+    }) => HermesMessage(
+      id: id,
+      sessionId: 's1',
+      role: role,
+      content: content,
+      toolName: toolName,
+      finishReason: finishReason,
+      displayKind: displayKind,
+      timestamp: timestamp,
+      tokenCount: tokenCount,
+      reasoning: reasoning,
+    );
+
+    test('identical list instance is trivially the same', () {
+      final list = [msg('a', content: 'x')];
+      expect(sameRenderedTranscript(list, list), isTrue);
+    });
+
+    test('equal-by-value copies are the same', () {
+      expect(
+        sameRenderedTranscript(
+          [msg('a', content: 'x')],
+          [msg('a', content: 'x')],
+        ),
+        isTrue,
+      );
+    });
+
+    test('different lengths are never the same', () {
+      expect(
+        sameRenderedTranscript(
+          [msg('a', content: 'x')],
+          [msg('a', content: 'x'), msg('b', content: 'y')],
+        ),
+        isFalse,
+      );
+    });
+
+    test('an id swap (optimistic → server id) is a difference', () {
+      expect(
+        sameRenderedTranscript(
+          [msg('local_user_1', content: 'hi')],
+          [msg('srv_9', content: 'hi')],
+        ),
+        isFalse,
+      );
+    });
+
+    test('a content difference is caught', () {
+      expect(
+        sameRenderedTranscript(
+          [msg('a', content: 'The')],
+          [msg('a', content: 'The parser reads')],
+        ),
+        isFalse,
+      );
+    });
+
+    test('role, tool name, finish reason, and display kind are all '
+        'compared', () {
+      expect(
+        sameRenderedTranscript(
+          [msg('a', role: 'user')],
+          [msg('a', role: 'assistant')],
+        ),
+        isFalse,
+      );
+      expect(
+        sameRenderedTranscript(
+          [msg('a', toolName: 'bash')],
+          [msg('a', toolName: 'python')],
+        ),
+        isFalse,
+      );
+      expect(
+        sameRenderedTranscript(
+          [msg('a', finishReason: 'stop')],
+          [msg('a', finishReason: 'error')],
+        ),
+        isFalse,
+      );
+      expect(
+        sameRenderedTranscript(
+          [msg('a', displayKind: null)],
+          [msg('a', displayKind: 'model_switch')],
+        ),
+        isFalse,
+      );
+    });
+
+    test('REGRESSION: fields the bubble does not render — timestamp, token '
+        'count, reasoning — are deliberately NOT compared, so a resync that '
+        'only refreshes those still counts as unchanged (a missed '
+        'optimization would be a correctness bug the other way around, but '
+        'this direction only costs a skipped setState)', () {
+      expect(
+        sameRenderedTranscript(
+          [
+            msg(
+              'a',
+              content: 'x',
+              timestamp: '2020-01-01T00:00:00Z',
+              tokenCount: 1,
+              reasoning: 'r1',
+            ),
+          ],
+          [
+            msg(
+              'a',
+              content: 'x',
+              timestamp: '2020-06-01T00:00:00Z',
+              tokenCount: 99,
+              reasoning: 'r2',
+            ),
+          ],
+        ),
+        isTrue,
+      );
+    });
+
+    test('null content is not confused with empty content', () {
+      final withNull = HermesMessage(id: 'a', sessionId: 's1', role: 'user');
+      final withEmpty = HermesMessage(
+        id: 'a',
+        sessionId: 's1',
+        role: 'user',
+        content: '',
+      );
+      expect(sameRenderedTranscript([withNull], [withEmpty]), isFalse);
+    });
+
+    test('empty on both sides', () {
+      expect(sameRenderedTranscript(const [], const []), isTrue);
+    });
+  });
+
+  group('classifyWholesaleReplace', () {
+    test('growth reports insertAtHead — every source that grows _messages '
+        'appends at the chronological end, which is visual index 0 in the '
+        'reversed list', () {
+      expect(
+        classifyWholesaleReplace(oldLength: 3, newLength: 4),
+        WholesaleReplaceMode.insertAtHead,
+      );
+      expect(
+        classifyWholesaleReplace(oldLength: 0, newLength: 12),
+        WholesaleReplaceMode.insertAtHead,
+      );
+    });
+
+    test('shrinkage reports remove — which message(s) vanished is not '
+        'knowable from a count alone, so this defers to the platform '
+        "default rather than guess", () {
+      expect(
+        classifyWholesaleReplace(oldLength: 5, newLength: 2),
+        WholesaleReplaceMode.remove,
+      );
+    });
+
+    test('an unchanged length reports none — nothing has a new '
+        'layoutOffset to correct', () {
+      expect(
+        classifyWholesaleReplace(oldLength: 4, newLength: 4),
+        WholesaleReplaceMode.none,
+      );
+      expect(
+        classifyWholesaleReplace(oldLength: 0, newLength: 0),
+        WholesaleReplaceMode.none,
+      );
     });
   });
 }
