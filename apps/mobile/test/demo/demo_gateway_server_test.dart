@@ -178,7 +178,10 @@ void main() {
 
       final sessions = await dashboard.listSessions();
       expect(sessions, isNotEmpty);
-      expect(sessions.length, 5); // the five seeded fixture sessions
+      // Four seeded fixture sessions — the "API latency review" session is
+      // deliberately excluded from the seeded set while the artifact viewer
+      // it demonstrates is paused for v1 (see kArtifactViewerEnabled).
+      expect(sessions.length, 4);
 
       final messages = await dashboard.listMessages(sessions.first.id);
       expect(messages, isNotEmpty);
@@ -232,7 +235,9 @@ void main() {
       expect(client.isOpen, isTrue);
 
       final listed = await client.request('session.list', {'limit': 100});
-      expect((listed['sessions'] as List), hasLength(5));
+      // Four seeded fixture sessions — see the count assertion above for why
+      // it isn't five.
+      expect((listed['sessions'] as List), hasLength(4));
 
       final created = await client.request('session.create', {
         'title': 'WS integration test',

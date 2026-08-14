@@ -60,23 +60,15 @@ You are now in a fully working sample workspace. Suggested tour:
 2. Send a message in any session and watch the reply stream in, including a
    tool call (e.g. ask it to "search for the latest news" or similar) —
    reasoning, tool-start/tool-complete, and streamed text all render live.
-3. Open the **"API latency review"** session (top of the drawer) and scroll
-   to where the agent writes its results. Two file chips appear in the
-   transcript — `latency-review.md` and `latency-report.html`. Tap either
-   one to open it in the built-in file viewer: the `.md` file renders as
-   formatted text, the `.html` file renders as a small report. Both files
-   are read from the sample workspace's own on-device gateway; the viewer
-   loads them with JavaScript disabled and blocks any outbound request the
-   file might make.
-4. Start a new chat from the drawer ("New chat") and send a first message.
-5. Open the model picker (from the chat composer or new-chat screen) and
+3. Start a new chat from the drawer ("New chat") and send a first message.
+4. Open the model picker (from the chat composer or new-chat screen) and
    switch models/providers.
-6. Open Settings → the slash-command cheat sheet, to browse every
+5. Open Settings → the slash-command cheat sheet, to browse every
    `/command` the app supports.
-7. Open the **Jobs** tab, and pause/resume one of the seeded cron jobs.
-8. Open the skills picker (from the chat composer's "+"/skills entry) to
+6. Open the **Jobs** tab, and pause/resume one of the seeded cron jobs.
+7. Open the skills picker (from the chat composer's "+"/skills entry) to
    browse the seeded skill catalog.
-9. In Settings → About, note the one-line disclosure describing this sample
+8. In Settings → About, note the one-line disclosure describing this sample
    workspace — this confirms it is a documented, always-available feature,
    not a hidden reviewer-only path (see below).
 
@@ -90,9 +82,7 @@ app can be fully reviewed without the reviewer standing up a server:
 - The gateway it talks to is a small in-process HTTP + WebSocket server
   (real transport, real cookie-based auth, real JSON-RPC) serving **scripted**
   data — seeded sessions, an agent script that streams believable
-  reasoning/tool-call/text events, seeded jobs, skills, slash commands, and
-  two agent-written files (a Markdown write-up and an HTML report) that the
-  in-app file viewer opens.
+  reasoning/tool-call/text events, seeded jobs, skills, and slash commands.
 - Nothing about it is reviewer-only or hidden. The hostname `demo.hermes.go`
   is a reserved, documented entry point: any user can type it into the same
   "Gateway base URL" field and sign in with `demo` / `demo` to try the app

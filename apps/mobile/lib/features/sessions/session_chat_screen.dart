@@ -21,6 +21,7 @@ import 'package:hermes_mobile/core/sync/session_sync_repository.dart';
 import 'package:hermes_mobile/core/sync/session_touch.dart';
 import 'package:hermes_mobile/core/theme/hermes_skins.dart';
 import 'package:hermes_mobile/features/artifacts/artifact_detection.dart';
+import 'package:hermes_mobile/features/artifacts/artifact_viewer_flags.dart';
 import 'package:hermes_mobile/features/artifacts/artifact_viewer_screen.dart';
 import 'package:hermes_mobile/features/models/model_picker_sheet.dart';
 import 'package:hermes_mobile/features/skills/skills_picker_sheet.dart';
@@ -357,7 +358,13 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   /// transcript themselves. Streaming replaces the list on every token, but
   /// the previous index is fed back in so unchanged tool results are reused
   /// rather than re-decoded.
+  ///
+  /// Gated by [kArtifactViewerEnabled]: with the viewer paused for v1, no
+  /// chip can ever render, so there is nothing for this index to feed —
+  /// bail out before scanning the transcript at all rather than build an
+  /// index nobody reads.
   SessionArtifactPaths _knownArtifactPaths(List<HermesMessage> messages) {
+    if (!kArtifactViewerEnabled) return SessionArtifactPaths.empty;
     if (identical(_artifactPathsSource, messages)) return _artifactPaths;
     _artifactPathsSource = messages;
     _artifactPaths = SessionArtifactPaths.fromMessages(
@@ -2263,10 +2270,14 @@ class _MessageBubble extends StatelessWidget {
     final isUser = message.isUser;
     final isTool = message.isTool;
     final isSystem = message.isSystem;
-    final artifacts = detectArtifactsInMessage(
-      message,
-      known: knownArtifactPaths,
-    );
+    // Gate: the artifact viewer is paused for v1 (see
+    // kArtifactViewerEnabled's doc comment in artifact_viewer_flags.dart —
+    // one line to flip when it comes back). This is the chip's single entry
+    // point: with it off, `artifacts` is always empty, so the `Wrap` below
+    // never builds and no `_ArtifactChip` is ever pushed.
+    final artifacts = kArtifactViewerEnabled
+        ? detectArtifactsInMessage(message, known: knownArtifactPaths)
+        : const <DetectedArtifact>[];
     // Slash/system status — strip `slash:/cmd` prefix for a cleaner label.
     var body = message.content?.trim() ?? '';
     String? slashLabel;

@@ -1,7 +1,11 @@
 // The demo workspace's artifacts, end to end.
 //
-// Two halves, and both have to hold for the feature to be visible to an App
-// Review reviewer:
+// The in-app artifact viewer is paused for v1 (see `kArtifactViewerEnabled`
+// in `lib/features/artifacts/artifact_viewer_flags.dart`), so the session
+// this suite exercises is no longer part of `DemoFixtures.buildSessions` —
+// see `DemoFixtures.latencyReviewSessionForTests`, which builds the exact
+// same seed data directly so this suite still holds the feature's two halves
+// green, ready for re-enabling:
 //
 //  1. The seeded transcript must produce artifact chips — checked against the
 //     *real* `detectArtifactsInMessage`, imported here rather than
@@ -76,9 +80,7 @@ void main() {
 
   group('seeded artifact session', () {
     final now = DateTime.now();
-    final session = DemoFixtures.buildSessions(
-      now,
-    ).firstWhere((s) => s.id == 'demo-latency-review');
+    final session = DemoFixtures.latencyReviewSessionForTests(now);
 
     /// The seeded messages as the app sees them — through the same
     /// `HermesMessage.fromJson` the wire response is parsed with, so the test
@@ -92,9 +94,10 @@ void main() {
       for (final m in parsed()) ...detectArtifactsInMessage(m),
     ];
 
-    test('is the most recent session, so it opens first in the drawer', () {
+    test('is paused for v1 — not part of the seeded session list, so its chips '
+        'are unreachable from the drawer (see kArtifactViewerEnabled)', () {
       final sessions = DemoFixtures.buildSessions(now);
-      expect(sessions.first.id, 'demo-latency-review');
+      expect(sessions.any((s) => s.id == 'demo-latency-review'), isFalse);
     });
 
     test('the real detector finds both artifacts in the transcript', () {

@@ -411,7 +411,15 @@ class DemoFixtures {
 
   static List<DemoSession> buildSessions(DateTime now) {
     return [
-      _latencyReviewSession(now),
+      // `_latencyReviewSession` is deliberately NOT seeded here — it exists
+      // solely to demonstrate the in-app artifact viewer, which is paused
+      // for v1 (see `kArtifactViewerEnabled` in
+      // `lib/features/artifacts/artifact_viewer_flags.dart`). The builder
+      // itself is untouched below, and reachable via
+      // [latencyReviewSessionForTests], so `test/demo/demo_artifacts_test
+      // .dart` keeps exercising the real detection/serving path against
+      // real seed data. Re-add `_latencyReviewSession(now)` as the first
+      // entry here when the viewer comes back.
       _paymentsWebhookSession(now),
       _researchDigestSession(now),
       _flakyCiSession(now),
@@ -419,16 +427,25 @@ class DemoFixtures {
     ];
   }
 
+  /// Test-only accessor for [_latencyReviewSession] — see the comment in
+  /// [buildSessions] for why the session it builds is not part of the
+  /// seeded set while the artifact viewer is paused.
+  static DemoSession latencyReviewSessionForTests(DateTime now) =>
+      _latencyReviewSession(now);
+
   static String _iso(DateTime t) => t.toUtc().toIso8601String();
 
   /// The session that produces the two openable artifacts.
   ///
-  /// This is the *only* seeded session whose transcript contains a file the
-  /// app can open in the artifact viewer, and it exists specifically so that
-  /// feature is discoverable: an App Review reviewer (or anyone trying the
-  /// sandbox) sees a chip in the transcript, taps it, and the file renders.
-  /// Ordered first in [buildSessions] so it is the most recent session, and
-  /// therefore the one at the top of the drawer.
+  /// This is the *only* session whose transcript contains a file the app can
+  /// open in the artifact viewer, and it exists specifically so that feature
+  /// is discoverable: an App Review reviewer (or anyone trying the sandbox)
+  /// sees a chip in the transcript, taps it, and the file renders. **Not
+  /// currently in [buildSessions]** — the artifact viewer is paused for v1
+  /// (see `kArtifactViewerEnabled`), so this builder is only reached via
+  /// [latencyReviewSessionForTests] for now. When the viewer returns, put
+  /// this back first in [buildSessions] so it is the most recent session,
+  /// and therefore the one at the top of the drawer.
   ///
   /// The tool messages here are shaped to satisfy the *real*
   /// `detectArtifactsInMessage` (`lib/features/artifacts/
