@@ -1,113 +1,144 @@
-# App Review Notes — Hermes Go
+# App Review Notes for Hermes Go
 
-Copy-pasteable notes for App Store Connect → App Review Information → Notes.
+Two paste blocks. No em dashes anywhere, because App Store Connect mangles
+them. The Notes block is kept under the 4000 character limit of the App
+Review Information field.
 
-## 1. There is no VPN in this app
+---
 
-Hermes Go has no VPN functionality of any kind:
+## BLOCK A: paste into App Review Information, then Notes
 
-- It does not use `NetworkExtension`, `NEVPNManager`, or `NETunnelProvider`.
-- It requests no VPN entitlement and bundles no tunneling library (no
-  WireGuard, no OpenVPN, no proprietary tunnel code).
-- The app's only network operations are ordinary HTTPS/HTTP requests and a
-  single WebSocket connection to a gateway address **the user supplies**, and
-  standard local-network access to reach that gateway on the user's own LAN
-  (governed by `NSLocalNetworkUsageDescription`, iOS's local-network
-  permission prompt).
+<!-- BEGIN NOTES BLOCK -->
+DEMO ACCESS (no server required)
 
-We believe the automated analysis flagged this app because the word "VPN"
-appears in user-facing text. Every occurrence is **user guidance about the
-user's own network**, never a feature we ship. The complete list:
+Hermes Go is a client for a Hermes agent gateway that the user runs on their
+own computer, in the same way an SSH client or a NAS app talks to a server the
+user runs. Reviewers do not need to set one up. A sample workspace is built
+into the app.
 
-1. `NSLocalNetworkUsageDescription` — "Hermes Go connects to your Hermes agent
-   gateway on the local network or VPN."
-2. Three connection-status strings shown when the user's own gateway is
-   unreachable or is being reached over plain HTTP:
-   - "Auto-reconnect gave up. Tap Reconnect (or check VPN / host)."
-   - "Cannot reach the gateway. Check VPN/Tailscale and host power."
-   - "Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything
-     public."
-3. Our developer documentation (`README.md`, `DESIGN.md`), recommending that a
-   user who wants to reach their self-hosted gateway from outside their home
-   network do so over a private network rather than a port-forward.
-
-All of these describe networking the **user** may already have configured —
-typically **Tailscale**, a third-party product that we do not bundle, link
-against, install, configure, or control. This is the same pattern as any SSH
-client or NAS app documenting "you can reach this over your own VPN mesh if
-you want to." The app has no awareness of whether such software is present.
-
-No data is collected via VPN because there is no VPN. Hermes Go does not
-operate any server, does not proxy traffic, and does not have access to
-network traffic outside the HTTP/WebSocket requests it makes directly to the
-gateway address the user typed in.
-
-## 2. How to review this app (sample workspace — no server required)
-
-Reviewers do not need to stand up a Hermes gateway. A sample workspace is
-built into the app:
-
+To sign in:
 1. Launch the app.
-2. On the connect screen, in **Gateway base URL**, enter: `demo.hermes.go`
-3. Tap **Continue**.
-4. Sign in with username `demo`, password `demo`.
-5. Tap **Sign In**.
+2. On the connect screen, in "Gateway base URL", enter: demo.hermes.go
+3. Tap Continue.
+4. Username: demo
+5. Password: demo
+6. Tap Sign In.
 
-You are now in a fully working sample workspace. Suggested tour:
-
-1. Open one of the seeded chat sessions from the drawer (tap the menu icon,
-   top-left) to see existing conversation history.
+Suggested tour:
+1. Open a seeded chat session from the drawer (menu icon, top left) to see
+   existing conversation history.
 2. Send a message in any session and watch the reply stream in, including a
-   tool call (e.g. ask it to "search for the latest news" or similar) —
-   reasoning, tool-start/tool-complete, and streamed text all render live.
+   tool call. Try "search for the latest news". Reasoning, tool start, tool
+   finish and streamed text all render live.
 3. Start a new chat from the drawer ("New chat") and send a first message.
-4. Open the model picker (from the chat composer or new-chat screen) and
-   switch models/providers.
-5. Open Settings → the slash-command cheat sheet, to browse every
-   `/command` the app supports.
-6. Open the **Jobs** tab, and pause/resume one of the seeded cron jobs.
-7. Open the skills picker (from the chat composer's "+"/skills entry) to
-   browse the seeded skill catalog.
-8. In Settings → About, note the one-line disclosure describing this sample
-   workspace — this confirms it is a documented, always-available feature,
-   not a hidden reviewer-only path (see below).
+4. Open the model picker from the chat composer and switch models or
+   providers.
+5. Open Settings, then the slash command cheat sheet, to browse every
+   /command the app supports.
+6. Open the Jobs tab and pause or resume one of the seeded cron jobs.
+7. Open the skills picker from the composer's "+" entry to browse the seeded
+   skill catalog.
+8. Open Settings, then About, and note the one line describing this sample
+   workspace.
 
-## 3. What the sample workspace is
+WHAT THE SAMPLE WORKSPACE IS
 
-The sample workspace is an **offline sandbox bundled in the app**, so the
-app can be fully reviewed without the reviewer standing up a server:
+An offline sandbox bundled in the app, so the app can be fully reviewed
+without the reviewer standing up a server.
 
-- It runs entirely **on-device**, bound to `127.0.0.1` (loopback) on an
-  ephemeral port. No network calls leave the device.
-- The gateway it talks to is a small in-process HTTP + WebSocket server
-  (real transport, real cookie-based auth, real JSON-RPC) serving **scripted**
-  data — seeded sessions, an agent script that streams believable
-  reasoning/tool-call/text events, seeded jobs, skills, and slash commands.
-- Nothing about it is reviewer-only or hidden. The hostname `demo.hermes.go`
-  is a reserved, documented entry point: any user can type it into the same
-  "Gateway base URL" field and sign in with `demo` / `demo` to try the app
-  before configuring a real gateway. It is documented in **Settings → About**
-  with the line: "Sample workspace — connect to demo.hermes.go (user demo,
-  password demo) to try Hermes Go without setting up a gateway." The connect
-  screen itself shows no special button, banner, or hint for it — it behaves
-  identically for every user who happens to type that host, with no
-  reviewer-detection of any kind.
-- A small "Sample" chip appears in the chat app bar while connected to it, so
-  a user can never mistake a scripted reply for a real agent.
-- "Exit sample workspace" in Settings tears it down (stops the local server,
-  clears its cached data) and returns to the connect screen.
+It runs entirely on device, bound to 127.0.0.1 (loopback) on an ephemeral
+port. No network calls leave the device. It is a small in-process HTTP and
+WebSocket server with real transport, real cookie based authentication and
+real JSON-RPC, serving scripted data: seeded sessions, an agent script that
+streams reasoning, tool calls and text, plus seeded jobs, skills and slash
+commands.
 
-## 4. What the real app does
+Nothing about it is reviewer only or hidden. The hostname demo.hermes.go is a
+reserved, documented entry point. Any user can type it into the same "Gateway
+base URL" field and sign in with demo / demo to try the app before setting up
+a real gateway. It is documented in Settings, then About, with this line:
+"Sample workspace, connect to demo.hermes.go (user demo, password demo) to
+try Hermes Go without setting up a gateway." The connect screen shows no
+special button, banner or hint for it, and the app performs no reviewer
+detection of any kind.
 
-Hermes Go is a client for a **self-hosted Hermes agent gateway** — the same
-kind of relationship an SSH client or a NAS app has with a server the user
-runs themselves:
+A small "Sample" chip appears in the chat title bar while connected, so a
+scripted reply can never be mistaken for a real agent. "Exit sample
+workspace" in Settings stops the local server, clears its cached data and
+returns to the connect screen.
 
-- The user runs their own Hermes gateway (on a home server, a VPS, a
-  Raspberry Pi, etc.) and enters that gateway's address into the app.
-- The app connects over HTTPS/WebSocket, authenticates with the credentials
-  the user's own gateway issues, and talks to that gateway only.
-- We (the developer) do not operate any backend service the app talks to.
-  There is no multi-tenant server, no account system run by us, and no
-  third-party data sharing — every request goes directly from the user's
-  device to the gateway address the user configured.
+NO VPN FUNCTIONALITY
+
+This app contains no VPN feature. It does not use NetworkExtension,
+NEVPNManager or NETunnelProvider, requests no VPN entitlement, and bundles no
+tunneling library. It collects no user information via VPN, because there is
+no VPN, and no data is shared with third parties. The word "VPN" appears only
+as guidance about the user's own network: the NSLocalNetworkUsageDescription
+string, and three connection status messages that suggest checking a VPN or
+Tailscale when the user's own gateway is unreachable. Tailscale is a third
+party product that we do not bundle, link against, install or control.
+
+WHAT THE REAL APP DOES
+
+The user runs their own Hermes gateway on a home server, a VPS or similar,
+and enters that address into the app. The app connects over HTTPS and
+WebSocket, authenticates with credentials that the user's own gateway issues,
+and talks to that gateway only. We operate no backend service. There is no
+multi-tenant server, no account system run by us, and no third party data
+sharing. Every request goes directly from the user's device to the gateway
+address the user configured.
+<!-- END NOTES BLOCK -->
+
+---
+
+## BLOCK B: paste as the reply on Apple's message thread
+
+<!-- BEGIN REPLY BLOCK -->
+Thank you for the review.
+
+Regarding the VPN question, Hermes Go has no VPN functionality of any kind:
+
+- It does not use NetworkExtension, NEVPNManager or NETunnelProvider.
+- It requests no VPN entitlement and bundles no tunneling library. There is
+  no WireGuard, no OpenVPN and no proprietary tunnel code.
+- Its only network operations are ordinary HTTPS and HTTP requests plus a
+  single WebSocket connection to a gateway address the user supplies, and
+  standard local network access to reach that gateway on the user's own LAN,
+  governed by NSLocalNetworkUsageDescription.
+
+To answer the three specific questions: the app collects no user information
+using VPN, because it has no VPN functionality. There is therefore no purpose
+for which such data is collected, and no data is shared with any third party.
+Chat messages travel directly between the user's device and the user's own
+self-hosted gateway. We operate no server in that path.
+
+We believe the automated analysis flagged the app because the word "VPN"
+appears in user-facing text. Every occurrence is guidance about the user's own
+network, never a feature we ship. The complete list:
+
+1. NSLocalNetworkUsageDescription: "Hermes Go connects to your Hermes agent
+   gateway on the local network or VPN."
+2. Three connection status messages, shown when the user's own gateway is
+   unreachable or is being reached over plain HTTP:
+   "Auto-reconnect gave up. Tap Reconnect (or check VPN / host)."
+   "Cannot reach the gateway. Check VPN/Tailscale and host power."
+   "Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything
+   public."
+3. Our developer documentation, which recommends that a user who wants to
+   reach their self-hosted gateway from outside their home network do so over
+   a private network rather than a port forward.
+
+All of these describe networking the user may already have configured,
+typically Tailscale, a third party product that we do not bundle, link
+against, install, configure or control. The app has no awareness of whether
+such software is present. This is the same pattern as an SSH client or a NAS
+app documenting that you can reach your own server over your own VPN if you
+choose to.
+
+Regarding demo access, we have added a sample workspace to the build so that
+review can proceed without setting up a server. Full sign-in steps and a
+suggested tour are in the App Review Information notes for this version.
+
+Thank you,
+Tom
+<!-- END REPLY BLOCK -->
