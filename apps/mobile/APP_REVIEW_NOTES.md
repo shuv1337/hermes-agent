@@ -91,7 +91,62 @@ address the user configured.
 
 ---
 
-## BLOCK B: paste as the reply on Apple's message thread
+## BLOCK B: reply to the Guideline 2.1(a) message about a demo authentication code
+
+Submission ID cef05d7f-02cd-4c0a-884d-abe10b3daebd, reviewed August 05 2026.
+This is the message asking for an authentication code and offering a call.
+
+<!-- BEGIN AUTHCODE REPLY BLOCK -->
+Thank you for the review, and for setting out the options.
+
+There is no authentication code for this app, and none exists to give you. I
+can see why the previous build looked as though there was one, and I am sorry
+for the wasted round trip.
+
+Hermes Go is a client for a Hermes agent gateway that the user runs on their
+own computer, in the same way an SSH client or a NAS app connects to a server
+the user runs themselves. The first field on the connect screen asks for that
+server's address, not for a code. The username and password are issued by the
+user's own server. In build 5 we supplied credentials but no reachable server,
+so there was nothing for the reviewer to sign in to and no way past the first
+screen. That was our mistake.
+
+We have taken the third option you recommended, "including a demonstration
+mode that exhibits the app's full features and functionality". It is bundled
+in the new build and needs no server, no code and no network access.
+
+To sign in:
+1. Launch the app.
+2. On the connect screen, in "Gateway base URL", enter: demo.hermes.go
+3. Tap Continue.
+4. Username: demo
+5. Password: demo
+6. Tap Sign In.
+
+That gives you a fully working sample workspace with existing chat history.
+You can send messages and watch replies stream in with live tool calls, start
+new chats, switch models, browse the slash command reference and the skills
+catalog, and pause or resume scheduled jobs. A suggested tour is in the App
+Review Information notes for this version.
+
+The sample workspace runs entirely on the device, on 127.0.0.1, and no network
+calls leave the device. It is available to every user, not only to reviewers:
+the same host and credentials work for anyone, it is documented in the app
+under Settings, then About, and the app performs no reviewer detection of any
+kind. A "Sample" chip is shown while it is active so that its scripted replies
+can never be mistaken for a real agent.
+
+A call should not be necessary, since there is no code to convey. If anything
+in the sample workspace does not behave as described, please tell me what you
+saw and I will fix it promptly.
+
+Thank you,
+Tom
+<!-- END AUTHCODE REPLY BLOCK -->
+
+---
+
+## BLOCK C: reply to the earlier VPN message
 
 <!-- BEGIN REPLY BLOCK -->
 Thank you for the review.
