@@ -1060,6 +1060,11 @@ platform_toolsets:
 #         priority_mode: prepend
 #         priority:
 #           - my_plugin_command
+#   slack:
+#     extra:
+#       # Render live tool calls as Slack-native plan/task cards. This explicit
+#       # opt-in works even though Slack text tool_progress defaults to off.
+#       native_task_cards: false
 #   webhook:
 #     extra:
 #       # Route scripts default to a 30 second timeout. Scripts must live under
@@ -1475,11 +1480,13 @@ display:
   # Background process notifications (gateway/messaging only).
   # Controls how chatty the process watcher is when you use
   # terminal(background=true, notify_on_complete=true) from Telegram/Discord/etc.
+  #   concise: One-line status message on completion; failures include a short
+  #            output tail (default)
   #   off:     No watcher messages at all
-  #   result:  Only the final completion message
-  #   error:   Only the final message when exit code != 0
-  #   all:     Running output updates + final message (default)
-  background_process_notifications: all
+  #   result:  Only the final raw-output completion message
+  #   error:   Only the final raw-output message when exit code != 0
+  #   all:     Running output updates + final raw-output message
+  background_process_notifications: concise
 
 
   # Play terminal bell when agent finishes a response.

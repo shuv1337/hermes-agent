@@ -31,6 +31,35 @@ def _(rid, params: dict) -> dict:
     __globals__ onto server.py, so module-level names here are invisible.
     """
 
+    def _latest_message_preview(db, session_id):
+        """Short excerpt of the NEWEST user/assistant message in a session.
+
+        Rosters show this under each agent's name — messaging-app semantics
+        (latest exchange), unlike the shared first-message preview that
+        session lists use for recognition. Tool rows, inactive rows, and
+        empty content are skipped; agent-delivery prefixes are kept
+        (callers style them). Same query shape as
+        SessionDB.latest_message_row_id.
+        """
+        try:
+            with db._lock:
+                row = db._conn.execute(
+                    "SELECT content FROM messages"
+                    " WHERE session_id = ? AND role IN ('user', 'assistant')"
+                    " AND active = 1"
+                    " AND content IS NOT NULL AND TRIM(content) != ''"
+                    " ORDER BY id DESC LIMIT 1",
+                    (session_id,),
+                ).fetchone()
+        except Exception:
+            return ""
+        if not row:
+            return ""
+        text = " ".join(str(row[0] or "").split()).strip()
+        if len(text) > 80:
+            return text[:80] + "..."
+        return text
+
     def _latest_profile_session_row(profile_path):
         """Most recent human-facing session in a profile's state.db, or None.
 
@@ -55,7 +84,7 @@ def _(rid, params: dict) -> dict:
                 ):
                     if (s.get("source") or "").strip().lower() in deny:
                         continue
-                    return {
+                    row = {
                         "id": s["id"],
                         "title": s.get("title") or "",
                         "preview": s.get("preview") or "",
@@ -63,6 +92,17 @@ def _(rid, params: dict) -> dict:
                         "last_active": s.get("last_active") or s.get("started_at") or 0,
                         "message_count": s.get("message_count") or 0,
                     }
+                    # Roster surfaces want "where the conversation IS", not
+                    # where it began: override the shared first-message
+                    # preview with the newest user/assistant text. Best-
+                    # effort — any failure keeps the first-message preview.
+                    try:
+                        latest = _latest_message_preview(db, s["id"])
+                        if latest:
+                            row["preview"] = latest
+                    except Exception:
+                        pass
+                    return row
             finally:
                 try:
                     db.close()
@@ -89,6 +129,35 @@ def _(rid, params: dict) -> dict:
             }
             if include_sessions:
                 row["last_session"] = _latest_profile_session_row(p.path)
+
+            # Client-agnostic UI metadata (avatars, accent colors, pinned
+            # order, …) — stored server-side in profile.yaml so every
+            # machine connecting to this gateway paints the same roster.
+            try:
+                import yaml as _yaml
+                from pathlib import Path as _Path
+
+                meta_path = _Path(str(p.path)) / "profile.yaml"
+                if meta_path.is_file():
+                    with open(meta_path, "r", encoding="utf-8") as f:
+                        raw_meta = _yaml.safe_load(f) or {}
+                    ui_meta = raw_meta.get("ui_meta")
+                    if isinstance(ui_meta, dict) and ui_meta:
+                        row["ui_meta"] = ui_meta
+            except Exception:
+                pass
+
+            # Cheap existence flag so roster UIs know to profiles.get_asset
+            # without a probe call per profile per paint.
+            try:
+                from pathlib import Path as _Path
+
+                assets = _Path(str(p.path)) / "assets"
+                row["has_avatar"] = any(
+                    (assets / f"avatar.{ext}").is_file() for ext in ("png", "jpg", "webp")
+                )
+            except Exception:
+                row["has_avatar"] = False
             out.append(row)
         return _ok(rid, {"profiles": out})
     except Exception as e:
@@ -177,7 +246,19 @@ def _(rid, params: dict) -> dict:
     # .env (only over the seeded comment-only stub — never clobber real
     # secrets a clone brought along) and auth.json (only when absent), then
     # inherit model.provider/model.default unless the caller pinned a model.
-    mirrored = {"env": False, "auth": False, "model_inherited": False}
+    #
+    # ``share_auth`` (default false): SKIP the auth.json copy so the new
+    # profile reads OAuth/token state through the global-root fallback
+    # instead (hermes_cli.auth: profile reads fall back to the global
+    # store, and token refreshes write THROUGH to it). A copy forks token
+    # state — the first refresh in either store invalidates the other
+    # for single-use refresh tokens. Sharing keeps one live token pool
+    # for the main profile and every bot. Static .env keys still copy
+    # (no refresh semantics, so copying is safe).
+    mirrored = {"env": False, "auth": False, "model_inherited": False, "voice": False}
+    share_auth = is_truthy_value(params.get("share_auth", False))
+    if share_auth:
+        mirrored["auth"] = "shared"
     if is_truthy_value(params.get("mirror_credentials", True)):
         import shutil
 
@@ -199,7 +280,7 @@ def _(rid, params: dict) -> dict:
         try:
             src_auth = launch_home / "auth.json"
             dst_auth = path / "auth.json"
-            if src_auth.is_file() and not dst_auth.exists():
+            if not share_auth and src_auth.is_file() and not dst_auth.exists():
                 shutil.copy2(src_auth, dst_auth)
                 try:
                     os.chmod(str(dst_auth), 0o600)
@@ -212,6 +293,62 @@ def _(rid, params: dict) -> dict:
     model = str(params.get("model") or "").strip()
     provider = str(params.get("provider") or "").strip()
     model_set = False
+
+    def _mirror_voice_sections() -> bool:
+        """Copy voice config (stt/tts/voice) from the launch profile.
+
+        Desktop dictation and TTS are profile-scoped: /api/audio/transcribe
+        resolves the ``stt`` section inside the TARGET profile's home. A
+        freshly created profile has only a ``model`` section, so voice fell
+        back to defaults (local whisper, often not installed) and dictation
+        "didn't work in bot mode" while working on the primary profile.
+
+        Reads/writes go through the canonical loaders scoped to the target
+        profile via the context-local HERMES_HOME override — the same
+        mechanism as ``_write_profile_model`` (config-read-guard: no raw
+        yaml on config.yaml).
+        """
+        try:
+            from hermes_cli.config import (
+                load_config_readonly,
+                read_user_config_raw,
+                save_config,
+            )
+            from hermes_constants import (
+                reset_hermes_home_override,
+                set_hermes_home_override,
+            )
+
+            src_cfg = load_config_readonly() or {}
+            sections = {
+                k: src_cfg[k] for k in ("stt", "tts", "voice") if src_cfg.get(k)
+            }
+            if not sections:
+                return False
+
+            token = set_hermes_home_override(str(path))
+            try:
+                # Write-back round-trip on the raw file: load_config() would
+                # merge DEFAULT_CONFIG, making every section look present and
+                # the mirror a no-op (and save_config would then persist the
+                # entire default tree into the fresh profile).
+                dst_cfg = read_user_config_raw() or {}
+                changed = False
+                for key, value in sections.items():
+                    if key not in dst_cfg:
+                        dst_cfg[key] = value
+                        changed = True
+                if changed:
+                    save_config(dst_cfg)
+            finally:
+                reset_hermes_home_override(token)
+            return changed
+        except Exception:
+            return False
+
+    if is_truthy_value(params.get("mirror_credentials", True)):
+        mirrored["voice"] = _mirror_voice_sections()
+
     if model and provider:
         try:
             from hermes_cli.web_routers.profiles import _write_profile_model
@@ -322,6 +459,31 @@ def _(rid, params: dict) -> dict:
             except Exception:
                 pass
 
+            # MCP servers configured for this profile (config.yaml
+            # mcp_servers). Report name + enabled + a transport hint so a
+            # capabilities UI can list and toggle them without parsing the
+            # raw config shape.
+            mcp_out = []
+            try:
+                mcp_cfg = cfg.get("mcp_servers")
+                if isinstance(mcp_cfg, dict):
+                    for srv_name in sorted(mcp_cfg.keys()):
+                        entry = mcp_cfg.get(srv_name)
+                        if not isinstance(entry, dict):
+                            continue
+                        transport = "stdio"
+                        if entry.get("url"):
+                            transport = str(entry.get("transport") or "http")
+                        mcp_out.append(
+                            {
+                                "name": str(srv_name),
+                                "enabled": not is_truthy_value(entry.get("disabled", False)),
+                                "transport": transport,
+                            }
+                        )
+            except Exception:
+                pass
+
             model_cfg = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
 
             description = ""
@@ -345,6 +507,7 @@ def _(rid, params: dict) -> dict:
                     "skills": installed,
                     "toolsets": toolsets_out,
                     "toolsets_pinned": pinned_set is not None,
+                    "mcp_servers": mcp_out,
                 },
             )
         finally:
@@ -382,6 +545,50 @@ def _(rid, params: dict) -> dict:
 
         applied = {}
 
+        if isinstance(params.get("ui_meta"), dict):
+            # Client-agnostic UI metadata (avatar/pet/etc.), merged key-wise
+            # into profile.yaml's ui_meta block. A key set to None deletes it.
+            # Size-capped: this rides profiles.list on every roster paint, so
+            # large blobs (e.g. raw base64 images) are rejected — persist big
+            # assets elsewhere and store a reference.
+            try:
+                import json as _json
+
+                incoming = params["ui_meta"]
+                if len(_json.dumps(incoming)) > 65536:
+                    applied["ui_meta"] = False
+                else:
+                    import yaml as _yaml
+
+                    meta_path = profile_dir / "profile.yaml"
+                    existing = {}
+                    if meta_path.is_file():
+                        try:
+                            with open(meta_path, "r", encoding="utf-8") as f:
+                                loaded = _yaml.safe_load(f) or {}
+                            if isinstance(loaded, dict):
+                                existing = loaded
+                        except Exception:
+                            existing = {}
+                    current = existing.get("ui_meta")
+                    if not isinstance(current, dict):
+                        current = {}
+                    for key, value in incoming.items():
+                        if value is None:
+                            current.pop(key, None)
+                        else:
+                            current[key] = value
+                    if current:
+                        existing["ui_meta"] = current
+                    else:
+                        existing.pop("ui_meta", None)
+                    from utils import atomic_yaml_write
+
+                    atomic_yaml_write(meta_path, existing, sort_keys=False)
+                    applied["ui_meta"] = True
+            except Exception:
+                applied["ui_meta"] = False
+
         if isinstance(params.get("soul"), str):
             try:
                 (profile_dir / "SOUL.md").write_text(params["soul"], encoding="utf-8")
@@ -413,10 +620,25 @@ def _(rid, params: dict) -> dict:
             except Exception:
                 applied["model"] = False
 
-        needs_cfg = isinstance(params.get("disabled_skills"), list) or isinstance(
-            params.get("enabled_toolsets"), list
+        needs_cfg = (
+            isinstance(params.get("disabled_skills"), list)
+            or isinstance(params.get("enabled_toolsets"), list)
+            or isinstance(params.get("enabled_mcp_servers"), list)
         )
         if needs_cfg:
+            # Launch profile's MCP catalog, read BEFORE the home override
+            # flips config resolution to the target profile.
+            launch_mcp = {}
+            if isinstance(params.get("enabled_mcp_servers"), list):
+                try:
+                    from hermes_cli.config import load_config_readonly
+
+                    launch_cfg = load_config_readonly() or {}
+                    if isinstance(launch_cfg.get("mcp_servers"), dict):
+                        launch_mcp = launch_cfg["mcp_servers"]
+                except Exception:
+                    launch_mcp = {}
+
             token = set_hermes_home_override(str(profile_dir))
             try:
                 from hermes_cli.config import load_config, save_config
@@ -451,12 +673,177 @@ def _(rid, params: dict) -> dict:
                         applied["toolsets"] = True
                     except Exception:
                         applied["toolsets"] = False
+
+                # ``enabled_mcp_servers`` (list[str], replace semantics):
+                # toggle the profile's mcp_servers entries via the standard
+                # ``disabled`` flag. Enabling a server the profile doesn't
+                # define copies its definition from the LAUNCH profile's
+                # config (capabilities UIs offer the main profile's catalog);
+                # unknown names are skipped, never invented. Server defs are
+                # config, not secrets — credentials stay in .env/auth.
+                if isinstance(params.get("enabled_mcp_servers"), list):
+                    try:
+                        wanted = {
+                            str(s).strip()
+                            for s in params["enabled_mcp_servers"]
+                            if str(s).strip()
+                        }
+                        cfg = load_config() or {}
+                        mcp_cfg = (
+                            cfg.get("mcp_servers")
+                            if isinstance(cfg.get("mcp_servers"), dict)
+                            else {}
+                        )
+
+                        for srv in wanted:
+                            if srv in mcp_cfg and isinstance(mcp_cfg[srv], dict):
+                                mcp_cfg[srv].pop("disabled", None)
+                            elif srv in launch_mcp and isinstance(launch_mcp[srv], dict):
+                                mcp_cfg[srv] = dict(launch_mcp[srv])
+                                mcp_cfg[srv].pop("disabled", None)
+                        for srv, entry in mcp_cfg.items():
+                            if srv not in wanted and isinstance(entry, dict):
+                                entry["disabled"] = True
+
+                        if mcp_cfg:
+                            cfg["mcp_servers"] = mcp_cfg
+                        save_config(cfg)
+                        applied["mcp_servers"] = True
+                    except Exception:
+                        applied["mcp_servers"] = False
             finally:
                 reset_hermes_home_override(token)
 
         return _ok(rid, {"ok": all(applied.values()) if applied else True, "applied": applied})
     except Exception as e:
         return _err(rid, 5064, str(e))
+
+
+@method("profiles.set_asset")
+def _(rid, params: dict) -> dict:
+    """Store a small binary asset (e.g. avatar image) in a profile's dir.
+
+    Params: ``name`` (profile), ``asset`` (currently only ``"avatar"``),
+    ``data`` (data URL or raw base64; PNG/JPEG/WebP; decoded size capped at
+    2MB), or ``clear: true`` to delete. Written atomically as
+    ``assets/<asset>.<ext>`` inside the profile directory — server-side, so
+    every client machine sees the same image via ``profiles.get_asset``.
+
+    Result: ``{ok, asset, size}`` (``size`` 0 on clear).
+    """
+    name = str(params.get("name") or "").strip()
+    asset = str(params.get("asset") or "avatar").strip().lower()
+    if not name:
+        return _err(rid, 4063, "name required")
+    if asset not in {"avatar"}:
+        return _err(rid, 4066, f"unknown asset '{asset}' (supported: avatar)")
+    try:
+        import base64
+        import re as _re
+        from pathlib import Path as _Path
+
+        from hermes_cli.profiles import get_profile_dir
+
+        profile_dir = _Path(get_profile_dir(name))
+        if not profile_dir.is_dir():
+            return _err(rid, 4064, f"profile '{name}' not found")
+
+        assets_dir = profile_dir / "assets"
+        exts = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+
+        if is_truthy_value(params.get("clear", False)):
+            removed = 0
+            for ext in exts.values():
+                target = assets_dir / f"{asset}.{ext}"
+                if target.is_file():
+                    target.unlink()
+                    removed += 1
+            return _ok(rid, {"ok": True, "asset": asset, "size": 0, "removed": removed})
+
+        data = str(params.get("data") or "")
+        if not data:
+            return _err(rid, 4067, "data required (data URL or base64)")
+
+        mime = "image/png"
+        match = _re.match(r"^data:(image/(?:png|jpeg|webp));base64,(.*)$", data, _re.DOTALL)
+        if match:
+            mime, payload = match.group(1), match.group(2)
+        else:
+            payload = data
+
+        try:
+            blob = base64.b64decode(payload, validate=True)
+        except Exception:
+            return _err(rid, 4068, "data is not valid base64")
+
+        if len(blob) > 2_000_000:
+            return _err(rid, 4069, f"asset too large ({len(blob)} bytes; max 2MB)")
+
+        # Magic-byte check — don't trust the declared mime.
+        if blob[:8] == b"\x89PNG\r\n\x1a\n":
+            mime = "image/png"
+        elif blob[:3] == b"\xff\xd8\xff":
+            mime = "image/jpeg"
+        elif blob[:4] == b"RIFF" and blob[8:12] == b"WEBP":
+            mime = "image/webp"
+        else:
+            return _err(rid, 4070, "unsupported image format (PNG/JPEG/WebP only)")
+
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        # One canonical file per asset: clear other extensions first.
+        for ext in exts.values():
+            stale = assets_dir / f"{asset}.{ext}"
+            if stale.is_file():
+                stale.unlink()
+
+        target = assets_dir / f"{asset}.{exts[mime]}"
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_bytes(blob)
+        tmp.replace(target)
+        return _ok(rid, {"ok": True, "asset": asset, "size": len(blob)})
+    except Exception as e:
+        return _err(rid, 5065, str(e))
+
+
+@method("profiles.get_asset")
+def _(rid, params: dict) -> dict:
+    """Fetch a profile asset as a data URL.
+
+    Params: ``name`` (profile), ``asset`` (default ``"avatar"``).
+    Result: ``{found, data?, mime?, size?}`` — ``found: false`` (not an
+    error) when the asset doesn't exist, so roster UIs can probe cheaply.
+    """
+    name = str(params.get("name") or "").strip()
+    asset = str(params.get("asset") or "avatar").strip().lower()
+    if not name:
+        return _err(rid, 4063, "name required")
+    try:
+        import base64
+        from pathlib import Path as _Path
+
+        from hermes_cli.profiles import get_profile_dir
+
+        profile_dir = _Path(get_profile_dir(name))
+        if not profile_dir.is_dir():
+            return _err(rid, 4064, f"profile '{name}' not found")
+
+        mimes = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
+        for ext, mime in mimes.items():
+            target = profile_dir / "assets" / f"{asset}.{ext}"
+            if target.is_file():
+                blob = target.read_bytes()
+                return _ok(
+                    rid,
+                    {
+                        "found": True,
+                        "mime": mime,
+                        "size": len(blob),
+                        "data": f"data:{mime};base64,{base64.b64encode(blob).decode('ascii')}",
+                    },
+                )
+        return _ok(rid, {"found": False})
+    except Exception as e:
+        return _err(rid, 5066, str(e))
 
 
 def register(server) -> None:

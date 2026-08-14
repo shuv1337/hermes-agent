@@ -54,7 +54,10 @@ from hermes_state_common import (  # noqa: F401  (re-exported for back-compat)
     _FTS_TRIGGERS,
     _LISTABLE_CHILD_SQL,
     _PREVIEW_RAW_SELECT,
+    _RESET_END_REASONS,
+    _RESET_END_REASONS_SQL,
     _ephemeral_child_sql,
+    _legacy_reset_child_sql,
     _shape_preview,
     _sql_session_last_active,
     _sql_session_last_active_by_id,
@@ -251,6 +254,15 @@ def _delegate_from_json(col: str = "model_config") -> str:
 # doesn't exist and on_missing="skip" — distinguishes "no row" from the legal
 # None result ("merged config is empty → store NULL").
 _MODEL_CONFIG_ROW_MISSING = object()
+
+# Billing-bucket classes that aren't a routable provider identity on their
+# own — used by session_gateway_runtime's billing_provider fallback and by
+# tui_gateway.server._stored_session_runtime_overrides. A session that
+# persisted only one of these (never ran /model) must fall back to the
+# ambient config default rather than restore a bare bucket. Shared here so
+# both consumers stay in sync (previously duplicated as a set in
+# tui_gateway/server.py).
+_BARE_BILLING_PROVIDERS = frozenset({"auto", "custom"})
 
 
 def _cwd_prefix_clause(cwd_prefix: str) -> Tuple[str, List[str]]:
@@ -4096,7 +4108,25 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                        model = COALESCE(sessions.model, excluded.model),
-                       model_config = COALESCE(sessions.model_config, excluded.model_config),
+                       model_config = CASE
+                           WHEN excluded.model_config IS NOT NULL
+                                AND json_type(
+                                    sessions.model_config, '$._reset_from'
+                                ) IS NOT NULL
+                                AND json_remove(
+                                    sessions.model_config, '$._reset_from'
+                                ) = '{}'
+                           THEN json_set(
+                               excluded.model_config,
+                               '$._reset_from',
+                               json_extract(
+                                   sessions.model_config, '$._reset_from'
+                               )
+                           )
+                           ELSE COALESCE(
+                               sessions.model_config, excluded.model_config
+                           )
+                       END,
                        system_prompt_hash = COALESCE(
                            sessions.system_prompt_hash,
                            excluded.system_prompt_hash
@@ -4568,7 +4598,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             return None
         with self._lock:
             row = self._conn.execute(
-                """
+                f"""
                 SELECT s.*,
                        COALESCE(sp.prompt, s.system_prompt)
                            AS _system_prompt_resolved,
@@ -4585,9 +4615,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                       WHERE b.session_key = s.session_key
                         AND b.source = s.source
                         AND b.ended_at IS NOT NULL
-                        AND b.end_reason IN ('session_reset', 'session_switch',
-                                             'idle', 'daily', 'suspended',
-                                             'resume_pending_expired')
+                        AND b.end_reason IN ({_RESET_END_REASONS_SQL})
                         AND b.ended_at
                             > COALESCE(s.last_activity_at, s.started_at)
                   )
@@ -4606,7 +4634,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             if chat_id is None or chat_type is None:
                 return None
             row = self._conn.execute(
-                """
+                f"""
                 SELECT s.*,
                        COALESCE(sp.prompt, s.system_prompt)
                            AS _system_prompt_resolved,
@@ -4632,9 +4660,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                         AND COALESCE(b.chat_type, '') = COALESCE(s.chat_type, '')
                         AND COALESCE(b.thread_id, '') = COALESCE(s.thread_id, '')
                         AND b.ended_at IS NOT NULL
-                        AND b.end_reason IN ('session_reset', 'session_switch',
-                                             'idle', 'daily', 'suspended',
-                                             'resume_pending_expired')
+                        AND b.end_reason IN ({_RESET_END_REASONS_SQL})
                         AND b.ended_at
                             > COALESCE(s.last_activity_at, s.started_at)
                   )
@@ -5137,8 +5163,26 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         self._execute_write(_do)
 
     def reopen_session(self, session_id: str) -> None:
-        """Clear ended_at/end_reason so a session can be resumed."""
+        """Clear ended_at/end_reason so a session can be resumed.
+
+        Before clearing a reset boundary, stabilize markerless legacy reset
+        children that still depend on the parent's mutable end_reason.
+        """
         def _do(conn):
+            placeholders = ",".join("?" for _ in _RESET_END_REASONS)
+            # WHERE shape shared with _RESET_CHILD_SQL's fallback arm via
+            # _legacy_reset_child_sql so the stamping and the listing
+            # predicate cannot drift.
+            conn.execute(
+                "UPDATE sessions AS child SET model_config = json_set("
+                "COALESCE(child.model_config, '{}'), '$._reset_from', "
+                "child.parent_session_id) "
+                "WHERE child.parent_session_id = ? "
+                "AND json_extract(COALESCE(child.model_config, '{}'), "
+                "                 '$._reset_from') IS NULL "
+                f"AND {_legacy_reset_child_sql('child', placeholders)}",
+                (session_id, *_RESET_END_REASONS),
+            )
             conn.execute(
                 "UPDATE sessions SET ended_at = NULL, end_reason = NULL WHERE id = ?",
                 (session_id,),
@@ -5858,7 +5902,9 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             self._delete_unreferenced_system_prompts(conn)
         self._execute_write(_do)
 
-    def update_session_model(self, session_id: str, model: str) -> None:
+    def update_session_model(
+        self, session_id: str, model: str, provider: Optional[str] = None
+    ) -> None:
         """Update the model for a session after a mid-session switch.
 
         Unlike ``update_token_counts`` which uses ``COALESCE(model, ?)``
@@ -5868,6 +5914,13 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         footer metadata is rebuilt on the next turn. A successful /model
         switch explicitly replaces any confirmed Browser runtime lock while
         preserving unrelated lineage markers in ``model_config``.
+
+        When *provider* is given, it is merged into ``model_config``
+        alongside the model (``$.model`` / ``$.provider``) so a later
+        resume recombines the persisted model with the provider that
+        actually serves it instead of the config.yaml primary provider
+        (#79536). Callers without provider knowledge leave any stored
+        provider untouched.
         """
         # This write bypasses the token queue, so deltas enqueued before the
         # switch must land first: a still-queued first delta carries the
@@ -5878,19 +5931,24 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         self.flush_token_counts()
 
         def _do(conn):
+            # Use the shared merge discipline so lineage markers like
+            # _branched_from / _delegate_from survive. browser_model_lock
+            # is deleted via a None patch value (same semantics as the
+            # old json_remove).
+            patch: Dict[str, Any] = {"browser_model_lock": None}
+            if model:
+                patch["model"] = model
+            if provider:
+                patch["provider"] = provider
+            merged = self._merge_model_config_json(conn, session_id, patch)
+            if merged is _MODEL_CONFIG_ROW_MISSING:
+                return
             conn.execute(
-                """UPDATE sessions SET
-                   model = ?,
-                   model_config = CASE
-                       WHEN model_config IS NULL THEN NULL
-                       WHEN json_valid(model_config)
-                           THEN json_remove(model_config, '$.browser_model_lock')
-                       ELSE model_config
-                   END,
-                   system_prompt = NULL,
-                   system_prompt_hash = NULL
-                   WHERE id = ?""",
-                (model, session_id),
+                "UPDATE sessions SET "
+                "model = ?, model_config = ?, "
+                "system_prompt = NULL, system_prompt_hash = NULL "
+                "WHERE id = ?",
+                (model, merged, session_id),
             )
             self._delete_unreferenced_system_prompts(conn)
         self._execute_write(_do)
@@ -6073,6 +6131,59 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         if not isinstance(raw, dict):
             return False
         return bool(raw.get("yolo_mode"))
+
+    @staticmethod
+    def session_gateway_runtime(session_meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Read the persisted runtime route off a session row dict.
+
+        Accepts the dict returned by ``get_session`` (``model_config`` is a
+        JSON string) or an already-parsed dict. Prefers the nested
+        ``gateway_runtime`` key (written by the gateway's
+        ``_sync_session_model_from_agent`` and the CLI ``/model`` persist),
+        falling back to the top-level ``provider``/``base_url``/``api_mode``
+        keys the TUI gateway's ``_runtime_model_config`` writes. As a last
+        resort, falls back to the ``billing_provider`` column (written on
+        every session's first accounted API call) so sessions that never ran
+        ``/model`` still restore the provider that actually served them.
+        Returns an empty dict on any parse failure — resume falls back to
+        ambient config resolution.
+        """
+        raw = (session_meta or {}).get("model_config")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = {}
+        if not isinstance(raw, dict):
+            raw = {}
+        runtime = raw.get("gateway_runtime")
+        if isinstance(runtime, dict) and runtime.get("provider"):
+            # Filter None values: the persist path writes or-None to trigger
+            # deletion in the top-level merge, but gateway_runtime is replaced
+            # as a whole dict (not deep-merged), so None values survive here.
+            return {k: v for k, v in runtime.items() if v is not None}
+        top_level = {
+            key: raw.get(key)
+            for key in ("provider", "base_url", "api_mode")
+            if raw.get(key)
+        }
+        if top_level:
+            return top_level
+        # Last resort: billing_provider column. Written via COALESCE on every
+        # session's first accounted API call — the only durable record for
+        # sessions that never ran /model. Mirrors the TUI gateway's
+        # _stored_session_runtime_overrides fallback. Bare billing buckets
+        # ("auto"/"custom") are not routable identities — filter them out so
+        # resume falls back to the ambient config default instead.
+        billing_provider = str(
+            (session_meta or {}).get("billing_provider") or ""
+        ).strip()
+        if (
+            billing_provider
+            and billing_provider.lower() not in _BARE_BILLING_PROVIDERS
+        ):
+            return {"provider": billing_provider}
+        return {k: v for k, v in (runtime or {}).items() if v is not None} if isinstance(runtime, dict) else {}
 
     def update_session_billing_route(
         self,
@@ -7478,8 +7589,10 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         Uses a single query with correlated subqueries instead of N+2 queries.
 
-        By default, child sessions (subagent runs, compression continuations)
-        are excluded.  Pass ``include_children=True`` to include them.
+        By default, child sessions that represent implementation details
+        (subagent runs, compression continuations) are excluded. User-visible
+        branch and reset children remain listable. Pass ``include_children=True``
+        to include every child.
 
         With ``project_compression_tips=True`` (default), sessions that are
         roots of compression chains are projected forward to their latest
@@ -7528,10 +7641,10 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         params = []
 
         if not include_children:
-            # Show root sessions and branch sessions, while still hiding
-            # sub-agent runs and compression continuations (which also carry a
-            # parent_session_id but were spawned while the parent was still
-            # live — i.e., started_at < parent.ended_at).
+            # Show roots and user-visible branch/reset sessions, while still
+            # hiding sub-agent runs and compression continuations. All four
+            # carry parent_session_id, so the shared predicate classifies the
+            # edge from stable markers plus legacy-compatible parent metadata.
             #
             # Branch sessions are identified two ways, OR'd for robustness:
             #   1. A stable ``_branched_from`` marker in model_config, written
@@ -7599,8 +7712,8 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             # level instead of fetching every row and sorting in Python, while
             # still surfacing old compression roots whose live tip is fresh.
             #
-            # The CTE seeds from rows the outer WHERE admits (roots + branch
-            # children), then recursively joins forward through robust
+            # The CTE seeds from rows the outer WHERE admits (roots +
+            # user-visible branch/reset children), then recursively joins through
             # compression-continuation edges. Do NOT require
             # child.started_at >= parent.ended_at here: real desktop/gateway
             # races can insert the continuation row before the parent's
@@ -8976,18 +9089,23 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
                 # Walk to the most-recently-started child — but skip explicit
                 # branch (`_branched_from`), delegate/subagent (`_delegate_from`),
-                # and tool children. They also carry a ``parent_session_id`` yet
+                # reset-continuation (`_reset_from` or the legacy same-key
+                # heuristic — a post-reset conversation must never be reached
+                # by resuming the parent the user reset away), and tool
+                # children. They also carry a ``parent_session_id`` yet
                 # are NOT compression continuations; following them would hijack
                 # the resume target to an unrelated session (e.g. a subagent
                 # run). This mirrors the child-exclusion in ``get_compression_tip``.
                 try:
                     child_row = self._conn.execute(
-                        "SELECT id FROM sessions "
-                        "WHERE parent_session_id = ? "
-                        "  AND json_extract(COALESCE(model_config, '{}'), '$._branched_from') IS NULL "
-                        "  AND json_extract(COALESCE(model_config, '{}'), '$._delegate_from') IS NULL "
-                        "  AND COALESCE(source, '') != 'tool' "
-                        "ORDER BY started_at DESC, id DESC LIMIT 1",
+                        "SELECT id FROM sessions AS child "
+                        "WHERE child.parent_session_id = ? "
+                        "  AND json_extract(COALESCE(child.model_config, '{}'), '$._branched_from') IS NULL "
+                        "  AND json_extract(COALESCE(child.model_config, '{}'), '$._delegate_from') IS NULL "
+                        "  AND json_extract(COALESCE(child.model_config, '{}'), '$._reset_from') IS NULL "
+                        f"  AND NOT {_legacy_reset_child_sql('child', _RESET_END_REASONS_SQL)} "
+                        "  AND COALESCE(child.source, '') != 'tool' "
+                        "ORDER BY child.started_at DESC, child.id DESC LIMIT 1",
                         (current,),
                     ).fetchone()
                 except Exception:
@@ -9609,7 +9727,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         """Count sessions, optionally filtered by source.
 
         Pass ``exclude_children=True`` to count only the conversations that
-        ``list_sessions_rich`` surfaces (root + branch sessions), hiding
+        ``list_sessions_rich`` surfaces (root + branch/reset sessions), hiding
         sub-agent runs and compression continuations. Use it whenever the count
         is paired with a ``list_sessions_rich`` page (e.g. sidebar "load more"
         totals) so the total matches the number of listable rows — otherwise the
@@ -9625,8 +9743,8 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
 
         if exclude_children:
             # Mirror list_sessions_rich's child-exclusion clause exactly so the
-            # count lines up with the rows: roots (no parent) plus branch
-            # children (parent ended with end_reason='branched').
+            # count lines up with the rows: roots plus user-visible branch/reset
+            # children.
             where_clauses.append(_LISTABLE_CHILD_SQL)
             where_clauses.append(f"{_delegate_from_json('s.model_config')} IS NULL")
         include_sources = [source] if source else list(sources or [])
@@ -9688,8 +9806,8 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         ``list_sessions_rich``).
 
         ``exclude_children=True`` mirrors ``list_sessions_rich`` visibility
-        (roots + branch sessions, excluding sub-agent runs, delegates, and
-        compression continuations) so the source counts match what the
+        (roots + branch/reset sessions, excluding sub-agent runs, delegates,
+        and compression continuations) so the source counts match what the
         Sessions page actually lists.
         """
         where_clauses = []
