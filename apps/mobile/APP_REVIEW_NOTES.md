@@ -9,85 +9,186 @@ Review Information field.
 ## BLOCK A: paste into App Review Information, then Notes
 
 <!-- BEGIN NOTES BLOCK -->
-DEMO ACCESS (no server required)
+WHAT THIS APP IS
 
 Hermes Go is a client for a Hermes agent gateway that the user runs on their
-own computer, in the same way an SSH client or a NAS app talks to a server the
-user runs. Reviewers do not need to set one up. A sample workspace is built
-into the app.
+own computer. It is the same relationship an SSH client or a NAS app has with
+a server the user runs themselves. We operate no backend. Target audience is
+developers and technical users who already self-host a Hermes agent and want
+to reach it from their phone.
 
-To sign in:
+DEMO ACCESS (no server required)
+
+A sample workspace is built into the app, so review needs no server.
 1. Launch the app.
-2. On the connect screen, in "Gateway base URL", enter: demo.hermes.go
+2. In "Gateway base URL", enter: demo.hermes.go
 3. Tap Continue.
 4. Username: demo
 5. Password: demo
 6. Tap Sign In.
 
-Suggested tour:
-1. Open a seeded chat session from the drawer (menu icon, top left) to see
-   existing conversation history.
-2. Send a message in any session and watch the reply stream in, including a
-   tool call. Try "search for the latest news". Reasoning, tool start, tool
-   finish and streamed text all render live.
-3. Start a new chat from the drawer ("New chat") and send a first message.
-4. Open the model picker from the chat composer and switch models or
-   providers.
-5. Open Settings, then the slash command cheat sheet, to browse every
-   /command the app supports.
-6. Open the Jobs tab and pause or resume one of the seeded cron jobs.
-7. Open the skills picker from the composer's "+" entry to browse the seeded
-   skill catalog.
-8. Open Settings, then About, and note the one line describing this sample
-   workspace.
+Then: open a seeded chat from the drawer (menu icon, top left); send a message
+and watch the reply stream with a live tool call; start a new chat; switch
+models from the composer; open Settings for the slash command reference; open
+the Jobs tab and pause or resume a scheduled job; open Settings, then About,
+for the line documenting this sample workspace.
 
-WHAT THE SAMPLE WORKSPACE IS
+The sample workspace runs entirely on device on 127.0.0.1. No network calls
+leave the device. It is available to every user, not only reviewers, is
+documented in Settings, then About, and the app does no reviewer detection.
+A "Sample" chip is shown while it is active so scripted replies cannot be
+mistaken for a real agent.
 
-An offline sandbox bundled in the app, so the app can be fully reviewed
-without the reviewer standing up a server.
+ACCOUNTS, PURCHASES, CONTENT
 
-It runs entirely on device, bound to 127.0.0.1 (loopback) on an ephemeral
-port. No network calls leave the device. It is a small in-process HTTP and
-WebSocket server with real transport, real cookie based authentication and
-real JSON-RPC, serving scripted data: seeded sessions, an agent script that
-streams reasoning, tool calls and text, plus seeded jobs, skills and slash
-commands.
+No account registration and no account deletion flow, because we run no
+account system. The username and password are issued by the user's own
+server. There are no purchases, no subscriptions and no paid content. There
+is no user-generated content shared between users, so there is nothing to
+report or block. Chats are private to the user and their own server.
 
-Nothing about it is reviewer only or hidden. The hostname demo.hermes.go is a
-reserved, documented entry point. Any user can type it into the same "Gateway
-base URL" field and sign in with demo / demo to try the app before setting up
-a real gateway. It is documented in Settings, then About, with this line:
-"Sample workspace, connect to demo.hermes.go (user demo, password demo) to
-try Hermes Go without setting up a gateway." The connect screen shows no
-special button, banner or hint for it, and the app performs no reviewer
-detection of any kind.
+PERMISSIONS
 
-A small "Sample" chip appears in the chat title bar while connected, so a
-scripted reply can never be mistaken for a real agent. "Exit sample
-workspace" in Settings stops the local server, clears its cached data and
-returns to the connect screen.
+Camera and photo library are used only to attach an image to a chat message.
+Microphone and speech recognition are used only for voice dictation into the
+message box. Local network access is used to reach the user's own gateway.
+All are optional and requested only when the feature is used.
+
+EXTERNAL SERVICES
+
+The app talks to one address: the gateway the user enters. We integrate no
+analytics, advertising, crash reporting or tracking SDKs, and no payment
+processor. It contacts no AI provider itself. Any AI service is configured by
+the user on their own server and is invisible to the app. Apple speech
+recognition is used for dictation, and Apple text to speech for reading
+replies aloud.
+
+REGIONS
+
+The app functions identically in all regions. There are no regional feature
+or content differences. It is localized in English, Arabic, German, Spanish,
+French, Japanese, Korean, Portuguese and Chinese.
+
+REGULATED INDUSTRY
+
+Not applicable. The app is a network client for software the user runs. It
+provides no regulated service and includes no protected third-party material.
 
 NO VPN FUNCTIONALITY
 
-This app contains no VPN feature. It does not use NetworkExtension,
+The app contains no VPN feature. It does not use NetworkExtension,
 NEVPNManager or NETunnelProvider, requests no VPN entitlement, and bundles no
-tunneling library. It collects no user information via VPN, because there is
-no VPN, and no data is shared with third parties. The word "VPN" appears only
-as guidance about the user's own network: the NSLocalNetworkUsageDescription
-string, and three connection status messages that suggest checking a VPN or
-Tailscale when the user's own gateway is unreachable. Tailscale is a third
-party product that we do not bundle, link against, install or control.
-
-WHAT THE REAL APP DOES
-
-The user runs their own Hermes gateway on a home server, a VPS or similar,
-and enters that address into the app. The app connects over HTTPS and
-WebSocket, authenticates with credentials that the user's own gateway issues,
-and talks to that gateway only. We operate no backend service. There is no
-multi-tenant server, no account system run by us, and no third party data
-sharing. Every request goes directly from the user's device to the gateway
-address the user configured.
+tunneling library. It collects no user information via VPN because there is
+no VPN, and shares no data with third parties. The word "VPN" appears only as
+guidance about the user's own network, in NSLocalNetworkUsageDescription and
+three connection status messages that suggest checking a VPN or Tailscale
+when the user's own gateway is unreachable. Tailscale is a third party
+product we do not bundle, link against or control.
 <!-- END NOTES BLOCK -->
+
+---
+
+## BLOCK B2: reply to the Guideline 2.1 new-app information request
+
+Answers the seven numbered items. Send with the screen recording attached.
+
+<!-- BEGIN INFO REQUEST BLOCK -->
+Thank you. Answers to all seven items follow.
+
+1. SCREEN RECORDING
+
+Attached. It was captured on a physical iPhone 17 Pro and begins with
+launching the app. It shows the built in sample workspace being connected to
+and signed in to, an existing chat opened, a message sent with the reply
+streaming in including a live tool call, a new chat started, the model
+switched, the Jobs tab with a scheduled job paused and resumed, and the
+Settings screen.
+
+The flows you listed that do not appear are absent because the app does not
+have them:
+- No account registration and no account deletion. We operate no account
+  system. The username and password belong to the server the user runs.
+- No purchases, subscriptions or paid content of any kind.
+- No user-generated content shared between users, so there is no reporting or
+  blocking mechanism to show. A chat is private to the user and their own
+  server.
+- Permission prompts do appear in the recording when the relevant feature is
+  first used, for microphone and speech recognition when dictation is tapped.
+  There is no App Tracking Transparency prompt because the app does no
+  tracking.
+
+2. DEVICES AND OPERATING SYSTEMS TESTED
+
+- iPhone 17 Pro, iOS 27.0, physical device. Primary test device.
+- iPad Air 11-inch (M4), iPadOS 27.0, Simulator. The full reviewer flow above
+  was verified here as well, since your previous review used an iPad Air.
+
+3. WHAT THE APP DOES, AND FOR WHOM
+
+Hermes Go is a phone client for a Hermes agent gateway that the user runs on
+their own computer. Hermes is an open source AI agent that people self host on
+a home server, a workstation or a VPS.
+
+The problem it solves: once you self host an agent, it is reachable only from
+that machine. Hermes Go lets you reach your own agent from your phone, read
+its replies as they stream, review what its scheduled jobs did, and reply
+while away from your desk.
+
+Target audience is developers and technical users who already self host a
+Hermes agent. It is not a consumer chatbot and provides no AI service of its
+own.
+
+4. SETUP AND ACCESS
+
+For review, no server is needed. A sample workspace is built into the app:
+launch it, enter demo.hermes.go in "Gateway base URL", tap Continue, sign in
+with username demo and password demo, then tap Sign In. Full steps and a tour
+are in the App Review Information notes.
+
+For a real user, setup is to run their own Hermes gateway and enter its
+address, then sign in with credentials their own server issues. No sample
+files are required.
+
+5. EXTERNAL SERVICES, TOOLS AND PLATFORMS
+
+The app itself contacts exactly one address: the gateway address the user
+types in. It has no backend of ours.
+
+- No analytics, advertising, attribution, crash reporting or tracking SDK.
+- No payment processor.
+- No AI provider is contacted by the app. Whether an AI service is used at
+  all, and which one, is configured by the user on their own server. The app
+  has no credentials for and no knowledge of any such service.
+- Apple frameworks are used for two device features: Speech framework for
+  voice dictation into the message box, and AVSpeechSynthesizer for reading a
+  reply aloud.
+- Third party code in the app is open source Flutter plugins providing device
+  functionality only, for example keychain storage, local notifications, an
+  on device SQLite cache, image picking and sharing. None transmits user data
+  anywhere.
+
+6. REGIONAL DIFFERENCES
+
+There are none. The app functions identically in all regions, with the same
+features and the same content everywhere. It is localized into English,
+Arabic, German, Spanish, French, Japanese, Korean, Portuguese and Chinese.
+Localization changes interface language only.
+
+7. REGULATED INDUSTRY OR PROTECTED MATERIAL
+
+Not applicable. Hermes Go is a network client for software the user runs
+themselves. It operates in no regulated industry, provides no regulated
+service, and contains no protected third party material. The name Hermes
+refers to the open source Hermes agent this client connects to. The app is an
+unofficial community built client, which is stated on its first screen, and it
+is not presented as affiliated with any other party.
+
+This information has also been added to the Notes field in App Review
+Information.
+
+Thank you,
+Tom
+<!-- END INFO REQUEST BLOCK -->
 
 ---
 
