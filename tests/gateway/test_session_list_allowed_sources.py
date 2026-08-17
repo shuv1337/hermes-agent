@@ -28,10 +28,12 @@ class _StubDB:
         return list(self.rows)
 
 
-def _call(limit: int | None = None):
+def _call(limit: int | None = None, *, include_hidden: bool = False):
     params: dict = {}
     if limit is not None:
         params["limit"] = limit
+    if include_hidden:
+        params["include_hidden"] = True
     return server.handle_request({
         "id": "1",
         "method": "session.list",
@@ -68,4 +70,13 @@ def test_session_list_surfaces_all_user_facing_sources(monkeypatch):
     # Only internal sub-agent runs stay hidden.
     assert "tool-1" not in ids
 
+
+def test_session_list_can_include_hidden_for_owned_workspaces(monkeypatch):
+    db = _StubDB([{"id": "bot-chat", "source": "mobile", "started_at": 1}])
+    monkeypatch.setattr(server, "_get_db", lambda: db)
+
+    response = _call(include_hidden=True)
+
+    assert response["result"]["sessions"][0]["id"] == "bot-chat"
+    assert db.calls[0]["include_hidden"] is True
 

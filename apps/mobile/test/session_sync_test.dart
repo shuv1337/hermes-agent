@@ -140,6 +140,87 @@ void main() {
     expect(resume.params['session_id'], 'bot-session');
   });
 
+  test('bot session inventory requests hidden profile history', () async {
+    final realtime = _BotRealtime(repo);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+    final bot = HermesBotProfile.fromJson({
+      'name': 'coach',
+      'model': 'gpt-5.6-terra',
+      'ui_meta': {
+        'hermes-bots': {'title': 'Fitness Coach'},
+      },
+    });
+
+    final sessions = await repo.listBotSessions(bot);
+
+    expect(sessions.single.id, 'bot-session');
+    final list = realtime.calls.singleWhere(
+      (call) => call.method == 'session.list',
+    );
+    expect(list.params['profile'], 'coach');
+    expect(list.params['include_hidden'], isTrue);
+  });
+
+  test('starting a new bot chat makes it visible and sticky', () async {
+    final realtime = _BotRealtime(repo);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+    final bot = HermesBotProfile.fromJson({
+      'name': 'coach',
+      'model': 'gpt-5.6-terra',
+      'provider': 'openai-codex',
+      'ui_meta': {
+        'hermes-bots': {'title': 'Fitness Coach'},
+      },
+    });
+
+    final created = await repo.createBotSession(bot);
+
+    expect(created.id, 'fresh-health-chat');
+    final create = realtime.calls.singleWhere(
+      (call) => call.method == 'session.create',
+    );
+    expect(create.params['profile'], 'coach');
+    expect(create.params['hidden'], isFalse);
+    final pin = realtime.calls.lastWhere(
+      (call) => call.method == 'profiles.configure',
+    );
+    final metadata = (pin.params['ui_meta'] as Map)['hermes-bots'] as Map;
+    expect(metadata['chat'], 'fresh-health-chat');
+  });
+
+  test('selecting bot history resumes and pins that conversation', () async {
+    final realtime = _BotRealtime(repo);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+    final bot = HermesBotProfile.fromJson({
+      'name': 'coach',
+      'ui_meta': {
+        'hermes-bots': {'title': 'Fitness Coach', 'chat': 'newer-chat'},
+      },
+    });
+    final stored = HermesSession.fromJson({
+      'id': 'older-chat',
+      'title': 'Weekly check-in',
+      'started_at': 1,
+    });
+
+    final selected = await repo.openBotSession(bot, stored);
+
+    expect(selected.id, 'older-chat');
+    final resume = realtime.calls.singleWhere(
+      (call) => call.method == 'session.resume',
+    );
+    expect(resume.params['session_id'], 'older-chat');
+    expect(resume.params['profile'], 'coach');
+    final pin = realtime.calls.lastWhere(
+      (call) => call.method == 'profiles.configure',
+    );
+    final metadata = (pin.params['ui_meta'] as Map)['hermes-bots'] as Map;
+    expect(metadata['chat'], 'older-chat');
+  });
+
   test('bot creation writes profile and desktop-compatible metadata', () async {
     final realtime = _BotRealtime(repo);
     repo.bindRealtime(realtime);
@@ -333,7 +414,7 @@ void main() {
         (call) => call.method == 'session.create',
       );
       expect(create.params['profile'], 'coach');
-      expect(create.params['hidden'], isTrue);
+      expect(create.params['hidden'], isFalse);
       final repin = realtime.calls.lastWhere(
         (call) => call.method == 'profiles.configure',
       );

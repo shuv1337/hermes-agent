@@ -7,6 +7,7 @@ import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/bots/bot_avatar.dart';
 import 'package:hermes_mobile/features/bots/bot_cronjobs_sheet.dart';
+import 'package:hermes_mobile/features/bots/bot_sessions_sheet.dart';
 import 'package:hermes_mobile/features/bots/create_bot_sheet.dart';
 import 'package:hermes_mobile/features/bots/edit_bot_sheet.dart';
 import 'package:hermes_mobile/features/sessions/session_chat_screen.dart';
@@ -247,14 +248,38 @@ class _BotTile extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            tooltip: 'Cronjobs',
-            onPressed: () => showBotCronjobsSheet(context, bot: bot),
-            icon: const Icon(Icons.event_repeat_outlined),
+            tooltip: 'Sessions',
+            onPressed: () => showBotSessionsSheet(context, bot: bot),
+            icon: const Icon(Icons.forum_outlined),
           ),
-          IconButton(
-            tooltip: context.l10n.editBotAction,
-            onPressed: () => _editBot(context, ref, bot),
-            icon: const Icon(Icons.edit_outlined),
+          PopupMenuButton<String>(
+            tooltip: 'Bot actions',
+            onSelected: (action) {
+              switch (action) {
+                case 'cronjobs':
+                  unawaited(showBotCronjobsSheet(context, bot: bot));
+                case 'edit':
+                  unawaited(_editBot(context, ref, bot));
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'cronjobs',
+                child: ListTile(
+                  leading: Icon(Icons.event_repeat_outlined),
+                  title: Text('Cronjobs'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'edit',
+                child: ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: Text(context.l10n.editBotAction),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
           const Icon(Icons.chevron_right),
         ],

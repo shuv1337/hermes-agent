@@ -981,7 +981,7 @@ class SessionSyncRepository {
     final result = await rt.request('session.create', {
       'source': 'mobile',
       if (profile != null && profile.isNotEmpty) 'profile': profile,
-      if (hidden) 'hidden': true,
+      'hidden': hidden,
       if (title != null && title.isNotEmpty) 'title': title,
       if (model != null && model.isNotEmpty) 'model': model,
       if (provider != null && provider.isNotEmpty) 'provider': provider,
@@ -1035,7 +1035,7 @@ class SessionSyncRepository {
 
   /// Resolve a Bot Mode profile's canonical chat, matching the desktop plugin:
   /// reuse its pinned chat when present, recover to its newest session when a
-  /// pin is stale, or create a hidden Bot Chat when none exists.
+  /// pin is stale, or create a Bot Chat when none exists.
   Future<({HermesSession session, bool created})> openBotChat(
     HermesBotProfile bot, {
     bool routingChecked = false,
@@ -1143,10 +1143,72 @@ class SessionSyncRepository {
       model: bot.model,
       provider: bot.provider,
       profile: profile,
-      hidden: true,
+      hidden: false,
     );
     await _pinBotChat(bot, created.id);
     return (session: created, created: true);
+  }
+
+  /// Full profile-owned chat inventory, including older mobile Bot Chats that
+  /// were deliberately hidden from the global recents list.
+  Future<List<HermesSession>> listBotSessions(HermesBotProfile bot) async {
+    final profile = bot.name.trim();
+    if (profile.isEmpty) throw StateError('Bot profile name is missing');
+    final listed = await gatewayRequest('session.list', {
+      'profile': profile,
+      'limit': 200,
+      'include_hidden': true,
+    });
+    final rawRows = listed['sessions'];
+    if (rawRows is! List) return const [];
+    return rawRows
+        .whereType<Map>()
+        .map((row) {
+          final json = row.cast<String, dynamic>();
+          return HermesSession.fromJson({
+            ...json,
+            'last_active': json['last_active'] ?? json['started_at'],
+            'model': json['model'] ?? bot.model,
+          });
+        })
+        .where((session) => session.id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  /// Start a distinct conversation for this bot and make it the canonical
+  /// chat resumed by a normal roster tap.
+  Future<HermesSession> createBotSession(HermesBotProfile bot) async {
+    final profile = bot.name.trim();
+    if (profile.isEmpty) throw StateError('Bot profile name is missing');
+    final created = await _createSessionOnGateway(
+      title: 'Bot Chat',
+      model: bot.model,
+      provider: bot.provider,
+      profile: profile,
+      hidden: false,
+    );
+    await _pinBotChat(bot, created.id);
+    return created;
+  }
+
+  /// Resume one historical bot conversation and pin it as the bot's sticky
+  /// default for subsequent roster taps.
+  Future<HermesSession> openBotSession(
+    HermesBotProfile bot,
+    HermesSession stored,
+  ) async {
+    final profile = bot.name.trim();
+    if (profile.isEmpty) throw StateError('Bot profile name is missing');
+    final resumed = await gatewayRequest('session.resume', {
+      'session_id': stored.id,
+      'profile': profile,
+    });
+    final liveId = '${resumed['session_id'] ?? ''}'.trim();
+    if (liveId.isEmpty) throw StateError('Gateway could not resume bot chat');
+    _registerLiveMapping(storedId: stored.id, liveId: liveId);
+    registerSessionProfile(stored.id, profile);
+    await _pinBotChat(bot, stored.id);
+    return stored;
   }
 
   /// Create a real Bot Mode profile, then attach the same server-owned visual
@@ -1331,7 +1393,7 @@ class SessionSyncRepository {
         model: bot.model,
         provider: bot.provider,
         profile: profile,
-        hidden: true,
+        hidden: false,
       );
       metadata['chat'] = fresh.id;
       final repinned = await gatewayRequest('profiles.configure', {

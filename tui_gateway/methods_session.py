@@ -189,6 +189,12 @@ def _(rid, params: dict) -> dict:
                     limit=fetch_limit,
                     order_by_last_active=True,
                     compact_rows=True,
+                    # Bot/profile workspaces own sessions that may be hidden
+                    # from the global recents list. Their scoped inventory
+                    # must still be able to browse and resume those sessions.
+                    include_hidden=is_truthy_value(
+                        params.get("include_hidden", False)
+                    ),
                 )
                 if (s.get("source") or "").strip().lower() not in deny
             ][:limit]
