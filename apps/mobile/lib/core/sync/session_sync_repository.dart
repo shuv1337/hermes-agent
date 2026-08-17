@@ -671,10 +671,13 @@ class SessionSyncRepository {
     // creates it with the draft's selected model/provider.
     if (sessionId.startsWith('local_')) return null;
     if (!await _ensureWsLive()) return null;
-    final liveId = await _ensureLiveSessionId(sessionId);
     final rt = _realtime;
     if (rt == null || !rt.isLive) return null;
     try {
+      // Resume exactly once. On a cold historical session the first response
+      // carries its persisted model/options while the gateway builds the live
+      // agent. A second immediate resume can hit that half-built live session
+      // and report the global fallback model instead.
       final raw = await rt.request('session.resume', {
         'session_id': sessionId,
         'source': 'mobile',
@@ -684,7 +687,7 @@ class SessionSyncRepository {
         info is Map ? info.cast<String, dynamic>() : raw,
       );
       // Keep the runtime mapping alive even if the resume response was lazy.
-      final returnedLive = '${raw['session_id'] ?? liveId}'.trim();
+      final returnedLive = '${raw['session_id'] ?? ''}'.trim();
       if (returnedLive.isNotEmpty) {
         _registerLiveMapping(storedId: sessionId, liveId: returnedLive);
       }
@@ -906,6 +909,83 @@ class SessionSyncRepository {
   /// stable signal shared by every 4018 message string, present and future.
   bool _isTerminalGatewayRejection(Object error) =>
       error is GatewayRpcException && error.code == 4018;
+
+  /// True when the gateway or the upstream provider refused this request
+  /// because a rate limit / usage quota is exhausted (HTTP 429).
+  ///
+  /// Vocabulary mirrors the gateway's own `_GATEWAY_RATE_LIMIT_RE`
+  /// (`gateway/run.py`). This is deliberately treated as terminal for the
+  /// client: an immediate forced-reconnect resend, or an outbox replay every
+  /// ~40s for eight attempts, is the one response guaranteed to make a rate
+  /// limit worse. The user is told instead, and decides when to try again.
+  static bool _isRateLimited(Object error) =>
+      _rateLimitPattern.hasMatch('$error');
+
+  static final _rateLimitPattern = RegExp(
+    r'(rate[\s-]?limit|\b429\b|quota|usage limit)',
+    caseSensitive: false,
+  );
+
+  /// True when a `prompt.submit` transport failure happened *before* the frame
+  /// was written to the socket, so resending it cannot duplicate the turn.
+  ///
+  /// [GatewayWsClient.requestWithTimeout] has exactly one pre-write throw — the
+  /// channel is absent or not `open`. Everything else it can surface
+  /// (`WebSocket closed` / `disconnected` from `_failPending`, or the ack
+  /// timeout) happens only after `sink.add`, i.e. with delivery unknown.
+  static bool _submitNeverLeftThePhone(Object error) =>
+      error is StateError && '$error'.contains('gateway not connected');
+
+  /// True when the transcript already carries an assistant/system reply after
+  /// its last user turn — i.e. the turn we lost the socket on actually landed.
+  static bool _hasReplyAfterLastUser(List<HermesMessage> messages) {
+    final lastUser = messages.lastIndexWhere((m) => m.isUser);
+    if (lastUser < 0) return false;
+    return messages
+        .skip(lastUser + 1)
+        .any(
+          (m) =>
+              (m.isAssistant || m.isSystem) &&
+              (m.content ?? '').trim().isNotEmpty,
+        );
+  }
+
+  /// Banner for a turn whose delivery we could not confirm. Deliberately not
+  /// phrased as a failure: the gateway may be running it right now, and the
+  /// bubble self-expires from the transcript once the real reply syncs in
+  /// (see the [kLocalErrorIdPrefix] handling in [syncMessages]).
+  static const _unconfirmedSubmitBanner =
+      'Connection dropped before the gateway confirmed this message. '
+      'It was not resent, so it cannot run twice — the reply may still '
+      'arrive. Pull to refresh.';
+
+  /// Shared handling for [PromptSubmitUnconfirmed]: never resend, resync, and
+  /// only annotate the transcript when the server has no reply for this turn.
+  Future<ChatSendResult> _resolveUnconfirmedSubmit(
+    PromptSubmitUnconfirmed error,
+    String fallbackSessionId,
+  ) async {
+    final sid = error.effectiveSessionId ?? fallbackSessionId;
+    List<HermesMessage> msgs;
+    try {
+      msgs = await syncMessages(sid);
+    } catch (_) {
+      msgs = await loadMessagesLocal(sid);
+    }
+    if (_hasReplyAfterLastUser(msgs)) {
+      return ChatSendResult(messages: msgs, queued: false, sessionId: sid);
+    }
+    return ChatSendResult(
+      messages: ensureErrorAssistantMessage(
+        msgs,
+        sessionId: sid,
+        errorText: _unconfirmedSubmitBanner,
+      ),
+      queued: false,
+      sessionId: sid,
+      error: _unconfirmedSubmitBanner,
+    );
+  }
 
   /// The one 4018 sub-case that IS recoverable: the client's cached
   /// `truncate_before_user_ordinal` no longer matches the gateway's live
@@ -1620,6 +1700,7 @@ class SessionSyncRepository {
     bool interruptFirst = false,
     void Function(String toolStatus)? onToolStatus,
     void Function(String assistantPartial)? onAssistantDelta,
+    void Function(GatewayApprovalRequest? request)? onApprovalRequest,
   }) async {
     final now = DateTime.now().toUtc();
     final userId = _uuid.v4();
@@ -1694,7 +1775,11 @@ class SessionSyncRepository {
           interruptFirst: interruptFirst && attempt == 0,
           onToolStatus: onToolStatus,
           onAssistantDelta: onAssistantDelta,
+          onApprovalRequest: onApprovalRequest,
         );
+      } on PromptSubmitUnconfirmed catch (e) {
+        debugPrint('SessionSync: submit delivery unconfirmed (no resend): $e');
+        return _resolveUnconfirmedSubmit(e, sessionId);
       } on TurnFailedAfterSubmit catch (e) {
         debugPrint('SessionSync: turn failed after submit (no retry): $e');
         final sid = e.effectiveSessionId ?? sessionId;
@@ -1726,6 +1811,12 @@ class SessionSyncRepository {
         // offline.
         if (_isSessionNotFound(e)) {
           _forgetLiveMapping(sessionId);
+        } else if (_isRateLimited(e)) {
+          // A rate limit is the gateway/provider saying "not now". A forced
+          // reconnect resends the identical request seconds later against the
+          // same limit — it cannot succeed and it deepens the throttle.
+          debugPrint('SessionSync: rate limited; not resending: $e');
+          break;
         } else if (_isTerminalGatewayRejection(e)) {
           // The gateway is live and has permanently rejected this exact
           // request (4018). A forced-reconnect retry would resend the same
@@ -1767,8 +1858,15 @@ class SessionSyncRepository {
             interruptFirst: false,
             onToolStatus: onToolStatus,
             onAssistantDelta: onAssistantDelta,
+            onApprovalRequest: onApprovalRequest,
           );
         }
+      } on PromptSubmitUnconfirmed catch (e) {
+        debugPrint(
+          'SessionSync: ordinal-free retry delivery unconfirmed (no resend): '
+          '$e',
+        );
+        return _resolveUnconfirmedSubmit(e, sessionId);
       } on TurnFailedAfterSubmit catch (e) {
         debugPrint(
           'SessionSync: ordinal-free retry failed after submit (no retry): $e',
@@ -1805,6 +1903,7 @@ class SessionSyncRepository {
     // that can never succeed. Keep a durable terminal error instead.
     if (lastWsErr != null &&
         (_isSessionNotFound(lastWsErr) ||
+            _isRateLimited(lastWsErr) ||
             _isTerminalGatewayRejection(lastWsErr))) {
       final userFacing = formatTurnErrorForUser('$lastWsErr');
       return ChatSendResult(
@@ -2066,6 +2165,7 @@ class SessionSyncRepository {
     bool interruptFirst = false,
     void Function(String toolStatus)? onToolStatus,
     void Function(String assistantPartial)? onAssistantDelta,
+    void Function(GatewayApprovalRequest? request)? onApprovalRequest,
   }) async {
     final rt = _realtime!;
     final liveId = await _ensureLiveSessionId(
@@ -2239,6 +2339,15 @@ class SessionSyncRepository {
             assistantText.isEmpty ? L10n.current.thinking : '',
           );
         }
+      } else if (type == 'approval.request') {
+        onApprovalRequest?.call(
+          GatewayApprovalRequest.fromJson(
+            body,
+            sessionId: event.sessionId?.trim().isNotEmpty == true
+                ? event.sessionId!.trim()
+                : liveId,
+          ),
+        );
       } else if (type == 'status.update') {
         final kind = '${body['kind'] ?? ''}'.toLowerCase();
         final text =
@@ -2253,6 +2362,7 @@ class SessionSyncRepository {
           onToolStatus?.call(text);
         }
       } else if (type == 'message.complete' || type == 'assistant.complete') {
+        onApprovalRequest?.call(null);
         final finalText = body['text'] ?? body['content'] ?? body['output'];
         if (finalText != null && '$finalText'.isNotEmpty) {
           assistantText = '$finalText';
@@ -2266,6 +2376,7 @@ class SessionSyncRepository {
         onToolStatus?.call('');
         if (!turnDone.isCompleted) turnDone.complete();
       } else if (type == 'error') {
+        onApprovalRequest?.call(null);
         final msg =
             '${body['message'] ?? body['error'] ?? payload['message'] ?? 'gateway error'}';
         // Interrupt often surfaces as a soft error; treat as stop, not failure.
@@ -2290,16 +2401,38 @@ class SessionSyncRepository {
     });
 
     try {
-      await rt.request(
-        'prompt.submit',
-        {
-          'session_id': liveId,
-          'text': input,
-          'truncate_before_user_ordinal': ?truncateBeforeUserOrdinal,
-        },
-        // Desktop PROMPT_SUBMIT_REQUEST_TIMEOUT_MS — ack is usually instant.
-        const Duration(minutes: 30),
-      );
+      try {
+        await rt.request(
+          'prompt.submit',
+          {
+            'session_id': liveId,
+            'text': input,
+            'truncate_before_user_ordinal': ?truncateBeforeUserOrdinal,
+          },
+          // Desktop PROMPT_SUBMIT_REQUEST_TIMEOUT_MS — ack is usually instant.
+          const Duration(minutes: 30),
+        );
+      } on GatewayRpcException {
+        // The gateway received the request and answered with a decision.
+        // Existing classification (4018, session-not-found, …) owns this.
+        rethrow;
+      } catch (e) {
+        // Transport failure. Whether it is safe to resend depends entirely on
+        // whether the frame reached the socket, and that is knowable:
+        // [GatewayWsClient.requestWithTimeout] throws *before* writing only
+        // when the channel is missing/not open. Every other failure here —
+        // `WebSocket closed`, `disconnected`, a timeout — happened AFTER the
+        // frame went out, so the gateway may already be running the turn.
+        //
+        // The caller's reconnect loop used to resend on all of these, which is
+        // how one tap could become two upstream provider calls (and, against a
+        // subscription-metered provider, a self-inflicted 429).
+        if (_submitNeverLeftThePhone(e)) rethrow;
+        throw PromptSubmitUnconfirmed(
+          '$e',
+          effectiveSessionId: effectiveStored,
+        );
+      }
       // Submit accepted — still waiting on stream unless already completed.
       if (!turnDone.isCompleted && assistantText.isEmpty) {
         onToolStatus?.call(L10n.current.thinking);
@@ -2407,12 +2540,30 @@ class SessionSyncRepository {
         sessionId: effectiveStored,
       );
     } finally {
+      onApprovalRequest?.call(null);
       if (_inflightTurnDone == turnDone) {
         _inflightTurnDone = null;
         _inflightLiveId = null;
       }
       await sub.cancel();
     }
+  }
+
+  /// Resolve a gateway approval that is currently blocking a session turn.
+  /// The choice list comes from [GatewayApprovalRequest], never from a
+  /// hardcoded model or provider capability table.
+  Future<void> respondToApproval({
+    required String sessionId,
+    required String choice,
+  }) async {
+    final rt = _realtime;
+    if (rt == null || !rt.isLive) {
+      throw StateError('Gateway WebSocket is not connected');
+    }
+    await rt.request('approval.respond', {
+      'session_id': sessionId,
+      'choice': choice,
+    });
   }
 
   /// Whether [sid] is the in-flight turn or one of its aliases.
@@ -2578,7 +2729,9 @@ class SessionSyncRepository {
   /// Returns true when the op was abandoned (caller must not also bump it).
   Future<bool> _abandonHopelessOp(PendingOp op, Object error) async {
     final terminal =
-        _isTerminalGatewayRejection(error) || _isSessionNotFound(error);
+        _isTerminalGatewayRejection(error) ||
+        _isSessionNotFound(error) ||
+        _isRateLimited(error);
     final attempts = op.attemptCount + 1;
     if (!terminal && attempts < maxOutboxAttempts) return false;
 
@@ -2641,6 +2794,16 @@ class SessionSyncRepository {
           await _db.removeOp(op.id);
           _notifyOutboxOpResolved(op);
           debugPrint('SessionSync: WS op ${op.opType} ran but failed: $e');
+        } on PromptSubmitUnconfirmed catch (e) {
+          // The frame left the phone; the gateway may be running it. Replaying
+          // this op on the next flush is exactly how a queued message becomes
+          // two upstream provider calls. Drop it — a later transcript pull is
+          // the authority on whether the turn landed.
+          await _db.removeOp(op.id);
+          _notifyOutboxOpResolved(op);
+          debugPrint(
+            'SessionSync: WS op ${op.opType} delivery unconfirmed: $e',
+          );
         } catch (e) {
           if (await _abandonHopelessOp(op, e)) continue;
           await _db.bumpOpFailure(op.id, '$e');
@@ -3050,6 +3213,25 @@ class ChatSendResult {
   final bool queued;
   final String? sessionId;
   final String? error;
+}
+
+/// Thrown when a `prompt.submit` frame reached the socket but the gateway
+/// never answered — the connection dropped, or the ack timed out.
+///
+/// Delivery is genuinely UNKNOWN here: the turn may be running upstream right
+/// now, or the frame may have died in the network. Callers must therefore
+/// treat it exactly like [TurnFailedAfterSubmit] for resend purposes (never
+/// resend, never re-enqueue) but must NOT report it as a failed turn — resync
+/// the transcript and only surface a banner when the server still has no
+/// reply. Resending is what turns one tap into two upstream provider calls.
+class PromptSubmitUnconfirmed implements Exception {
+  PromptSubmitUnconfirmed(this.message, {this.effectiveSessionId});
+
+  final String message;
+  final String? effectiveSessionId;
+
+  @override
+  String toString() => 'PromptSubmitUnconfirmed: $message';
 }
 
 /// Thrown when `prompt.submit` was accepted but the agent turn failed.

@@ -356,6 +356,46 @@ class SessionRuntimeState {
   }
 }
 
+/// A dangerous-command approval parked by the gateway while a turn waits for
+/// an explicit user decision. Choices are supplied by the server so clients do
+/// not invent permissions the active Hermes version will not honor.
+class GatewayApprovalRequest {
+  const GatewayApprovalRequest({
+    required this.sessionId,
+    required this.command,
+    required this.description,
+    required this.choices,
+  });
+
+  final String sessionId;
+  final String command;
+  final String description;
+  final List<String> choices;
+
+  factory GatewayApprovalRequest.fromJson(
+    Map<String, dynamic> raw, {
+    required String sessionId,
+  }) {
+    final supplied = raw['choices'];
+    final choices = supplied is List
+        ? supplied
+              .map((choice) => '$choice'.trim().toLowerCase())
+              .where((choice) => choice.isNotEmpty)
+              .toList(growable: false)
+        : raw['smart_denied'] == true
+        ? const ['once', 'deny']
+        : raw['allow_permanent'] == false
+        ? const ['once', 'session', 'deny']
+        : const ['once', 'session', 'always', 'deny'];
+    return GatewayApprovalRequest(
+      sessionId: sessionId,
+      command: '${raw['command'] ?? ''}'.trim(),
+      description: '${raw['description'] ?? 'Approval needed'}'.trim(),
+      choices: choices,
+    );
+  }
+}
+
 class HermesMessage {
   const HermesMessage({
     required this.id,

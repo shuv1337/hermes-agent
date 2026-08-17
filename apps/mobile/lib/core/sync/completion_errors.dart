@@ -46,7 +46,7 @@ String formatTurnErrorForUser(String? raw) {
   }
 
   final known = completionErrorText(msg);
-  if (known != null) return known;
+  if (known != null) return _withRateLimitHint(known);
 
   // Bare transport phrases — match Desktop/agent wording when we only got
   // the summary without the "after N retries" wrapper.
@@ -63,9 +63,33 @@ String formatTurnErrorForUser(String? raw) {
     return 'API call failed after 3 retries: $summary';
   }
 
-  if (lower.startsWith('api call failed')) return msg;
-  return msg;
+  if (lower.startsWith('api call failed')) return _withRateLimitHint(msg);
+  return _withRateLimitHint(msg);
 }
+
+/// A bare `429` reads as a bug; it is a quota/throttle answer from the
+/// provider. The gateway usually appends its own guidance already
+/// (`gateway/run.py` builds "You are being rate-limited…" or a
+/// "usage limit … resets in ~Nh" hint), and `hermes_cli/auth.py` surfaces the
+/// Codex `retry-after` seconds — so only annotate when the message carries the
+/// status and nothing a user could act on.
+String _withRateLimitHint(String message) {
+  if (!_bare429.hasMatch(message)) return message;
+  if (_rateLimitGuidance.hasMatch(message)) return message;
+  final base = message.trimRight();
+  final joined = base.endsWith('.') || base.endsWith(':') ? base : '$base.';
+  return '$joined Rate limited by the provider — this was not resent. '
+      'Wait for the limit to reset, then try again.';
+}
+
+final _bare429 = RegExp(r'\b429\b');
+
+/// Human guidance the gateway/provider may already have attached. Matching any
+/// of these means the message can stand on its own.
+final _rateLimitGuidance = RegExp(
+  r'(retry after|resets in|try again|wait |usage limit|quota)',
+  caseSensitive: false,
+);
 
 /// True when [messages] already ends with an assistant/system row carrying
 /// [errorText] (or any completion-error banner).

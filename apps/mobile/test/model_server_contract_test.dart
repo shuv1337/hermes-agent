@@ -285,15 +285,19 @@ void main() {
         await tester.tap(find.text('Open contract picker'));
         await tester.pumpAndSettle();
 
+        // Rich server metadata is authoritative. Compatibility inference is
+        // reserved for old payloads where these fields are absent.
         expect(
           find.text('Thinking'),
-          modelCase.thinking ? findsOneWidget : findsNothing,
+          modelCase.reasoning && modelCase.thinking
+              ? findsOneWidget
+              : findsNothing,
         );
         expect(
           find.text('Effort'),
           modelCase.reasoning &&
                   modelCase.efforts.isNotEmpty &&
-                  modelCase.selectedEffort != 'none'
+                  (!modelCase.thinking || modelCase.selectedEffort != 'none')
               ? findsOneWidget
               : findsNothing,
         );

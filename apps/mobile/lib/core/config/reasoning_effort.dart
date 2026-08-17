@@ -103,7 +103,15 @@ List<ModelFamily> collapseModelFamilies(Iterable<String> models) {
   return families;
 }
 
-/// Legacy fallback for gateways that predate per-model effort metadata.
+/// Hermes' own reasoning ladder, ascending — the exact tuple the backend
+/// accepts (`hermes_constants.VALID_REASONING_EFFORTS`), and the same list
+/// Desktop's model submenu renders (`apps/desktop/src/lib/reasoning-effort.ts`
+/// `REASONING_EFFORTS`). `none` is not a level: it is thinking disabled, owned
+/// by the Thinking toggle.
+///
+/// Every value here round-trips through the gateway's `parse_reasoning_effort`,
+/// so offering them can never produce a 400 — an unrecognized level falls back
+/// to the profile default rather than being rejected.
 const kReasoningEffortOptions = <String>[
   'minimal',
   'low',
@@ -111,6 +119,7 @@ const kReasoningEffortOptions = <String>[
   'high',
   'xhigh',
   'max',
+  'ultra',
 ];
 
 /// Normalize raw gateway/UI value to a known token.
@@ -119,7 +128,7 @@ String normalizeReasoningEffort(String? raw) {
   if (v.isEmpty) return 'medium'; // Hermes default
   if (v == 'maximum') return 'max';
   if (v == 'off' || v == 'disabled') return 'none';
-  if (v == 'none' || v == 'ultra' || kReasoningEffortOptions.contains(v)) {
+  if (v == 'none' || kReasoningEffortOptions.contains(v)) {
     return v;
   }
   return 'medium';

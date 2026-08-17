@@ -329,6 +329,8 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   bool _readAloud = false;
   String? _error;
   String? _toolStatus;
+  GatewayApprovalRequest? _approvalRequest;
+  bool _approvalResponding = false;
   late HermesSession _session;
   StreamSubscription<SessionTouch>? _touchSub;
   StreamSubscription<GatewayWsEvent>? _runtimeSub;
@@ -593,6 +595,8 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
       _sessionProvider = null;
       _sessionReasoningEffort = null;
       _sessionFastMode = null;
+      _approvalRequest = null;
+      _approvalResponding = false;
       _runtimeHydration = _hydrateSessionRuntime();
       unawaited(_runtimeHydration);
       if (wasSending && keep != null) {
@@ -1660,6 +1664,13 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
           ];
         });
       },
+      onApprovalRequest: (request) {
+        if (!mounted) return;
+        setState(() {
+          _approvalRequest = request;
+          if (request == null) _approvalResponding = false;
+        });
+      },
     );
 
     if (!mounted) return;
@@ -1737,6 +1748,8 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
       _messages = next;
       _sending = false;
       _toolStatus = null;
+      _approvalRequest = null;
+      _approvalResponding = false;
       _queuedHint = result.queued;
       // Context occupancy updates after each turn (Desktop status bar).
       unawaited(_refreshContextUsage(fullBreakdown: true));
@@ -1760,6 +1773,37 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
       }
     });
     unawaited(ref.read(sessionsProvider.notifier).softRefresh());
+  }
+
+  Future<void> _respondToApproval(String choice) async {
+    final request = _approvalRequest;
+    final sync = ref.read(sessionSyncProvider);
+    if (request == null || sync == null || _approvalResponding) return;
+    setState(() {
+      _approvalResponding = true;
+      _error = null;
+    });
+    try {
+      await sync.respondToApproval(
+        sessionId: request.sessionId,
+        choice: choice,
+      );
+      if (!mounted) return;
+      hermesHaptic(
+        choice == 'deny' ? HapticIntent.cancel : HapticIntent.submit,
+      );
+      setState(() {
+        _approvalRequest = null;
+        _approvalResponding = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      FeedbackService.instance.error();
+      setState(() {
+        _approvalResponding = false;
+        _error = 'Could not send approval response: $e';
+      });
+    }
   }
 
   /// Look up provider slug for a model id from cached /api/model/options.
@@ -2074,6 +2118,12 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
               style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
             ),
           ),
+        if (_approvalRequest case final request?)
+          _GatewayApprovalBar(
+            request: request,
+            responding: _approvalResponding,
+            onRespond: (choice) => unawaited(_respondToApproval(choice)),
+          ),
         ChatComposerBar(
           controller: _composer,
           sending: _sending,
@@ -2119,6 +2169,146 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
         ],
       ),
       body: body,
+    );
+  }
+}
+
+class _GatewayApprovalBar extends StatelessWidget {
+  const _GatewayApprovalBar({
+    required this.request,
+    required this.responding,
+    required this.onRespond,
+  });
+
+  final GatewayApprovalRequest request;
+  final bool responding;
+  final ValueChanged<String> onRespond;
+
+  Future<void> _selectChoice(BuildContext context, String choice) async {
+    if (choice != 'always') {
+      onRespond(choice);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Always allow this command?'),
+        content: const Text(
+          'This permanently saves an approval rule on your Hermes server.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Always allow'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) onRespond(choice);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final choices = request.choices.toSet();
+    final moreChoices = <String>[
+      if (choices.contains('session')) 'session',
+      if (choices.contains('always')) 'always',
+    ];
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                size: 18,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  request.description.isEmpty
+                      ? 'Approval needed'
+                      : request.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge,
+                ),
+              ),
+            ],
+          ),
+          if (request.command.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SelectableText(
+              request.command,
+              maxLines: 3,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: responding || !choices.contains('once')
+                    ? null
+                    : () => onRespond('once'),
+                icon: responding
+                    ? const SizedBox.square(
+                        dimension: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.play_arrow_rounded, size: 18),
+                label: const Text('Run'),
+              ),
+              if (moreChoices.isNotEmpty)
+                PopupMenuButton<String>(
+                  enabled: !responding,
+                  tooltip: 'More approval options',
+                  onSelected: (choice) => _selectChoice(context, choice),
+                  itemBuilder: (_) => [
+                    if (moreChoices.contains('session'))
+                      const PopupMenuItem(
+                        value: 'session',
+                        child: Text('Allow for this session'),
+                      ),
+                    if (moreChoices.contains('always'))
+                      const PopupMenuItem(
+                        value: 'always',
+                        child: Text('Always allow'),
+                      ),
+                  ],
+                ),
+              const Spacer(),
+              TextButton(
+                onPressed: responding || !choices.contains('deny')
+                    ? null
+                    : () => onRespond('deny'),
+                child: const Text('Reject'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

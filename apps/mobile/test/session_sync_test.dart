@@ -7,7 +7,10 @@ import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_mobile/core/db/app_database.dart';
+import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/network/hermes_api.dart';
+import 'package:hermes_mobile/core/network/gateway_ws_client.dart';
+import 'package:hermes_mobile/core/sync/gateway_realtime.dart';
 import 'package:hermes_mobile/core/sync/session_sync_repository.dart';
 
 void main() {
@@ -75,6 +78,53 @@ void main() {
     expect((await repo.loadSessionsLocal()).first.title, 'A');
     expect((await other.loadSessionsLocal()).first.title, 'B');
   });
+
+  test(
+    'runtime hydration resumes once and keeps the session-specific model',
+    () async {
+      final realtime = _RuntimeRealtime(repo);
+      repo.bindRealtime(realtime);
+      addTearDown(realtime.dispose);
+
+      final runtime = await repo.fetchSessionRuntime('stored-session');
+
+      expect(realtime.resumeCalls, 1);
+      expect(runtime?.model, 'session-model');
+      expect(runtime?.provider, 'openai-codex');
+      expect(runtime?.reasoningEffort, 'high');
+      expect(runtime?.fastMode, isFalse);
+      expect(
+        repo.sessionIdFamily('stored-session'),
+        contains('live-stored-session'),
+      );
+    },
+  );
+
+  test(
+    'approval choices come from the gateway and response is session scoped',
+    () async {
+      final request = GatewayApprovalRequest.fromJson({
+        'command': 'python script.py',
+        'description': 'Run generated code',
+        'choices': ['once', 'deny'],
+      }, sessionId: 'live-session');
+      expect(request.command, 'python script.py');
+      expect(request.description, 'Run generated code');
+      expect(request.choices, ['once', 'deny']);
+
+      final realtime = _RuntimeRealtime(repo);
+      repo.bindRealtime(realtime);
+      addTearDown(realtime.dispose);
+      await repo.respondToApproval(
+        sessionId: request.sessionId,
+        choice: 'once',
+      );
+
+      expect(realtime.approvalResponses, [
+        {'session_id': 'live-session', 'choice': 'once'},
+      ]);
+    },
+  );
 
   group('replaceMessages re-inserts pending rows intact', () {
     test('a pending row keeps its display_kind', () async {
@@ -256,4 +306,53 @@ class _CountingAdapter implements HttpClientAdapter {
 
   @override
   void close({bool force = false}) {}
+}
+
+/// Simulates the cold-resume gateway race: the first response contains the
+/// persisted session identity, while an erroneous second resume would expose
+/// the global fallback model.
+class _RuntimeRealtime extends GatewayRealtime {
+  _RuntimeRealtime(SessionSyncRepository repository)
+    : super(
+        profile: const ConnectionProfile(
+          id: 'runtime-test',
+          baseUrl: 'https://gateway.test',
+        ),
+        sessionSync: repository,
+      );
+
+  int resumeCalls = 0;
+  final List<Map<String, dynamic>> approvalResponses = [];
+
+  @override
+  bool get isLive => true;
+
+  @override
+  Stream<GatewayWsEvent> get events => const Stream.empty();
+
+  @override
+  Future<bool> ensureLive({bool force = false}) async => true;
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method, [
+    Map<String, dynamic>? params,
+    Duration? timeout,
+  ]) async {
+    if (method == 'approval.respond') {
+      approvalResponses.add(Map<String, dynamic>.from(params ?? const {}));
+      return {'resolved': true};
+    }
+    if (method != 'session.resume') return <String, dynamic>{};
+    resumeCalls++;
+    return {
+      'session_id': 'live-${params?['session_id']}',
+      'info': {
+        'model': resumeCalls == 1 ? 'session-model' : 'global-model',
+        'provider': 'openai-codex',
+        'reasoning_effort': 'high',
+        'fast': false,
+      },
+    };
+  }
 }

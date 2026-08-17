@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -177,6 +178,47 @@ void main() {
     expect(await db.pendingOpsForGateway('gw3'), isEmpty);
   });
 
+  test('a prompt.submit whose ack is lost to a dropped socket is NEVER '
+      'resent, and never re-enqueued into the outbox', () async {
+    // The frame reached the socket, so the gateway may already be running the
+    // turn. The reconnect loop used to resend it here, which is how one tap
+    // became two upstream provider calls (and, on a subscription-metered
+    // provider like openai-codex, a self-inflicted 429).
+    final gw = await _FakeGateway.start(
+      promptSubmitBehavior: (params, callIndex) =>
+          _FakeResponse.dropSocketWithoutReply(),
+    );
+    addTearDown(gw.close);
+
+    final sync = SessionSyncRepository(gatewayId: 'gw4', db: db, api: null);
+    final realtime = GatewayRealtime(
+      profile: gw.openProfile(),
+      sessionSync: sync,
+    );
+    sync.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+
+    expect(await realtime.ensureLive(), isTrue);
+
+    final result = await sync.sendMessage(
+      sessionId: 'sess-4',
+      input: 'expensive prompt',
+    );
+
+    expect(
+      gw.promptSubmitCalls,
+      1,
+      reason: 'delivery is unknown — resending can duplicate the turn',
+    );
+    expect(result.queued, isFalse);
+    expect(result.error, contains('not resent'));
+    expect(
+      await db.pendingOpsForGateway('gw4'),
+      isEmpty,
+      reason: 'an outbox replay would be the same duplicate, later',
+    );
+  });
+
   group('delete a message', () {
     test('deleteMessageLocal removes the message and it stays gone after '
         'a simulated server resync repopulates the row', () async {
@@ -225,13 +267,23 @@ typedef _PromptSubmitBehavior =
     _FakeResponse Function(Map<String, dynamic> params, int callIndex);
 
 class _FakeResponse {
-  _FakeResponse.ok(this.result) : error = null;
+  _FakeResponse.ok(this.result) : error = null, dropSocket = false;
   _FakeResponse.error(int code, String message)
     : result = null,
+      dropSocket = false,
       error = {'code': code, 'message': message};
+
+  /// Accept the frame, then kill the connection without ever answering —
+  /// the gateway may or may not have started the turn. Reproduces the
+  /// ambiguous `prompt.submit` the client must never resend.
+  _FakeResponse.dropSocketWithoutReply()
+    : result = null,
+      error = null,
+      dropSocket = true;
 
   final Map<String, dynamic>? result;
   final Map<String, dynamic>? error;
+  final bool dropSocket;
 }
 
 /// A minimal real WebSocket server standing in for `tui_gateway`'s
@@ -290,6 +342,10 @@ class _FakeGateway {
       promptSubmitCalls++;
       promptSubmitParams.add(params);
       final resp = _promptSubmitBehavior(params, promptSubmitCalls);
+      if (resp.dropSocket) {
+        unawaited(_socket?.close() ?? Future<void>.value());
+        return;
+      }
       if (resp.error != null) {
         _reply(id, error: resp.error);
         return;

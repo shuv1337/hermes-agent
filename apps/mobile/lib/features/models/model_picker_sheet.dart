@@ -9,6 +9,49 @@ import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/core/services/feedback.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
+/// Hermes' own effort ladder as picker rows — a compatibility fallback for a
+/// gateway that reports a model reasons without naming its legal levels.
+/// See [_effortOptionsFor] for exactly when this applies.
+final _hermesEffortLadder = <ReasoningEffortOption>[
+  for (final effort in kReasoningEffortOptions)
+    ReasoningEffortOption(effort: effort),
+];
+
+/// Which effort levels the picker offers for [caps].
+///
+/// Desktop is the proof of what works against a real gateway, and Desktop's
+/// capability type has only two fields (`apps/desktop/src/types/hermes.ts:423`
+/// `{fast, reasoning}`). It gates its Thinking switch and its hardcoded
+/// 7-level ladder on `reasoning` alone
+/// (`apps/desktop/src/app/shell/model-edit-submenu.tsx:140,158`,
+/// `apps/desktop/src/lib/reasoning-effort.ts:6`).
+///
+/// The phone must not be stricter than that. A stock Hermes 0.20.2 gateway
+/// builds its capability rows as a bare `{"fast": …, "reasoning": …}` — no
+/// `thinking` key and no `reasoning_efforts` key for any provider — so any
+/// rule keyed off those fields silently renders nothing while Desktop, on the
+/// same server, shows the full set of controls. That is the mainstream shape,
+/// not a legacy one.
+///
+/// Server-named levels always win, including an explicitly empty list. They
+/// are ordered and carry the provider's own descriptions. Falling back only
+/// when the field is absent is safe because
+/// every value in it round-trips through the gateway's `parse_reasoning_effort`
+/// (`hermes_constants.py`), which falls back to the profile default on an
+/// unrecognized level rather than rejecting the request — so the worst case is
+/// a level the server quietly ignores, never a 400.
+List<ReasoningEffortOption> _effortOptionsFor(ModelCapabilities caps) {
+  if (!caps.reasoning) return const [];
+  final advertised = caps.reasoningEfforts;
+  return advertised ?? _hermesEffortLadder;
+}
+
+/// Whether the Thinking switch is offered. Rich gateways are authoritative;
+/// the coarse `reasoning` flag is used only when the `thinking` field is
+/// absent (the stock Hermes 0.20.2 payload Desktop also supports).
+bool _hasThinkingControl(ModelCapabilities caps) =>
+    caps.reasoning && (caps.thinking ?? true);
+
 /// Result of a confirmed model picker selection (Desktop model + options).
 class ModelPick {
   const ModelPick({
@@ -161,14 +204,6 @@ class _ModelPickerBodyState extends ConsumerState<_ModelPickerBody> {
     return const FastControl.none();
   }
 
-  List<ReasoningEffortOption> _effortOptionsFor(ModelCapabilities caps) {
-    // The picker is authoritative-server-driven. A legacy gateway that only
-    // returns `reasoning: true` does not tell us which effort values are legal,
-    // so offering the global Hermes list here would create placebo/400-prone
-    // controls. Wait for explicit per-model options instead.
-    return caps.reasoningEfforts ?? const [];
-  }
-
   String _defaultEffortFor(
     ModelCapabilities caps,
     List<ReasoningEffortOption> options,
@@ -188,7 +223,7 @@ class _ModelPickerBodyState extends ConsumerState<_ModelPickerBody> {
   }) {
     if (!caps.reasoning) return 'none';
     final current = normalizeReasoningEffort(_effort);
-    if (caps.thinkingSupported &&
+    if (_hasThinkingControl(caps) &&
         preserveThinkingOff &&
         !isThinkingEnabled(current)) {
       return 'none';
@@ -233,7 +268,7 @@ class _ModelPickerBodyState extends ConsumerState<_ModelPickerBody> {
     final fastControl = _fastControlFor(opts, model, provider);
     final effortOptions = _effortOptionsFor(caps);
     final hasReasoningControl =
-        caps.reasoning && (caps.thinkingSupported || effortOptions.isNotEmpty);
+        _hasThinkingControl(caps) || effortOptions.isNotEmpty;
     final resolvedEffort = _resolvedEffortFor(caps, effortOptions);
     Navigator.of(context).pop(
       ModelPick(
@@ -266,7 +301,7 @@ class _ModelPickerBodyState extends ConsumerState<_ModelPickerBody> {
     final caps = _capsFor(optsData, draftModel, draftProvider);
     final fastControl = _fastControlFor(optsData, draftModel, draftProvider);
     final effortOptions = _effortOptionsFor(caps);
-    final hasThinkingControl = caps.reasoning && caps.thinkingSupported;
+    final hasThinkingControl = _hasThinkingControl(caps);
     final hasEffortControl = caps.reasoning && effortOptions.isNotEmpty;
     final resolvedEffort = _resolvedEffortFor(caps, effortOptions);
     final waitingCaps = optsData == null && options.isLoading;
@@ -582,9 +617,8 @@ class _ProviderSection extends StatelessWidget {
                   (draftProvider == null || draftProvider == provider.slug);
               // Desktop meta: only list options this model actually supports.
               final meta = <String>[
-                if (caps.thinkingSupported) context.l10n.thinking,
-                if (caps.reasoningEfforts?.isNotEmpty == true)
-                  context.l10n.effort,
+                if (_hasThinkingControl(caps)) context.l10n.thinking,
+                if (_effortOptionsFor(caps).isNotEmpty) context.l10n.effort,
                 if (caps.fast || family.fastId != null) context.l10n.fastMode,
               ].join(' · ');
               return ListTile(
