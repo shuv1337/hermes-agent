@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/bots/bot_avatar.dart';
+import 'package:hermes_mobile/features/bots/bot_cronjobs_sheet.dart';
 import 'package:hermes_mobile/features/bots/create_bot_sheet.dart';
 import 'package:hermes_mobile/features/bots/edit_bot_sheet.dart';
 import 'package:hermes_mobile/features/sessions/session_chat_screen.dart';
@@ -245,6 +246,11 @@ class _BotTile extends ConsumerWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          IconButton(
+            tooltip: 'Cronjobs',
+            onPressed: () => showBotCronjobsSheet(context, bot: bot),
+            icon: const Icon(Icons.event_repeat_outlined),
+          ),
           IconButton(
             tooltip: context.l10n.editBotAction,
             onPressed: () => _editBot(context, ref, bot),
