@@ -1013,16 +1013,15 @@ final botAvatarProvider = FutureProvider.autoDispose.family<Uint8List?, String>(
 );
 
 class BotsNotifier extends AsyncNotifier<BotsViewState> {
+  final Set<String> _knownBotModeGateways = {};
+
   @override
-  Future<BotsViewState> build() async {
-    final sync = ref.watch(sessionSyncProvider);
-    if (sync == null) return const BotsViewState.unavailable();
-    try {
-      return await _fetch(sync);
-    } catch (e) {
-      debugPrint('BotsNotifier: capability probe failed: $e');
-      return const BotsViewState.unavailable();
-    }
+  BotsViewState build() {
+    ref.watch(sessionSyncProvider);
+    final profile = ref.watch(connectionProfileProvider).value;
+    if (profile == null) return const BotsViewState.unavailable();
+    if (profile.botModeAvailable) _knownBotModeGateways.add(profile.id);
+    return BotsViewState(available: _knownBotModeGateways.contains(profile.id));
   }
 
   Future<BotsViewState> _fetch(SessionSyncRepository sync) async {
@@ -1052,13 +1051,31 @@ class BotsNotifier extends AsyncNotifier<BotsViewState> {
 
   Future<void> refresh() async {
     final sync = ref.read(sessionSyncProvider);
+    final profile = ref.read(connectionProfileProvider).value;
     if (sync == null) {
       state = const AsyncData(BotsViewState.unavailable());
       return;
     }
     final previous = state.value;
     try {
-      state = AsyncData(await _fetch(sync));
+      final fresh = await _fetch(sync);
+      final remembered =
+          profile != null &&
+          (profile.botModeAvailable ||
+              _knownBotModeGateways.contains(profile.id));
+      if (fresh.available && profile != null) {
+        _knownBotModeGateways.add(profile.id);
+        unawaited(
+          ref.read(connectionStoreProvider).rememberBotMode(profile.id),
+        );
+      }
+      state = AsyncData(
+        BotsViewState(
+          available: fresh.available || remembered,
+          profiles: fresh.profiles,
+          syncError: fresh.syncError,
+        ),
+      );
     } catch (e) {
       debugPrint('BotsNotifier.refresh: $e');
       if (previous?.available == true) {

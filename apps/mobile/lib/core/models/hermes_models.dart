@@ -20,6 +20,7 @@ class ConnectionProfile {
     this.displayName,
     this.createdAt,
     this.lastUsedAt,
+    this.botModeAvailable = false,
   });
 
   /// Stable client-side id (uuid). Not the host session id.
@@ -47,6 +48,11 @@ class ConnectionProfile {
 
   final String? createdAt;
   final String? lastUsedAt;
+
+  /// Sticky server capability hint used to keep bottom navigation stable.
+  /// Once Bot Mode is confirmed for a saved gateway, transient probes no
+  /// longer make its tab appear late or disappear between launches.
+  final bool botModeAvailable;
 
   bool get usesSessionCookies =>
       authMode == 'session' || authMode == 'oauth' || authMode == 'password';
@@ -84,6 +90,7 @@ class ConnectionProfile {
     String? displayName,
     String? createdAt,
     String? lastUsedAt,
+    bool? botModeAvailable,
   }) {
     return ConnectionProfile(
       id: id ?? this.id,
@@ -96,6 +103,7 @@ class ConnectionProfile {
       displayName: displayName ?? this.displayName,
       createdAt: createdAt ?? this.createdAt,
       lastUsedAt: lastUsedAt ?? this.lastUsedAt,
+      botModeAvailable: botModeAvailable ?? this.botModeAvailable,
     );
   }
 
@@ -110,6 +118,7 @@ class ConnectionProfile {
     if (displayName != null) 'displayName': displayName,
     if (createdAt != null) 'createdAt': createdAt,
     if (lastUsedAt != null) 'lastUsedAt': lastUsedAt,
+    if (botModeAvailable) 'botModeAvailable': true,
   };
 
   /// Same shape as [toJson] but with [apiKey] (the legacy static gateway
@@ -128,6 +137,7 @@ class ConnectionProfile {
     if (displayName != null) 'displayName': displayName,
     if (createdAt != null) 'createdAt': createdAt,
     if (lastUsedAt != null) 'lastUsedAt': lastUsedAt,
+    if (botModeAvailable) 'botModeAvailable': true,
   };
 
   factory ConnectionProfile.fromJson(Map<String, dynamic> json) {
@@ -149,6 +159,7 @@ class ConnectionProfile {
       displayName: _asString(json['displayName']),
       createdAt: json['createdAt']?.toString(),
       lastUsedAt: json['lastUsedAt']?.toString(),
+      botModeAvailable: json['botModeAvailable'] == true,
     );
   }
 }

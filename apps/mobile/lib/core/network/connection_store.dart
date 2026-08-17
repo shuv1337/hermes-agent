@@ -385,6 +385,20 @@ class ConnectionStore {
     return next;
   }
 
+  /// Persist a positive Bot Mode capability without perturbing the live
+  /// provider graph. The current roster already updates the UI; this hint is
+  /// for stable navigation on the next launch. Negative probes never clear it
+  /// because an offline host is not evidence that the plugin was removed.
+  Future<void> rememberBotMode(String gatewayId) async {
+    if (gatewayId.isEmpty) return;
+    final book = await readBook();
+    final index = book.gateways.indexWhere((g) => g.id == gatewayId);
+    if (index < 0 || book.gateways[index].botModeAvailable) return;
+    final gateways = [...book.gateways];
+    gateways[index] = gateways[index].copyWith(botModeAvailable: true);
+    await writeBook(book.copyWith(gateways: gateways));
+  }
+
   Future<GatewayBook> setActive(String gatewayId) async {
     final book = await readBook();
     if (!book.gateways.any((g) => g.id == gatewayId)) {

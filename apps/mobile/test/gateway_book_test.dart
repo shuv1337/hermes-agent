@@ -18,6 +18,7 @@ void main() {
             baseUrl: 'https://b.example:8642',
             apiKey: 'key-b',
             label: 'Spark',
+            botModeAvailable: true,
           ),
         ],
         defaultGatewayId: 'a',
@@ -31,6 +32,7 @@ void main() {
       expect(restored.active?.label, 'Spark');
       expect(restored.defaultGateway?.label, 'Home');
       expect(restored.resolved?.id, 'b');
+      expect(restored.active?.botModeAvailable, isTrue);
     });
 
     test('resolved falls back to default then sole gateway', () {
@@ -119,6 +121,21 @@ void main() {
       await store.disconnectAll();
 
       expect(memory.containsKey('hermes_mobile_password:gw'), isFalse);
+    });
+
+    test('rememberBotMode persists a positive per-gateway hint', () async {
+      final store = ConnectionStore.memory();
+      const profile = ConnectionProfile(
+        id: 'gw',
+        baseUrl: 'https://gw.example',
+      );
+      await store.saveAsPrimary(profile);
+
+      await store.rememberBotMode(profile.id);
+
+      final restored = await store.readBook();
+      expect(restored.resolved?.botModeAvailable, isTrue);
+      expect(restored.resolved?.toMirrorJson()['botModeAvailable'], isTrue);
     });
   });
 }
