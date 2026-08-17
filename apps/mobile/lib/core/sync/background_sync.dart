@@ -193,15 +193,17 @@ class BackgroundSync {
 
       await sync.syncSessions();
 
-      // HealthKit remains authoritative; this is an opportunistic incremental
-      // upload when the user has explicitly enabled a Health Coach bot.
-      try {
-        await AppleHealthSync(
-          gatewayId: profile.id,
-          dashboard: dashboard,
-        ).sync();
-      } catch (e) {
-        debugPrint('BackgroundSync: Apple Health sync skipped: $e');
+      if (Platform.isIOS) {
+        // HealthKit remains authoritative; this is an opportunistic
+        // incremental upload when the user has explicitly enabled it.
+        try {
+          await AppleHealthSync(
+            gatewayId: profile.id,
+            dashboard: dashboard,
+          ).sync();
+        } catch (e) {
+          debugPrint('BackgroundSync: Apple Health sync skipped: $e');
+        }
       }
 
       final activeWatches = await watchStore.forGateway(profile.id);

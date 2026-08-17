@@ -32,8 +32,5 @@ dev_dependencies:
 flutter:
   plugin:
     platforms:
-      android:
-        package: cachet.plugins.health
-        pluginClass: HealthPlugin
       ios:
         pluginClass: HealthPlugin

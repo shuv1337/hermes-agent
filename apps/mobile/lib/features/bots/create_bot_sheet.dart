@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -77,7 +78,7 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
       _error = null;
     });
     try {
-      if (_healthCoach) {
+      if (Platform.isIOS && _healthCoach) {
         final profile = ref.read(connectionProfileProvider).value;
         final dashboard = ref.read(dashboardClientProvider);
         if (profile == null || dashboard == null) {
@@ -187,18 +188,19 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                     FocusManager.instance.primaryFocus?.unfocus(),
               ),
               const SizedBox(height: 20),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                value: _healthCoach,
-                onChanged: _busy
-                    ? null
-                    : (value) => setState(() => _healthCoach = value),
-                secondary: const Icon(Icons.favorite_outline),
-                title: const Text('Health Coach'),
-                subtitle: const Text(
-                  'Read your selected Apple Health data from this bot. Data syncs privately to your Hermes gateway.',
+              if (Platform.isIOS)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: _healthCoach,
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() => _healthCoach = value),
+                  secondary: const Icon(Icons.favorite_outline),
+                  title: const Text('Health Coach'),
+                  subtitle: const Text(
+                    'Read your selected Apple Health data from this bot. Data syncs privately to your Hermes gateway.',
+                  ),
                 ),
-              ),
               BotAdvancedEditor(
                 controller: _advanced,
                 profile: _slug,

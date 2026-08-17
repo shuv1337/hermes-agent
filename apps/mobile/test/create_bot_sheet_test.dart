@@ -56,6 +56,7 @@ void main() {
     expect(find.text('Name'), findsOneWidget);
     expect(find.text('Title'), findsOneWidget);
     expect(find.text('Description'), findsOneWidget);
+    expect(find.text('Health Coach'), findsNothing);
     expect(find.textContaining('Advanced · model'), findsOneWidget);
     expect(find.text('Bot'), findsOneWidget);
     expect(find.text('Generate'), findsOneWidget);
@@ -116,6 +117,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.widgetWithText(TextField, 'Caturday jokes'), findsOneWidget);
+    expect(find.text('Health Coach'), findsNothing);
     expect(find.text('Bot'), findsOneWidget);
     expect(find.text('Generate'), findsOneWidget);
     expect(find.text('Upload'), findsOneWidget);
