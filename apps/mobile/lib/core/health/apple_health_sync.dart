@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -40,6 +41,7 @@ class AppleHealthSync {
 
   String get _enabledKey => 'hermes_go_health_enabled:$gatewayId';
   String get _cursorKey => 'hermes_go_health_cursor:$gatewayId';
+  String get _diagnosticsKey => 'hermes_go_health_diagnostics:$gatewayId';
   final _storage = ConnectionStore.durableSecureStorage();
 
   Future<bool> get isEnabled async =>
@@ -56,6 +58,21 @@ class AppleHealthSync {
   Future<void> forgetLocalState() async {
     await _storage.delete(key: _enabledKey);
     await _storage.delete(key: _cursorKey);
+    await _storage.delete(key: _diagnosticsKey);
+  }
+
+  Future<Map<String, int>> get lastReadCounts async {
+    final raw = await _storage.read(key: _diagnosticsKey);
+    if (raw == null) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const {};
+      return decoded.map(
+        (key, value) => MapEntry('$key', (value as num?)?.toInt() ?? 0),
+      );
+    } catch (_) {
+      return const {};
+    }
   }
 
   Future<bool> requestReadAuthorization() async {
@@ -88,11 +105,28 @@ class AppleHealthSync {
     final start = initial || cursor == null
         ? now.subtract(const Duration(days: 30))
         : cursor.toUtc().subtract(const Duration(days: 1));
-    final points = await _health.getHealthDataFromTypes(
-      types: types,
-      startTime: start,
-      endTime: now,
-    );
+    // Query each type separately. Besides preventing one unavailable HealthKit
+    // type from aborting the whole sync, this gives the UI an honest account
+    // of what the phone actually returned (HealthKit does not disclose denied
+    // read permissions directly).
+    final points = <HealthDataPoint>[];
+    final readByType = <String, int>{};
+    final errors = <String>[];
+    for (final type in types) {
+      try {
+        final values = await _health.getHealthDataFromTypes(
+          types: [type],
+          startTime: start,
+          endTime: now,
+        );
+        points.addAll(values);
+        readByType[type.name] = values.length;
+      } catch (error) {
+        readByType[type.name] = 0;
+        errors.add(type.name);
+        debugPrint('AppleHealthSync: could not read ${type.name}: $error');
+      }
+    }
     var accepted = 0;
     const batchSize = 500;
     for (var offset = 0; offset < points.length; offset += batchSize) {
@@ -105,14 +139,20 @@ class AppleHealthSync {
         'schema_version': 1,
         'device_id': _health.deviceId,
         'batch_id': const Uuid().v4(),
-        'app_version': '21',
+        'app_version': '25',
         'samples': payload,
       });
       accepted += (response['accepted'] as num?)?.toInt() ?? 0;
     }
     await _storage.write(key: _cursorKey, value: now.toIso8601String());
+    await _storage.write(key: _diagnosticsKey, value: jsonEncode(readByType));
     debugPrint('AppleHealthSync: ${points.length} read, $accepted accepted');
-    return AppleHealthSyncResult(read: points.length, accepted: accepted);
+    return AppleHealthSyncResult(
+      read: points.length,
+      accepted: accepted,
+      readByType: readByType,
+      failedTypes: errors,
+    );
   }
 }
 
@@ -121,8 +161,16 @@ class AppleHealthSyncResult {
     this.read = 0,
     this.accepted = 0,
     this.skipped = false,
+    this.readByType = const {},
+    this.failedTypes = const [],
   });
   final int read;
   final int accepted;
   final bool skipped;
+  final Map<String, int> readByType;
+  final List<String> failedTypes;
+
+  int get sleepRead => readByType.entries
+      .where((entry) => entry.key.startsWith('SLEEP_'))
+      .fold(0, (sum, entry) => sum + entry.value);
 }

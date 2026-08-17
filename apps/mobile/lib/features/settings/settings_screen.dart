@@ -368,6 +368,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     var busy = false;
     String? message;
     Map<String, dynamic>? serverStatus;
+    var lastReadCounts = await health.lastReadCounts;
     try {
       serverStatus = await dashboard.appleHealthStatus();
     } catch (e) {
@@ -387,6 +388,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             });
             try {
               await action();
+              lastReadCounts = await health.lastReadCounts;
               serverStatus = await dashboard.appleHealthStatus();
             } catch (e) {
               message = '$e';
@@ -397,111 +399,155 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           final count = (serverStatus?['sample_count'] as num?)?.toInt() ?? 0;
           final last = serverStatus?['last_sync_at'];
+          final serverTypes =
+              (serverStatus?['types'] as List?)
+                  ?.map((type) => '$type')
+                  .toSet() ??
+              const <String>{};
+          final hasSleep = serverTypes.any((type) => type.startsWith('SLEEP_'));
+          final lastSleepRead = lastReadCounts.entries
+              .where((entry) => entry.key.startsWith('SLEEP_'))
+              .fold(0, (sum, entry) => sum + entry.value);
           return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Apple Health',
-                    style: Theme.of(sheetContext).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Hermes Go reads HealthKit only after your permission and sends samples to this authenticated Hermes gateway. Health Coach bots can query bounded summaries; health data is never added to every chat prompt.',
-                  ),
-                  const SizedBox(height: 12),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    value: enabled,
-                    onChanged: busy || serverStatus == null
-                        ? null
-                        : (value) => run(() async {
-                            if (value) {
-                              final granted = await health
-                                  .requestReadAuthorization();
-                              if (!granted) {
-                                throw StateError(
-                                  'Apple Health read access was not granted',
-                                );
-                              }
-                              await health.sync(initial: true);
-                            } else {
-                              await health.setEnabled(false);
-                            }
-                            enabled = value;
-                          }),
-                    title: Text(enabled ? 'Sync enabled' : 'Sync off'),
-                    subtitle: Text(
-                      serverStatus == null
-                          ? 'Apple Health plugin not installed on this gateway'
-                          : '$count samples on gateway${last == null ? '' : ' · last sync $last'}',
-                    ),
-                  ),
-                  if (message != null)
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     Text(
-                      message!,
-                      style: TextStyle(
-                        color: Theme.of(sheetContext).colorScheme.error,
+                      'Apple Health',
+                      style: Theme.of(sheetContext).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Hermes Go reads HealthKit only after your permission and sends samples to this authenticated Hermes gateway. Health Coach bots can query bounded summaries; health data is never added to every chat prompt.',
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: enabled,
+                      onChanged: busy || serverStatus == null
+                          ? null
+                          : (value) => run(() async {
+                              if (value) {
+                                final granted = await health
+                                    .requestReadAuthorization();
+                                if (!granted) {
+                                  throw StateError(
+                                    'Apple Health read access was not granted',
+                                  );
+                                }
+                                await health.sync(initial: true);
+                              } else {
+                                await health.setEnabled(false);
+                              }
+                              enabled = value;
+                            }),
+                      title: Text(enabled ? 'Sync enabled' : 'Sync off'),
+                      subtitle: Text(
+                        serverStatus == null
+                            ? 'Apple Health plugin not installed on this gateway'
+                            : '$count samples on gateway${last == null ? '' : ' · last sync $last'}',
                       ),
                     ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: !enabled || busy
-                        ? null
-                        : () => run(() async {
-                            final result = await health.sync();
-                            message =
-                                'Synced ${result.accepted} new or updated samples';
-                          }),
-                    icon: busy
-                        ? const SizedBox.square(
-                            dimension: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.sync),
-                    label: const Text('Sync now'),
-                  ),
-                  TextButton.icon(
-                    onPressed: busy || serverStatus == null || count == 0
-                        ? null
-                        : () async {
-                            final confirmed = await showDialog<bool>(
-                              context: sheetContext,
-                              builder: (dialogContext) => AlertDialog(
-                                title: const Text('Delete synced health data?'),
-                                content: const Text(
-                                  'This permanently deletes Apple Health samples stored by the plugin on this Hermes gateway. It does not change Apple Health on your iPhone.',
+                    if (enabled && !hasSleep)
+                      Card(
+                        color: Theme.of(
+                          sheetContext,
+                        ).colorScheme.errorContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            'No sleep samples have reached Hermes${lastReadCounts.isEmpty ? '.' : ' (the last phone read returned $lastSleepRead).'} Open the Health app, tap your profile, then Apps and Services → Hermes Go and allow Sleep access.',
+                            style: TextStyle(
+                              color: Theme.of(
+                                sheetContext,
+                              ).colorScheme.onErrorContainer,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (message != null)
+                      Text(
+                        message!,
+                        style: TextStyle(
+                          color: Theme.of(sheetContext).colorScheme.error,
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: !enabled || busy
+                          ? null
+                          : () => run(() async {
+                              final result = await health.sync();
+                              message = result.sleepRead == 0
+                                  ? 'Synced ${result.accepted} samples, but HealthKit returned no sleep data. Review Hermes Go’s Sleep permission in the Health app.'
+                                  : 'Synced ${result.accepted} new or updated samples, including ${result.sleepRead} sleep samples';
+                            }),
+                      icon: busy
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync),
+                      label: const Text('Sync now'),
+                    ),
+                    TextButton.icon(
+                      onPressed: busy || serverStatus == null
+                          ? null
+                          : () => run(() async {
+                              await health.requestReadAuthorization();
+                              final result = await health.sync(initial: true);
+                              message = result.sleepRead == 0
+                                  ? 'HealthKit still returned no sleep samples. Confirm Sleep is enabled for Hermes Go in the Health app.'
+                                  : 'HealthKit returned ${result.sleepRead} sleep samples';
+                            }),
+                      icon: const Icon(Icons.privacy_tip_outlined),
+                      label: const Text('Review Health access'),
+                    ),
+                    TextButton.icon(
+                      onPressed: busy || serverStatus == null || count == 0
+                          ? null
+                          : () async {
+                              final confirmed = await showDialog<bool>(
+                                context: sheetContext,
+                                builder: (dialogContext) => AlertDialog(
+                                  title: const Text(
+                                    'Delete synced health data?',
+                                  ),
+                                  content: const Text(
+                                    'This permanently deletes Apple Health samples stored by the plugin on this Hermes gateway. It does not change Apple Health on your iPhone.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(dialogContext, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.pop(dialogContext, true),
+                                      child: const Text('Delete'),
+                                    ),
+                                  ],
                                 ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(dialogContext, false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () =>
-                                        Navigator.pop(dialogContext, true),
-                                    child: const Text('Delete'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirmed != true) return;
-                            await run(() async {
-                              final deleted = await dashboard
-                                  .clearAppleHealth();
-                              await health.forgetLocalState();
-                              enabled = false;
-                              message = 'Deleted $deleted samples';
-                            });
-                          },
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Delete gateway health data'),
-                  ),
-                ],
+                              );
+                              if (confirmed != true) return;
+                              await run(() async {
+                                final deleted = await dashboard
+                                    .clearAppleHealth();
+                                await health.forgetLocalState();
+                                enabled = false;
+                                message = 'Deleted $deleted samples';
+                              });
+                            },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Delete gateway health data'),
+                    ),
+                  ],
+                ),
               ),
             ),
           );

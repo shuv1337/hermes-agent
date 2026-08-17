@@ -173,6 +173,80 @@ void main() {
   });
 
   test(
+    'Health Coach creation routes health questions to native tools',
+    () async {
+      final realtime = _BotRealtime(repo);
+      repo.bindRealtime(realtime);
+      addTearDown(realtime.dispose);
+
+      await repo.createBot(
+        name: 'coach',
+        title: 'Fitness Coach',
+        description: 'Daily health trends',
+        shape: 'circle',
+        color: '#f97316',
+        healthCoach: true,
+      );
+
+      final create = realtime.calls.singleWhere(
+        (call) => call.method == 'profiles.create',
+      );
+      expect(create.params['soul'], contains('`apple_health_summary`'));
+      expect(create.params['soul'], contains('Do not read legacy Shortcut'));
+      final configure = realtime.calls.singleWhere(
+        (call) => call.method == 'profiles.configure',
+      );
+      expect(configure.params['enabled_toolsets'], contains('apple_health'));
+      final metadata =
+          (configure.params['ui_meta'] as Map)['hermes-bots'] as Map;
+      expect(metadata['healthRoutingVersion'], 1);
+    },
+  );
+
+  test('opening an older Health Coach migrates its routing once', () async {
+    final realtime = _BotRealtime(
+      repo,
+      soul:
+          '# Fitness Coach\n\n**Role:** Fitness Coach\n\nYou are Fitness Coach, a persistent named agent (profile `coach`) on this machine.\nYou keep your own memory, skills, and conversation history across sessions.',
+      hidePinnedFromList: true,
+    );
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+    final bot = HermesBotProfile.fromJson({
+      'name': 'coach',
+      'description': 'Daily health trends',
+      'model': 'gpt-5.6-terra',
+      'provider': 'openai-codex',
+      'ui_meta': {
+        'hermes-bots': {
+          'title': 'Fitness Coach',
+          'chat': 'old-chat',
+          'healthCoach': true,
+        },
+      },
+    });
+
+    final target = await repo.openBotChat(bot);
+
+    expect(target.created, isFalse);
+    expect(target.session.id, 'fresh-health-chat');
+    expect(
+      realtime.calls.where((call) => call.method == 'session.create'),
+      hasLength(1),
+    );
+    final soulSave = realtime.calls.firstWhere(
+      (call) => call.params['soul'] != null,
+    );
+    expect(soulSave.params['soul'], contains('`apple_health_status`'));
+    final repin = realtime.calls.lastWhere(
+      (call) => call.method == 'profiles.configure',
+    );
+    final metadata = (repin.params['ui_meta'] as Map)['hermes-bots'] as Map;
+    expect(metadata['healthRoutingVersion'], 1);
+    expect(metadata['chat'], 'fresh-health-chat');
+  });
+
+  test(
     'bot editing preserves identity metadata and updates server profile',
     () async {
       final realtime = _BotRealtime(repo);

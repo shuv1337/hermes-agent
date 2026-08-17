@@ -21,7 +21,15 @@ import 'package:hermes_mobile/core/sync/single_flight.dart';
 import 'package:hermes_mobile/core/sync/watch_store.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
-String _generatedBotSoul(String profile, String title, String description) {
+const _healthCoachSoulMarker = '<!-- hermes-go-health-coach -->';
+const _healthRoutingVersion = 1;
+
+String _generatedBotSoul(
+  String profile,
+  String title,
+  String description, {
+  bool healthCoach = false,
+}) {
   final displayName = title.isEmpty ? profile : title;
   return [
     '# $displayName',
@@ -31,6 +39,12 @@ String _generatedBotSoul(String profile, String title, String description) {
     '',
     'You are $displayName, a persistent named agent (profile `$profile`) on this machine.',
     'You keep your own memory, skills, and conversation history across sessions.',
+    if (healthCoach) ...[
+      '',
+      _healthCoachSoulMarker,
+      'For Apple Health questions, use `apple_health_status` and `apple_health_summary` as the authoritative source.',
+      'Do not read legacy Shortcut export files unless the user explicitly asks about that old pipeline.',
+    ],
   ].join('\n');
 }
 
@@ -41,6 +55,7 @@ String? _updateGeneratedBotSoul(
   required String profile,
   required String title,
   required String description,
+  required bool healthCoach,
 }) {
   final marker = 'persistent named agent (profile `$profile`)';
   if (!soul.contains(marker)) return null;
@@ -71,6 +86,22 @@ String? _updateGeneratedBotSoul(
   if (identity >= 0) {
     lines[identity] =
         'You are $displayName, a persistent named agent (profile `$profile`) on this machine.';
+  }
+  final healthMarker = lines.indexOf(_healthCoachSoulMarker);
+  if (healthMarker >= 0) {
+    final removeCount = (lines.length - healthMarker).clamp(0, 3);
+    lines.removeRange(healthMarker, healthMarker + removeCount);
+    if (healthMarker > 0 && lines[healthMarker - 1].isEmpty) {
+      lines.removeAt(healthMarker - 1);
+    }
+  }
+  if (healthCoach) {
+    lines.addAll([
+      '',
+      _healthCoachSoulMarker,
+      'For Apple Health questions, use `apple_health_status` and `apple_health_summary` as the authoritative source.',
+      'Do not read legacy Shortcut export files unless the user explicitly asks about that old pipeline.',
+    ]);
   }
   return lines.join('\n');
 }
@@ -1010,6 +1041,27 @@ class SessionSyncRepository {
   ) async {
     final profile = bot.name.trim();
     if (profile.isEmpty) throw StateError('Bot profile name is missing');
+    final rawUi = bot.raw['ui_meta'];
+    final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;
+    final healthCoach = rawMeta is Map && rawMeta['healthCoach'] == true;
+    final routingVersion = rawMeta is Map
+        ? (rawMeta['healthRoutingVersion'] as num?)?.toInt()
+        : null;
+    if (healthCoach && routingVersion != _healthRoutingVersion) {
+      // One-time migration for Health Coach bots created before the native
+      // HealthKit bridge had explicit routing. It refreshes the profile soul,
+      // enables the plugin toolset, and pins a fresh schema-bearing session.
+      final migrated = await updateBot(
+        bot: bot,
+        title: bot.displayName,
+        description: bot.description ?? '',
+        shape: bot.shape ?? 'circle',
+        color: bot.color ?? '#f97316',
+        usePhoto: bot.usesImageAvatar,
+        healthCoach: true,
+      );
+      return openBotChat(migrated);
+    }
     final listed = await gatewayRequest('session.list', {
       'profile': profile,
       'limit': 100,
@@ -1104,7 +1156,12 @@ class SessionSyncRepository {
       cleanTitle,
       cleanDescription,
     ].where((part) => part.isNotEmpty).join(' — ');
-    final soul = _generatedBotSoul(slug, cleanTitle, cleanDescription);
+    final soul = _generatedBotSoul(
+      slug,
+      cleanTitle,
+      cleanDescription,
+      healthCoach: healthCoach,
+    );
 
     await gatewayRequest('profiles.create', {
       'name': slug,
@@ -1123,6 +1180,7 @@ class SessionSyncRepository {
       'created': createdAt,
       'custom': true,
       'healthCoach': healthCoach,
+      if (healthCoach) 'healthRoutingVersion': _healthRoutingVersion,
     };
     final described = await gatewayRequest('profiles.describe', {'name': slug});
     final rawToolsets = described['toolsets'];
@@ -1206,6 +1264,11 @@ class SessionSyncRepository {
       ..['title'] = title.trim()
       ..['custom'] = true
       ..['healthCoach'] = healthCoach;
+    if (healthCoach) {
+      metadata['healthRoutingVersion'] = _healthRoutingVersion;
+    } else {
+      metadata.remove('healthRoutingVersion');
+    }
 
     final described = await gatewayRequest('profiles.describe', {
       'name': profile,
@@ -1216,6 +1279,7 @@ class SessionSyncRepository {
       profile: profile,
       title: title.trim(),
       description: description.trim(),
+      healthCoach: healthCoach,
     );
     final soulChanged = updatedSoul != null && updatedSoul != existingSoul;
     final rawToolsets = described['toolsets'];
