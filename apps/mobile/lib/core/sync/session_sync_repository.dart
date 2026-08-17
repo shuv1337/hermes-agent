@@ -21,6 +21,60 @@ import 'package:hermes_mobile/core/sync/single_flight.dart';
 import 'package:hermes_mobile/core/sync/watch_store.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
+String _generatedBotSoul(String profile, String title, String description) {
+  final displayName = title.isEmpty ? profile : title;
+  return [
+    '# $displayName',
+    '',
+    if (title.isNotEmpty) '**Role:** $title',
+    if (description.isNotEmpty) '**Mission:** $description',
+    '',
+    'You are $displayName, a persistent named agent (profile `$profile`) on this machine.',
+    'You keep your own memory, skills, and conversation history across sessions.',
+  ].join('\n');
+}
+
+/// Update only identity lines written by [_generatedBotSoul]. A soul without
+/// the generated marker is user-authored and is deliberately left untouched.
+String? _updateGeneratedBotSoul(
+  String soul, {
+  required String profile,
+  required String title,
+  required String description,
+}) {
+  final marker = 'persistent named agent (profile `$profile`)';
+  if (!soul.contains(marker)) return null;
+  final displayName = title.isEmpty ? profile : title;
+  final lines = soul.split('\n');
+
+  final heading = lines.indexWhere((line) => line.startsWith('# '));
+  if (heading >= 0) lines[heading] = '# $displayName';
+
+  void replaceTagged(String prefix, String value) {
+    final index = lines.indexWhere((line) => line.startsWith(prefix));
+    if (index >= 0) {
+      if (value.isEmpty) {
+        lines.removeAt(index);
+      } else {
+        lines[index] = '$prefix$value';
+      }
+      return;
+    }
+    if (value.isEmpty) return;
+    final markerIndex = lines.indexWhere((line) => line.contains(marker));
+    lines.insert(markerIndex < 0 ? lines.length : markerIndex, '$prefix$value');
+  }
+
+  replaceTagged('**Role:** ', title);
+  replaceTagged('**Mission:** ', description);
+  final identity = lines.indexWhere((line) => line.contains(marker));
+  if (identity >= 0) {
+    lines[identity] =
+        'You are $displayName, a persistent named agent (profile `$profile`) on this machine.';
+  }
+  return lines.join('\n');
+}
+
 /// Local-first sessions for one gateway, with push/pull when online.
 ///
 /// **Desktop parity:**
@@ -1012,20 +1066,11 @@ class SessionSyncRepository {
     final slug = name.trim();
     final cleanTitle = title.trim();
     final cleanDescription = description.trim();
-    final displayName = cleanTitle.isEmpty ? slug : cleanTitle;
     final descriptionText = [
       cleanTitle,
       cleanDescription,
     ].where((part) => part.isNotEmpty).join(' — ');
-    final soul = [
-      '# $displayName',
-      '',
-      if (cleanTitle.isNotEmpty) '**Role:** $cleanTitle',
-      if (cleanDescription.isNotEmpty) '**Mission:** $cleanDescription',
-      '',
-      'You are $displayName, a persistent named agent (profile `$slug`) on this machine.',
-      'You keep your own memory, skills, and conversation history across sessions.',
-    ].join('\n');
+    final soul = _generatedBotSoul(slug, cleanTitle, cleanDescription);
 
     await gatewayRequest('profiles.create', {
       'name': slug,
@@ -1131,6 +1176,14 @@ class SessionSyncRepository {
     final described = await gatewayRequest('profiles.describe', {
       'name': profile,
     });
+    final existingSoul = '${described['soul'] ?? ''}';
+    final updatedSoul = _updateGeneratedBotSoul(
+      existingSoul,
+      profile: profile,
+      title: title.trim(),
+      description: description.trim(),
+    );
+    final soulChanged = updatedSoul != null && updatedSoul != existingSoul;
     final rawToolsets = described['toolsets'];
     final enabledToolsets = rawToolsets is List
         ? rawToolsets
@@ -1148,19 +1201,21 @@ class SessionSyncRepository {
     final configured = await gatewayRequest('profiles.configure', {
       'name': profile,
       'description': cleanDescription,
+      if (soulChanged) 'soul': updatedSoul,
       'ui_meta': {'hermes-bots': metadata},
       if (enabledToolsets.isNotEmpty) 'enabled_toolsets': enabledToolsets,
     });
     final applied = configured['applied'];
     if (applied is Map &&
-        (applied['ui_meta'] != true || applied['description'] != true)) {
+        (applied['ui_meta'] != true ||
+            applied['description'] != true ||
+            (soulChanged && applied['soul'] != true))) {
       throw StateError('Server could not save all bot profile changes');
     }
 
-    // Tool schemas are fixed for a session to preserve prompt caching. When
-    // health access changes, pin a fresh Bot Chat so the next open receives
-    // the new toolset rather than silently reusing an incompatible session.
-    if (wasHealthCoach != healthCoach) {
+    // Tool schemas and system prompts are fixed for a session to preserve
+    // prompt caching. Pin a fresh Bot Chat after either changes.
+    if (wasHealthCoach != healthCoach || soulChanged) {
       final fresh = await _createSessionOnGateway(
         title: 'Bot Chat',
         model: bot.model,

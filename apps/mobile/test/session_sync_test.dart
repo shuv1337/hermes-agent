@@ -242,6 +242,52 @@ void main() {
   );
 
   test(
+    'renaming a bot updates its generated soul and pins a fresh session',
+    () async {
+      final realtime = _BotRealtime(
+        repo,
+        soul:
+            '# Fotness coach\n\n**Role:** Fotness coach\n**Mission:** Daily fitness\n\nYou are Fotness coach, a persistent named agent (profile `coach`) on this machine.\nYou keep your own memory, skills, and conversation history across sessions.',
+      );
+      repo.bindRealtime(realtime);
+      addTearDown(realtime.dispose);
+      final bot = HermesBotProfile.fromJson({
+        'name': 'coach',
+        'description': 'Daily fitness',
+        'ui_meta': {
+          'hermes-bots': {
+            'title': 'Fotness coach',
+            'chat': 'old-chat',
+            'healthCoach': true,
+          },
+        },
+      });
+
+      await repo.updateBot(
+        bot: bot,
+        title: 'Fitness coach',
+        description: 'Daily fitness',
+        shape: 'circle',
+        color: '#f97316',
+        usePhoto: false,
+        healthCoach: true,
+      );
+
+      final save = realtime.calls.firstWhere(
+        (call) =>
+            call.method == 'profiles.configure' && call.params['soul'] != null,
+      );
+      expect(save.params['soul'], contains('# Fitness coach'));
+      expect(save.params['soul'], contains('You are Fitness coach,'));
+      expect(save.params['soul'], isNot(contains('Fotness coach')));
+      expect(
+        realtime.calls.where((call) => call.method == 'session.create'),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
     'runtime hydration resumes once and keeps the session-specific model',
     () async {
       final realtime = _RuntimeRealtime(repo);
@@ -520,7 +566,7 @@ class _RuntimeRealtime extends GatewayRealtime {
 }
 
 class _BotRealtime extends GatewayRealtime {
-  _BotRealtime(SessionSyncRepository repository)
+  _BotRealtime(SessionSyncRepository repository, {this.soul = ''})
     : super(
         profile: const ConnectionProfile(
           id: 'bot-test',
@@ -530,6 +576,7 @@ class _BotRealtime extends GatewayRealtime {
       );
 
   final calls = <({String method, Map<String, dynamic> params})>[];
+  final String soul;
 
   @override
   bool get isLive => true;
@@ -564,8 +611,9 @@ class _BotRealtime extends GatewayRealtime {
         'stored_session_id': 'fresh-health-chat',
       },
       'profiles.configure' => {
-        'applied': {'ui_meta': true, 'description': true},
+        'applied': {'ui_meta': true, 'description': true, 'soul': true},
       },
+      'profiles.describe' => {'soul': soul, 'toolsets': const []},
       'profiles.set_asset' => {'ok': true, 'asset': 'avatar', 'size': 4},
       _ => <String, dynamic>{},
     };
