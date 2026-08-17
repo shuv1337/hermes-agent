@@ -145,6 +145,60 @@ void main() {
   });
 
   test(
+    'bot editing preserves identity metadata and updates server profile',
+    () async {
+      final realtime = _BotRealtime(repo);
+      repo.bindRealtime(realtime);
+      addTearDown(realtime.dispose);
+      final bot = HermesBotProfile.fromJson({
+        'name': 'techno',
+        'description': 'Old description',
+        'has_avatar': false,
+        'ui_meta': {
+          'hermes-bots': {
+            'title': 'Old title',
+            'shape': 'circle',
+            'color': '#f97316',
+            'imageKind': 'shape',
+            'chat': 'bot-session',
+            'created': 42,
+          },
+        },
+      });
+
+      final updated = await repo.updateBot(
+        bot: bot,
+        title: 'Senior cat wrangler',
+        description: 'Caturday jokes',
+        shape: 'cloud',
+        color: '#8b5cf6',
+        usePhoto: true,
+        avatarBytes: Uint8List.fromList([0x89, 0x50, 0x4e, 0x47]),
+        avatarChanged: true,
+      );
+
+      final asset = realtime.calls.singleWhere(
+        (call) => call.method == 'profiles.set_asset',
+      );
+      expect(asset.params['name'], 'techno');
+      expect(asset.params['data'], isNotEmpty);
+      final configure = realtime.calls.lastWhere(
+        (call) => call.method == 'profiles.configure',
+      );
+      expect(configure.params['description'], 'Caturday jokes');
+      final metadata =
+          (configure.params['ui_meta'] as Map)['hermes-bots'] as Map;
+      expect(metadata['title'], 'Senior cat wrangler');
+      expect(metadata['shape'], 'cloud');
+      expect(metadata['imageKind'], 'photo');
+      expect(metadata['chat'], 'bot-session');
+      expect(metadata['created'], 42);
+      expect(updated.displayName, 'Senior cat wrangler');
+      expect(updated.description, 'Caturday jokes');
+    },
+  );
+
+  test(
     'runtime hydration resumes once and keeps the session-specific model',
     () async {
       final realtime = _RuntimeRealtime(repo);
@@ -463,8 +517,9 @@ class _BotRealtime extends GatewayRealtime {
         ],
       },
       'profiles.configure' => {
-        'applied': {'ui_meta': true},
+        'applied': {'ui_meta': true, 'description': true},
       },
+      'profiles.set_asset' => {'ok': true, 'asset': 'avatar', 'size': 4},
       _ => <String, dynamic>{},
     };
   }

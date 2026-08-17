@@ -7,6 +7,7 @@ import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/bots/bot_avatar.dart';
 import 'package:hermes_mobile/features/bots/create_bot_sheet.dart';
+import 'package:hermes_mobile/features/bots/edit_bot_sheet.dart';
 import 'package:hermes_mobile/features/sessions/session_chat_screen.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
@@ -190,6 +191,7 @@ class _BotTile extends ConsumerWidget {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       onTap: () => _openBotChat(context, ref, bot),
+      onLongPress: () => _editBot(context, ref, bot),
       leading: BotAvatar(bot: bot),
       title: Row(
         children: [
@@ -234,9 +236,29 @@ class _BotTile extends ConsumerWidget {
           ],
         ],
       ),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: context.l10n.editBotAction,
+            onPressed: () => _editBot(context, ref, bot),
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
     );
   }
+}
+
+Future<void> _editBot(
+  BuildContext context,
+  WidgetRef ref,
+  HermesBotProfile bot,
+) async {
+  final saved = await showEditBotSheet(context, bot: bot);
+  if (!saved || !context.mounted) return;
+  await ref.read(botsProvider.notifier).refresh();
 }
 
 Future<void> _openBotChat(

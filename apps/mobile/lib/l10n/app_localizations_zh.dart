@@ -69,6 +69,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get creatingBot => '正在创建…';
 
   @override
+  String get editBotAction => '编辑资料';
+
+  @override
+  String get editBotTitle => '编辑机器人';
+
+  @override
+  String get savingBot => '正在保存…';
+
+  @override
+  String botHandleImmutable(String handle) {
+    return '@$handle 是该机器人用于会话和记忆的永久标识。';
+  }
+
+  @override
   String get botsNoConversation => '还没有对话';
 
   @override

@@ -1,81 +1,61 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/bots/bot_avatar.dart';
+import 'package:hermes_mobile/features/bots/create_bot_sheet.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
-const botShapes = [
-  'circle',
-  'squircle',
-  'pill',
-  'triangle',
-  'hexagon',
-  'cloud',
-  'drop',
-];
-
-const botColors = [
-  '#f5f5f4',
-  '#8d6748',
-  '#ef4444',
-  '#f97316',
-  '#14b8a6',
-  '#38bdf8',
-  '#3b40c8',
-  '#8b5cf6',
-  '#ec4899',
-  '#9ca3af',
-];
-
-String botSlugify(String value) {
-  final slug = value
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9_-]+'), '-')
-      .replaceAll(RegExp(r'^-+|-+$'), '');
-  return slug.length > 64 ? slug.substring(0, 64) : slug;
-}
-
-Future<HermesBotProfile?> showCreateBotSheet(
+Future<bool> showEditBotSheet(
   BuildContext context, {
-  required Set<String> existingNames,
+  required HermesBotProfile bot,
 }) {
-  return showModalBottomSheet<HermesBotProfile>(
+  return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    builder: (_) => _CreateBotSheet(existingNames: existingNames),
-  );
+    builder: (_) => _EditBotSheet(bot: bot),
+  ).then((saved) => saved ?? false);
 }
 
-class _CreateBotSheet extends ConsumerStatefulWidget {
-  const _CreateBotSheet({required this.existingNames});
+class _EditBotSheet extends ConsumerStatefulWidget {
+  const _EditBotSheet({required this.bot});
 
-  final Set<String> existingNames;
+  final HermesBotProfile bot;
 
   @override
-  ConsumerState<_CreateBotSheet> createState() => _CreateBotSheetState();
+  ConsumerState<_EditBotSheet> createState() => _EditBotSheetState();
 }
 
-class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
-  final _name = TextEditingController();
-  final _title = TextEditingController();
-  final _description = TextEditingController();
-  var _shape = 'circle';
-  var _color = '#f97316';
-  var _busy = false;
+class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
+  late final TextEditingController _title;
+  late final TextEditingController _description;
+  late String _shape;
+  late String _color;
+  late bool _usePhoto;
+  Uint8List? _pickedAvatar;
+  bool _avatarChanged = false;
+  bool _busy = false;
   String? _error;
+  final _picker = ImagePicker();
 
-  String get _slug => botSlugify(_name.text);
-  bool get _taken => widget.existingNames.contains(_slug);
-  bool get _valid =>
-      _slug.isNotEmpty && RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(_slug);
+  @override
+  void initState() {
+    super.initState();
+    _title = TextEditingController(text: widget.bot.title ?? '');
+    _description = TextEditingController(text: widget.bot.description ?? '');
+    _shape = widget.bot.shape ?? 'circle';
+    _color = widget.bot.color ?? '#f97316';
+    _usePhoto = widget.bot.usesImageAvatar && widget.bot.hasAvatar;
+  }
 
   @override
   void dispose() {
-    _name.dispose();
     _title.dispose();
     _description.dispose();
     super.dispose();
@@ -83,7 +63,7 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
 
   HermesBotProfile _previewBot(String shape, String color) {
     return HermesBotProfile.fromJson({
-      'name': _slug.isEmpty ? 'agent' : _slug,
+      'name': widget.bot.name,
       'ui_meta': {
         'hermes-bots': {
           'title': _title.text.trim(),
@@ -95,8 +75,47 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
     });
   }
 
+  Future<void> _pickAvatar(ImageSource source) async {
+    try {
+      final file = await _picker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1200,
+        maxHeight: 1200,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 2000000) {
+        throw StateError('Image is larger than the server’s 2 MB limit');
+      }
+      final supported = _isPng(bytes) || _isJpeg(bytes) || _isWebp(bytes);
+      if (!supported) {
+        throw StateError('Choose a PNG, JPEG, or WebP image');
+      }
+      if (!mounted) return;
+      setState(() {
+        _pickedAvatar = bytes;
+        _usePhoto = true;
+        _avatarChanged = true;
+        _error = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = context.l10n.couldNotPickImage('$error'));
+    }
+  }
+
+  void _selectShape(String shape) {
+    setState(() {
+      _shape = shape;
+      _usePhoto = false;
+      _pickedAvatar = null;
+      _avatarChanged = widget.bot.hasAvatar;
+    });
+  }
+
   Future<void> _submit() async {
-    if (!_valid || _taken || _busy) return;
+    if (_busy) return;
     final sync = ref.read(sessionSyncProvider);
     if (sync == null) return;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -105,14 +124,18 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
       _error = null;
     });
     try {
-      final bot = await sync.createBot(
-        name: _slug,
+      await sync.updateBot(
+        bot: widget.bot,
         title: _title.text,
         description: _description.text,
         shape: _shape,
         color: _color,
+        usePhoto: _usePhoto,
+        avatarBytes: _pickedAvatar,
+        avatarChanged: _avatarChanged,
       );
-      if (mounted) Navigator.of(context).pop(bot);
+      ref.invalidate(botAvatarProvider(widget.bot.name));
+      if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -141,34 +164,38 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(l10n.newBotTitle, style: theme.textTheme.headlineSmall),
+              Text(l10n.editBotTitle, style: theme.textTheme.headlineSmall),
               const SizedBox(height: 4),
               Text(
-                l10n.newBotSubtitle,
+                l10n.botHandleImmutable(widget.bot.handle),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
                 ),
               ),
               const SizedBox(height: 18),
-              Center(
-                child: BotAvatar(bot: _previewBot(_shape, _color), size: 72),
+              Center(child: _avatarPreview()),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => _pickAvatar(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: Text(l10n.photoLibrary),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => _pickAvatar(ImageSource.camera),
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: Text(l10n.camera),
+                  ),
+                ],
               ),
-              const SizedBox(height: 18),
-              TextField(
-                controller: _name,
-                enabled: !_busy,
-                textInputAction: TextInputAction.next,
-                autocorrect: false,
-                decoration: InputDecoration(
-                  labelText: l10n.botNameLabel,
-                  helperText: _slug.isEmpty ? l10n.botNameHelper : '@$_slug',
-                  errorText: _taken ? l10n.botNameTaken : null,
-                ),
-                onTapOutside: (_) =>
-                    FocusManager.instance.primaryFocus?.unfocus(),
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
               TextField(
                 controller: _title,
                 enabled: !_busy,
@@ -183,7 +210,7 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                 controller: _description,
                 enabled: !_busy,
                 minLines: 2,
-                maxLines: 4,
+                maxLines: 5,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
                   labelText: l10n.botDescriptionLabel,
@@ -201,9 +228,7 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                   for (final shape in botShapes)
                     InkWell(
                       borderRadius: BorderRadius.circular(10),
-                      onTap: _busy
-                          ? null
-                          : () => setState(() => _shape = shape),
+                      onTap: _busy ? null : () => _selectShape(shape),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
                         width: 52,
@@ -212,12 +237,12 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: _shape == shape
+                            color: !_usePhoto && _shape == shape
                                 ? theme.colorScheme.primary
                                 : theme.colorScheme.outline.withValues(
                                     alpha: 0.3,
                                   ),
-                            width: _shape == shape ? 2 : 1,
+                            width: !_usePhoto && _shape == shape ? 2 : 1,
                           ),
                         ),
                         child: BotAvatar(
@@ -238,7 +263,12 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                       customBorder: const CircleBorder(),
                       onTap: _busy
                           ? null
-                          : () => setState(() => _color = color),
+                          : () => setState(() {
+                              _color = color;
+                              _usePhoto = false;
+                              _pickedAvatar = null;
+                              _avatarChanged = widget.bot.hasAvatar;
+                            }),
                       child: Container(
                         width: 34,
                         height: 34,
@@ -249,12 +279,12 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                                 0xFF000000,
                           ),
                           border: Border.all(
-                            color: _color == color
+                            color: !_usePhoto && _color == color
                                 ? theme.colorScheme.onSurface
                                 : theme.colorScheme.outline.withValues(
                                     alpha: 0.35,
                                   ),
-                            width: _color == color ? 3 : 1,
+                            width: !_usePhoto && _color == color ? 3 : 1,
                           ),
                         ),
                       ),
@@ -280,16 +310,14 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
-                    onPressed: _valid && !_taken && !_busy ? _submit : null,
+                    onPressed: _busy ? null : _submit,
                     icon: _busy
                         ? const SizedBox.square(
                             dimension: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.add),
-                    label: Text(
-                      _busy ? l10n.creatingBot : l10n.createBotAction,
-                    ),
+                        : const Icon(Icons.save_outlined),
+                    label: Text(_busy ? l10n.savingBot : l10n.save),
                   ),
                 ],
               ),
@@ -299,4 +327,38 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
       ),
     );
   }
+
+  Widget _avatarPreview() {
+    if (_usePhoto && _pickedAvatar != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Image.memory(
+          _pickedAvatar!,
+          width: 72,
+          height: 72,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+    if (_usePhoto) return BotAvatar(bot: widget.bot, size: 72);
+    return BotAvatar(bot: _previewBot(_shape, _color), size: 72);
+  }
 }
+
+bool _isPng(Uint8List bytes) =>
+    bytes.length >= 8 &&
+    bytes[0] == 0x89 &&
+    bytes[1] == 0x50 &&
+    bytes[2] == 0x4e &&
+    bytes[3] == 0x47;
+
+bool _isJpeg(Uint8List bytes) =>
+    bytes.length >= 3 &&
+    bytes[0] == 0xff &&
+    bytes[1] == 0xd8 &&
+    bytes[2] == 0xff;
+
+bool _isWebp(Uint8List bytes) =>
+    bytes.length >= 12 &&
+    String.fromCharCodes(bytes.sublist(0, 4)) == 'RIFF' &&
+    String.fromCharCodes(bytes.sublist(8, 12)) == 'WEBP';

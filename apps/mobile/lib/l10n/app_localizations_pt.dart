@@ -70,6 +70,20 @@ class AppLocalizationsPt extends AppLocalizations {
   String get creatingBot => 'Criando…';
 
   @override
+  String get editBotAction => 'Editar perfil';
+
+  @override
+  String get editBotTitle => 'Editar bot';
+
+  @override
+  String get savingBot => 'Salvando…';
+
+  @override
+  String botHandleImmutable(String handle) {
+    return '@$handle é o identificador permanente do bot para sessões e memória.';
+  }
+
+  @override
   String get botsNoConversation => 'Ainda não há conversas';
 
   @override

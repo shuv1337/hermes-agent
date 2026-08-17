@@ -25,6 +25,15 @@
   "botAppearanceLabel": "Appearance",
   "createBotAction": "Create Bot",
   "creatingBot": "Creating…",
+  "editBotAction": "Edit profile",
+  "editBotTitle": "Edit Bot",
+  "savingBot": "Saving…",
+  "botHandleImmutable": "@{handle} is the bot’s permanent handle for sessions and memory.",
+  "@botHandleImmutable": {
+    "placeholders": {
+      "handle": {"type": "String"}
+    }
+  },
   "botsNoConversation": "No conversations yet",
   "botsCachedRoster": "Showing the last roster while the server reconnects.",
   "modelLabel": "Model",

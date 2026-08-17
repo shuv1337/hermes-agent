@@ -1060,6 +1060,76 @@ class SessionSyncRepository {
     });
   }
 
+  /// Update the editable Bot Mode profile fields shared with Desktop.
+  ///
+  /// The profile slug is intentionally immutable: it is the bot's @handle
+  /// and owns its profile directory, sessions, memory, and skills. The
+  /// user-facing name lives in `title`. Compact appearance metadata remains
+  /// server-owned in profile.yaml while an optional photo uses the profile
+  /// asset RPC so it can sync without bloating every roster response.
+  Future<HermesBotProfile> updateBot({
+    required HermesBotProfile bot,
+    required String title,
+    required String description,
+    required String shape,
+    required String color,
+    required bool usePhoto,
+    Uint8List? avatarBytes,
+    bool avatarChanged = false,
+  }) async {
+    final profile = bot.name.trim();
+    if (profile.isEmpty) throw StateError('Bot profile name is missing');
+
+    if (avatarChanged) {
+      final asset = avatarBytes == null
+          ? await gatewayRequest('profiles.set_asset', {
+              'name': profile,
+              'asset': 'avatar',
+              'clear': true,
+            })
+          : await gatewayRequest('profiles.set_asset', {
+              'name': profile,
+              'asset': 'avatar',
+              'data': base64Encode(avatarBytes),
+            });
+      if (asset['ok'] == false) {
+        throw StateError('Server could not save the bot avatar');
+      }
+    }
+
+    final rawUi = bot.raw['ui_meta'];
+    final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;
+    final metadata = rawMeta is Map
+        ? rawMeta.map((key, value) => MapEntry('$key', value))
+        : <String, dynamic>{};
+    metadata
+      ..['shape'] = shape
+      ..['color'] = color
+      ..['imageKind'] = usePhoto ? 'photo' : 'shape'
+      ..['title'] = title.trim()
+      ..['custom'] = true;
+
+    final cleanDescription = description.trim();
+    final configured = await gatewayRequest('profiles.configure', {
+      'name': profile,
+      'description': cleanDescription,
+      'ui_meta': {'hermes-bots': metadata},
+    });
+    final applied = configured['applied'];
+    if (applied is Map &&
+        (applied['ui_meta'] != true || applied['description'] != true)) {
+      throw StateError('Server could not save all bot profile changes');
+    }
+
+    return HermesBotProfile.fromJson({
+      ...bot.raw,
+      'name': profile,
+      'description': cleanDescription,
+      'has_avatar': usePhoto && (avatarBytes != null || bot.hasAvatar),
+      'ui_meta': {'hermes-bots': metadata},
+    });
+  }
+
   Future<void> _pinBotChat(HermesBotProfile bot, String sessionId) async {
     final rawUi = bot.raw['ui_meta'];
     final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;

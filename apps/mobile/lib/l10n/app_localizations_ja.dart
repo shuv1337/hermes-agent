@@ -69,6 +69,20 @@ class AppLocalizationsJa extends AppLocalizations {
   String get creatingBot => '作成中…';
 
   @override
+  String get editBotAction => 'プロフィールを編集';
+
+  @override
+  String get editBotTitle => 'ボットを編集';
+
+  @override
+  String get savingBot => '保存中…';
+
+  @override
+  String botHandleImmutable(String handle) {
+    return '@$handle はセッションとメモリに使用されるボットの固定ハンドルです。';
+  }
+
+  @override
   String get botsNoConversation => 'まだ会話がありません';
 
   @override

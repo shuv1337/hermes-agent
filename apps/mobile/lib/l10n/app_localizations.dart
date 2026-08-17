@@ -226,6 +226,30 @@ abstract class AppLocalizations {
   /// **'Creating…'**
   String get creatingBot;
 
+  /// No description provided for @editBotAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit profile'**
+  String get editBotAction;
+
+  /// No description provided for @editBotTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Bot'**
+  String get editBotTitle;
+
+  /// No description provided for @savingBot.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get savingBot;
+
+  /// No description provided for @botHandleImmutable.
+  ///
+  /// In en, this message translates to:
+  /// **'@{handle} is the bot’s permanent handle for sessions and memory.'**
+  String botHandleImmutable(String handle);
+
   /// No description provided for @botsNoConversation.
   ///
   /// In en, this message translates to:

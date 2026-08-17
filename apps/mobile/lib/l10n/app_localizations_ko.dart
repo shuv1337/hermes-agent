@@ -69,6 +69,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get creatingBot => '만드는 중…';
 
   @override
+  String get editBotAction => '프로필 편집';
+
+  @override
+  String get editBotTitle => '봇 편집';
+
+  @override
+  String get savingBot => '저장 중…';
+
+  @override
+  String botHandleImmutable(String handle) {
+    return '@$handle은(는) 세션과 메모리에 사용되는 봇의 영구 핸들입니다.';
+  }
+
+  @override
   String get botsNoConversation => '아직 대화가 없습니다';
 
   @override

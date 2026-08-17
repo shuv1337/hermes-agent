@@ -70,6 +70,20 @@ class AppLocalizationsAr extends AppLocalizations {
   String get creatingBot => 'جارٍ الإنشاء…';
 
   @override
+  String get editBotAction => 'تعديل الملف الشخصي';
+
+  @override
+  String get editBotTitle => 'تعديل الروبوت';
+
+  @override
+  String get savingBot => 'جارٍ الحفظ…';
+
+  @override
+  String botHandleImmutable(String handle) {
+    return '@$handle هو المعرّف الدائم للروبوت للجلسات والذاكرة.';
+  }
+
+  @override
   String get botsNoConversation => 'لا توجد محادثات بعد';
 
   @override

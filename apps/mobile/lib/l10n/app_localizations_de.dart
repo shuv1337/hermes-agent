@@ -71,6 +71,20 @@ class AppLocalizationsDe extends AppLocalizations {
   String get creatingBot => 'Wird erstellt…';
 
   @override
+  String get editBotAction => 'Profil bearbeiten';
+
+  @override
+  String get editBotTitle => 'Bot bearbeiten';
+
+  @override
+  String get savingBot => 'Wird gespeichert…';
+
+  @override
+  String botHandleImmutable(String handle) {
+    return '@$handle ist das permanente Bot-Handle für Sitzungen und Erinnerungen.';
+  }
+
+  @override
   String get botsNoConversation => 'Noch keine Unterhaltungen';
 
   @override
