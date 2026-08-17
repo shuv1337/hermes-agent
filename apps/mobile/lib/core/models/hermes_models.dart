@@ -812,6 +812,14 @@ class HermesBotProfile {
   final bool pinned;
   final Map<String, dynamic> raw;
 
+  /// Only profiles explicitly enrolled by the Bot Mode plugin are bots.
+  /// The gateway also returns its built-in/default Hermes profile, whose
+  /// latest session is an ordinary chat and must never appear in this roster.
+  bool get isBotModeManaged {
+    final ui = raw['ui_meta'];
+    return ui is Map && ui['hermes-bots'] is Map;
+  }
+
   String get displayName {
     final label = title?.trim();
     if (label != null && label.isNotEmpty) return label;
@@ -905,7 +913,10 @@ class HermesBotRoster {
                   entry.map((key, value) => MapEntry('$key', value)),
                 ),
               )
-              .where((profile) => profile.name.isNotEmpty)
+              .where(
+                (profile) =>
+                    profile.name.isNotEmpty && profile.isBotModeManaged,
+              )
               .toList(growable: false)
         : const <HermesBotProfile>[];
 

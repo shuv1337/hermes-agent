@@ -218,6 +218,7 @@ class SessionChatScreen extends ConsumerStatefulWidget {
     this.onSessionUpdated,
     this.onNewChat,
     this.onOpenSessionId,
+    this.profileName,
   });
 
   final HermesSession session;
@@ -238,6 +239,10 @@ class SessionChatScreen extends ConsumerStatefulWidget {
 
   /// `/resume <id>` — parent opens that session if known.
   final ValueChanged<String>? onOpenSessionId;
+
+  /// Non-null for Bot Mode chats, whose durable session belongs to a named
+  /// server profile rather than the gateway's default profile.
+  final String? profileName;
 
   @override
   ConsumerState<SessionChatScreen> createState() => SessionChatScreenState();
@@ -458,6 +463,12 @@ class SessionChatScreenState extends ConsumerState<SessionChatScreen> {
   void initState() {
     super.initState();
     _session = widget.session;
+    final profile = widget.profileName?.trim();
+    if (profile != null && profile.isNotEmpty) {
+      ref
+          .read(sessionSyncProvider)
+          ?.registerSessionProfile(widget.session.id, profile);
+    }
     _sessionModel = widget.session.model;
     _attachments = List.of(widget.initialAttachments);
     _observerController = ListObserverController(controller: _scroll)

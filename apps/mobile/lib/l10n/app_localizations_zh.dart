@@ -42,7 +42,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get botsTitle => '机器人';
 
   @override
-  String get botsEmpty => '机器人模式可用，但此服务器尚无配置文件。';
+  String get botsEmpty => '还没有机器人。请在 Hermes Desktop 中创建。';
 
   @override
   String get botsNoConversation => '还没有对话';

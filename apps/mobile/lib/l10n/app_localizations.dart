@@ -175,7 +175,7 @@ abstract class AppLocalizations {
   /// No description provided for @botsEmpty.
   ///
   /// In en, this message translates to:
-  /// **'Bot Mode is available, but this server has no profiles yet.'**
+  /// **'No bots yet. Create one in Hermes Desktop.'**
   String get botsEmpty;
 
   /// No description provided for @botsNoConversation.

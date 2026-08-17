@@ -17,7 +17,7 @@
   "navJobs": "Tâches",
   "navSettings": "Réglages",
   "botsTitle": "Bots",
-  "botsEmpty": "Le mode Bot est disponible, mais ce serveur n’a encore aucun profil.",
+  "botsEmpty": "Aucun bot pour le moment. Créez-en un dans Hermes Desktop.",
   "botsNoConversation": "Aucune conversation pour le moment",
   "botsCachedRoster": "Affichage de la dernière liste pendant la reconnexion du serveur.",
   "modelLabel": "Modèle",

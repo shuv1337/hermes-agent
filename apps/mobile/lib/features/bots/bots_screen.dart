@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/providers.dart';
+import 'package:hermes_mobile/features/sessions/session_chat_screen.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
 /// Server-backed Bot Mode roster.
@@ -150,13 +151,13 @@ class _BotsError extends ConsumerWidget {
   }
 }
 
-class _BotTile extends StatelessWidget {
+class _BotTile extends ConsumerWidget {
   const _BotTile({required this.bot});
 
   final HermesBotProfile bot;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final last = bot.lastSession;
     final relative = formatSessionRelative(last?.lastActive);
@@ -170,7 +171,7 @@ class _BotTile extends StatelessWidget {
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      onTap: () => _showBotDetails(context, bot),
+      onTap: () => _openBotChat(context, ref, bot),
       leading: CircleAvatar(
         radius: 24,
         backgroundColor: accent,
@@ -220,80 +221,35 @@ class _BotTile extends StatelessWidget {
   }
 }
 
-Future<void> _showBotDetails(BuildContext context, HermesBotProfile bot) async {
-  final theme = Theme.of(context);
-  final last = bot.lastSession;
-  await showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (context) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(bot.displayName, style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 4),
-            Text(
-              '@${bot.name == 'default' ? 'hermes' : bot.name}',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-            const SizedBox(height: 18),
-            if (bot.description?.trim().isNotEmpty == true) ...[
-              Text(bot.description!.trim()),
-              const SizedBox(height: 18),
-            ],
-            _DetailRow(label: context.l10n.modelLabel, value: bot.model),
-            _DetailRow(label: context.l10n.provider, value: bot.provider),
-            _DetailRow(
-              label: context.l10n.lastActivity,
-              value: formatSessionRelative(last?.lastActive),
-            ),
-            _DetailRow(
-              label: context.l10n.messagesLabel,
-              value: last?.messageCount?.toString(),
-            ),
-          ],
+Future<void> _openBotChat(
+  BuildContext context,
+  WidgetRef ref,
+  HermesBotProfile bot,
+) async {
+  final sync = ref.read(sessionSyncProvider);
+  if (sync == null) return;
+  try {
+    final target = await sync.openBotChat(bot);
+    if (!context.mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SessionChatScreen(
+          session: target.session,
+          profileName: bot.name,
+          initialMessage: target.created
+              ? 'Hey, tell me about yourself!'
+              : null,
         ),
       ),
-    ),
-  );
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
-
-  final String label;
-  final String? value;
-
-  @override
-  Widget build(BuildContext context) {
-    final clean = value?.trim();
-    if (clean == null || clean.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 104,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.55),
-              ),
-            ),
-          ),
-          Expanded(child: Text(clean)),
-        ],
-      ),
     );
+    if (context.mounted) {
+      unawaited(ref.read(botsProvider.notifier).refresh());
+    }
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$error')));
   }
 }
 

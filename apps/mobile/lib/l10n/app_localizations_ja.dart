@@ -42,7 +42,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get botsTitle => 'ボット';
 
   @override
-  String get botsEmpty => 'ボットモードは利用できますが、このサーバーにはまだプロフィールがありません。';
+  String get botsEmpty => 'ボットはまだありません。Hermes Desktop で作成してください。';
 
   @override
   String get botsNoConversation => 'まだ会話がありません';

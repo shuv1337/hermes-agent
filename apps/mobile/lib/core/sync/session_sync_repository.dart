@@ -64,6 +64,24 @@ class SessionSyncRepository {
   /// Live WS runtime id keyed by durable/stored session id (Desktop maps both).
   final Map<String, String> _liveByStored = {};
   final Map<String, String> _storedByLive = {};
+  final Map<String, String> _profileBySession = {};
+
+  /// Bind a durable bot-chat id to its owning server profile. Profile-scoped
+  /// sessions live in a different state.db from ordinary mobile chats, so
+  /// every later resume/history pull must retain this association.
+  void registerSessionProfile(String sessionId, String profile) {
+    final id = sessionId.trim();
+    final name = profile.trim();
+    if (id.isEmpty || name.isEmpty) return;
+    _profileBySession[id] = name;
+    final live = _liveByStored[id];
+    if (live != null && live.isNotEmpty) _profileBySession[live] = name;
+  }
+
+  String? _profileForSession(String sessionId) {
+    return _profileBySession[sessionId] ??
+        _profileBySession[_storedByLive[sessionId] ?? ''];
+  }
 
   /// Completer for the in-flight agent turn (so [interruptSession] can unblock waiters).
   Completer<void>? _inflightTurnDone;
@@ -495,6 +513,25 @@ class SessionSyncRepository {
   }
 
   Future<List<HermesMessage>?> _pullMessages(String sessionId) async {
+    final profile = _profileForSession(sessionId);
+    if (profile != null) {
+      if (!await _ensureWsLive()) return null;
+      final liveId = await _ensureLiveSessionId(sessionId);
+      final raw = await gatewayRequest('session.history', {
+        'session_id': liveId,
+      });
+      final messages = raw['messages'];
+      if (messages is! List) return const [];
+      return [
+        for (var i = 0; i < messages.length; i++)
+          if (messages[i] is Map)
+            _profileMessageFromGateway(
+              (messages[i] as Map).cast<String, dynamic>(),
+              sessionId: sessionId,
+              index: i,
+            ),
+      ];
+    }
     final dash = _dashboard;
     if (dash != null) {
       return dash.listMessages(sessionId);
@@ -504,6 +541,24 @@ class SessionSyncRepository {
       return api.listMessages(sessionId);
     }
     return null;
+  }
+
+  HermesMessage _profileMessageFromGateway(
+    Map<String, dynamic> raw, {
+    required String sessionId,
+    required int index,
+  }) {
+    final rowId = raw['row_id'] ?? raw['id'];
+    final stableId = rowId == null || '$rowId'.isEmpty
+        ? 'profile_${messageFingerprint('${raw['role'] ?? ''}', '${raw['text'] ?? raw['content'] ?? ''}')}_$index'
+        : '$rowId';
+    return HermesMessage.fromJson({
+      ...raw,
+      'id': stableId,
+      'session_id': sessionId,
+      'content': raw['content'] ?? raw['text'],
+      'tool_name': raw['tool_name'] ?? raw['name'],
+    });
   }
 
   // ── Writes ─────────────────────────────────────────────────────────
@@ -681,6 +736,7 @@ class SessionSyncRepository {
       final raw = await rt.request('session.resume', {
         'session_id': sessionId,
         'source': 'mobile',
+        'profile': ?_profileForSession(sessionId),
       });
       final info = raw['info'];
       final state = SessionRuntimeState.fromJson(
@@ -830,6 +886,8 @@ class SessionSyncRepository {
     String? provider,
     String? reasoningEffort,
     bool? fastMode,
+    String? profile,
+    bool hidden = false,
   }) async {
     final rt = _realtime;
     if (rt == null || !rt.isLive) {
@@ -837,6 +895,8 @@ class SessionSyncRepository {
     }
     final result = await rt.request('session.create', {
       'source': 'mobile',
+      if (profile != null && profile.isNotEmpty) 'profile': profile,
+      if (hidden) 'hidden': true,
       if (title != null && title.isNotEmpty) 'title': title,
       if (model != null && model.isNotEmpty) 'model': model,
       if (provider != null && provider.isNotEmpty) 'provider': provider,
@@ -855,6 +915,9 @@ class SessionSyncRepository {
         ? liveId
         : '$storedRaw'.trim();
     _registerLiveMapping(storedId: storedId, liveId: liveId);
+    if (profile != null && profile.isNotEmpty) {
+      registerSessionProfile(storedId, profile);
+    }
 
     final info = result['info'];
     String? infoModel;
@@ -881,6 +944,74 @@ class SessionSyncRepository {
     _storedByLive[liveId] = storedId;
     // Also allow looking up by live id as if it were the session key.
     _liveByStored[liveId] = liveId;
+    final profile = _profileBySession[storedId];
+    if (profile != null) _profileBySession[liveId] = profile;
+  }
+
+  /// Resolve a Bot Mode profile's canonical chat, matching the desktop plugin:
+  /// reuse its pinned chat when present, recover to its newest session when a
+  /// pin is stale, or create a hidden Bot Chat when none exists.
+  Future<({HermesSession session, bool created})> openBotChat(
+    HermesBotProfile bot,
+  ) async {
+    final profile = bot.name.trim();
+    if (profile.isEmpty) throw StateError('Bot profile name is missing');
+    final listed = await gatewayRequest('session.list', {
+      'profile': profile,
+      'limit': 100,
+    });
+    final rawRows = listed['sessions'];
+    final rows = rawRows is List
+        ? rawRows
+              .whereType<Map>()
+              .map((row) => row.cast<String, dynamic>())
+              .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+    final pinned = bot.chatSessionId?.trim();
+    Map<String, dynamic>? selected;
+    if (pinned != null && pinned.isNotEmpty) {
+      selected = rows
+          .where((row) => '${row['id'] ?? ''}' == pinned)
+          .firstOrNull;
+    }
+    selected ??= rows.firstOrNull;
+    if (selected != null) {
+      final session = HermesSession.fromJson({
+        ...selected,
+        'model': bot.model,
+        'last_active': selected['last_active'] ?? selected['started_at'],
+      });
+      registerSessionProfile(session.id, profile);
+      if (pinned != session.id) await _pinBotChat(bot, session.id);
+      return (session: session, created: false);
+    }
+
+    final created = await _createSessionOnGateway(
+      title: 'Bot Chat',
+      model: bot.model,
+      provider: bot.provider,
+      profile: profile,
+      hidden: true,
+    );
+    await _pinBotChat(bot, created.id);
+    return (session: created, created: true);
+  }
+
+  Future<void> _pinBotChat(HermesBotProfile bot, String sessionId) async {
+    final rawUi = bot.raw['ui_meta'];
+    final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;
+    final meta = rawMeta is Map
+        ? rawMeta.map((key, value) => MapEntry('$key', value))
+        : <String, dynamic>{};
+    meta['chat'] = sessionId;
+    final result = await gatewayRequest('profiles.configure', {
+      'name': bot.name,
+      'ui_meta': {'hermes-bots': meta},
+    });
+    final applied = result['applied'];
+    if (applied is Map && applied['ui_meta'] == false) {
+      throw StateError('Server could not save the bot chat');
+    }
   }
 
   bool _isSessionNotFound(Object error) {
@@ -1064,6 +1195,7 @@ class SessionSyncRepository {
       final resumed = await rt.request('session.resume', {
         'session_id': sessionId,
         'source': 'mobile',
+        'profile': ?_profileForSession(sessionId),
       });
       final liveId = '${resumed['session_id'] ?? ''}'.trim();
       if (liveId.isNotEmpty) {

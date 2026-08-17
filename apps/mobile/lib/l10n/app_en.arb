@@ -16,7 +16,7 @@
   "navJobs": "Jobs",
   "navSettings": "Settings",
   "botsTitle": "Bots",
-  "botsEmpty": "Bot Mode is available, but this server has no profiles yet.",
+  "botsEmpty": "No bots yet. Create one in Hermes Desktop.",
   "botsNoConversation": "No conversations yet",
   "botsCachedRoster": "Showing the last roster while the server reconnects.",
   "modelLabel": "Model",

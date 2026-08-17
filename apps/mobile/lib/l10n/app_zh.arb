@@ -17,7 +17,7 @@
   "navJobs": "任务",
   "navSettings": "设置",
   "botsTitle": "机器人",
-  "botsEmpty": "机器人模式可用，但此服务器尚无配置文件。",
+  "botsEmpty": "还没有机器人。请在 Hermes Desktop 中创建。",
   "botsNoConversation": "还没有对话",
   "botsCachedRoster": "服务器重新连接时显示上次的列表。",
   "modelLabel": "模型",

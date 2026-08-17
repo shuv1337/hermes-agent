@@ -79,6 +79,39 @@ void main() {
     expect((await other.loadSessionsLocal()).first.title, 'B');
   });
 
+  test('bot chat stays scoped to its server profile', () async {
+    final realtime = _BotRealtime(repo);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+    final bot = HermesBotProfile.fromJson({
+      'name': 'researcher',
+      'model': 'gpt-5.6-terra',
+      'provider': 'openai-codex',
+      'ui_meta': {
+        'hermes-bots': {'chat': 'bot-session', 'title': 'Researcher'},
+      },
+    });
+
+    final target = await repo.openBotChat(bot);
+    expect(target.created, isFalse);
+    expect(target.session.id, 'bot-session');
+
+    final messages = await repo.syncMessages(target.session.id);
+    expect(messages.single.content, 'Profile-specific answer');
+    expect(
+      realtime.calls
+          .singleWhere((call) => call.method == 'session.resume')
+          .params['profile'],
+      'researcher',
+    );
+    expect(
+      realtime.calls
+          .singleWhere((call) => call.method == 'session.history')
+          .params['session_id'],
+      'bot-live',
+    );
+  });
+
   test(
     'runtime hydration resumes once and keeps the session-specific model',
     () async {
@@ -353,6 +386,51 @@ class _RuntimeRealtime extends GatewayRealtime {
         'reasoning_effort': 'high',
         'fast': false,
       },
+    };
+  }
+}
+
+class _BotRealtime extends GatewayRealtime {
+  _BotRealtime(SessionSyncRepository repository)
+    : super(
+        profile: const ConnectionProfile(
+          id: 'bot-test',
+          baseUrl: 'https://gateway.test',
+        ),
+        sessionSync: repository,
+      );
+
+  final calls = <({String method, Map<String, dynamic> params})>[];
+
+  @override
+  bool get isLive => true;
+
+  @override
+  Stream<GatewayWsEvent> get events => const Stream.empty();
+
+  @override
+  Future<bool> ensureLive({bool force = false}) async => true;
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method, [
+    Map<String, dynamic>? params,
+    Duration? timeout,
+  ]) async {
+    calls.add((method: method, params: {...?params}));
+    return switch (method) {
+      'session.list' => {
+        'sessions': [
+          {'id': 'bot-session', 'title': 'Bot Chat', 'message_count': 1},
+        ],
+      },
+      'session.resume' => {'session_id': 'bot-live', 'messages': const []},
+      'session.history' => {
+        'messages': [
+          {'row_id': 7, 'role': 'assistant', 'text': 'Profile-specific answer'},
+        ],
+      },
+      _ => <String, dynamic>{},
     };
   }
 }

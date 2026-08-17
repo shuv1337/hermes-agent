@@ -17,7 +17,7 @@
   "navJobs": "مهام",
   "navSettings": "الإعدادات",
   "botsTitle": "الروبوتات",
-  "botsEmpty": "وضع الروبوت متاح، لكن هذا الخادم لا يحتوي على ملفات تعريف بعد.",
+  "botsEmpty": "لا توجد روبوتات بعد. أنشئ واحدًا في Hermes Desktop.",
   "botsNoConversation": "لا توجد محادثات بعد",
   "botsCachedRoster": "يتم عرض آخر قائمة أثناء إعادة اتصال الخادم.",
   "modelLabel": "النموذج",

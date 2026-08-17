@@ -17,7 +17,7 @@
   "navJobs": "ジョブ",
   "navSettings": "設定",
   "botsTitle": "ボット",
-  "botsEmpty": "ボットモードは利用できますが、このサーバーにはまだプロフィールがありません。",
+  "botsEmpty": "ボットはまだありません。Hermes Desktop で作成してください。",
   "botsNoConversation": "まだ会話がありません",
   "botsCachedRoster": "サーバーの再接続中は最後の一覧を表示しています。",
   "modelLabel": "モデル",

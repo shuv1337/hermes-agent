@@ -42,8 +42,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get botsTitle => 'Bots';
 
   @override
-  String get botsEmpty =>
-      'O modo Bot está disponível, mas este servidor ainda não tem perfis.';
+  String get botsEmpty => 'Ainda não há bots. Crie um no Hermes Desktop.';
 
   @override
   String get botsNoConversation => 'Ainda não há conversas';

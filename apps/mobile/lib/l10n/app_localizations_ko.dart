@@ -42,7 +42,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get botsTitle => '봇';
 
   @override
-  String get botsEmpty => '봇 모드를 사용할 수 있지만 이 서버에는 아직 프로필이 없습니다.';
+  String get botsEmpty => '아직 봇이 없습니다. Hermes Desktop에서 만들어 주세요.';
 
   @override
   String get botsNoConversation => '아직 대화가 없습니다';

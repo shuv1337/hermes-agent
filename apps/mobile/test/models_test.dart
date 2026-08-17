@@ -115,15 +115,34 @@ void main() {
       });
 
       expect(roster.available, isTrue);
-      expect(roster.profiles, hasLength(2));
+      expect(roster.profiles, hasLength(1));
       final researcher = roster.profiles.first;
       expect(researcher.displayName, 'Research Desk');
       expect(researcher.chatSessionId, 'session-1');
       expect(researcher.lastSession?.preview, 'Latest findings');
       expect(researcher.pinned, isTrue);
-      expect(roster.profiles.last.displayName, 'Hermes');
     },
   );
+
+  test('ordinary default-profile chat is never presented as a bot', () {
+    final roster = HermesBotRoster.fromServer({
+      'bot_mode_protocol': true,
+      'profiles': [
+        {
+          'name': 'default',
+          'is_default': true,
+          'last_session': {
+            'id': 'apple-review',
+            'preview': 'Hi, Apple Review Team!',
+            'message_count': 2,
+          },
+        },
+      ],
+    });
+
+    expect(roster.available, isTrue);
+    expect(roster.profiles, isEmpty);
+  });
 
   test(
     'bot roster stays hidden when neither capability nor plugin is exposed',
@@ -154,7 +173,7 @@ void main() {
     );
 
     expect(roster.available, isTrue);
-    expect(roster.profiles.single.displayName, 'Hermes');
+    expect(roster.profiles, isEmpty);
   });
 
   test('gateway book ignores malformed selector types', () {

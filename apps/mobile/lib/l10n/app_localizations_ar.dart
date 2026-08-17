@@ -42,8 +42,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get botsTitle => 'الروبوتات';
 
   @override
-  String get botsEmpty =>
-      'وضع الروبوت متاح، لكن هذا الخادم لا يحتوي على ملفات تعريف بعد.';
+  String get botsEmpty => 'لا توجد روبوتات بعد. أنشئ واحدًا في Hermes Desktop.';
 
   @override
   String get botsNoConversation => 'لا توجد محادثات بعد';

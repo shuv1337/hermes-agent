@@ -43,7 +43,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get botsEmpty =>
-      'Le mode Bot est disponible, mais ce serveur n’a encore aucun profil.';
+      'Aucun bot pour le moment. Créez-en un dans Hermes Desktop.';
 
   @override
   String get botsNoConversation => 'Aucune conversation pour le moment';
