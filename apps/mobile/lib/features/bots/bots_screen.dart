@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/providers.dart';
+import 'package:hermes_mobile/features/bots/bot_avatar.dart';
 import 'package:hermes_mobile/features/sessions/session_chat_screen.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
@@ -167,26 +168,14 @@ class _BotTile extends ConsumerWidget {
         : (bot.description?.trim().isNotEmpty == true
               ? bot.description!.trim()
               : context.l10n.botsNoConversation);
-    final accent = _parseColor(bot.color) ?? theme.colorScheme.primaryContainer;
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       onTap: () => _openBotChat(context, ref, bot),
-      leading: CircleAvatar(
-        radius: 24,
-        backgroundColor: accent,
-        foregroundColor:
-            ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
-            ? Colors.white
-            : Colors.black87,
-        child: Text(
-          _initials(bot.displayName),
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
+      leading: BotAvatar(bot: bot),
       title: Row(
         children: [
-          Expanded(
+          Flexible(
             child: Text(
               bot.displayName,
               maxLines: 1,
@@ -194,6 +183,17 @@ class _BotTile extends ConsumerWidget {
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
+          if (bot.showsHandle) ...[
+            const SizedBox(width: 7),
+            Text(
+              '@${bot.handle}',
+              maxLines: 1,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
           if (bot.pinned) ...[
             const SizedBox(width: 6),
             Icon(Icons.push_pin, size: 15, color: theme.colorScheme.primary),
@@ -251,25 +251,4 @@ Future<void> _openBotChat(
       context,
     ).showSnackBar(SnackBar(content: Text('$error')));
   }
-}
-
-String _initials(String value) {
-  final words = value
-      .trim()
-      .split(RegExp(r'\s+'))
-      .where((part) => part.isNotEmpty)
-      .toList(growable: false);
-  if (words.isEmpty) return 'B';
-  if (words.length == 1) return words.first.characters.first.toUpperCase();
-  return '${words.first.characters.first}${words.last.characters.first}'
-      .toUpperCase();
-}
-
-Color? _parseColor(String? raw) {
-  if (raw == null) return null;
-  final value = raw.trim().replaceFirst('#', '');
-  if (value.length != 6 && value.length != 8) return null;
-  final parsed = int.tryParse(value, radix: 16);
-  if (parsed == null) return null;
-  return Color(value.length == 6 ? 0xFF000000 | parsed : parsed);
 }

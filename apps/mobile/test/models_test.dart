@@ -104,6 +104,8 @@ void main() {
               'hermes-bots': {
                 'title': 'Research Desk',
                 'color': '#336699',
+                'shape': 'hexagon',
+                'imageKind': 'shape',
                 'chat': 'session-1',
                 'created': 1786800000000,
                 'pinned': true,
@@ -119,6 +121,10 @@ void main() {
       final researcher = roster.profiles.first;
       expect(researcher.displayName, 'Research Desk');
       expect(researcher.chatSessionId, 'session-1');
+      expect(researcher.handle, 'researcher');
+      expect(researcher.showsHandle, isTrue);
+      expect(researcher.shape, 'hexagon');
+      expect(researcher.usesImageAvatar, isFalse);
       expect(researcher.lastSession?.preview, 'Latest findings');
       expect(researcher.pinned, isTrue);
     },

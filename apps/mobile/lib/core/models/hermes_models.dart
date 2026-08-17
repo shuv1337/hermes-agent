@@ -792,6 +792,8 @@ class HermesBotProfile {
     this.lastSession,
     this.title,
     this.color,
+    this.shape,
+    this.imageKind,
     this.chatSessionId,
     this.createdAt,
     this.pinned = false,
@@ -807,6 +809,8 @@ class HermesBotProfile {
   final HermesSession? lastSession;
   final String? title;
   final String? color;
+  final String? shape;
+  final String? imageKind;
   final String? chatSessionId;
   final int? createdAt;
   final bool pinned;
@@ -826,6 +830,13 @@ class HermesBotProfile {
     if (isDefault || name.trim().toLowerCase() == 'default') return 'Hermes';
     return name;
   }
+
+  String get handle => name.trim().toLowerCase() == 'default' ? 'hermes' : name;
+
+  bool get showsHandle =>
+      handle.isNotEmpty && displayName.toLowerCase() != handle.toLowerCase();
+
+  bool get usesImageAvatar => imageKind?.toLowerCase() == 'photo';
 
   int get activityMillis {
     final last = parseServerTimeMillis(lastSession?.lastActive);
@@ -866,6 +877,8 @@ class HermesBotProfile {
       lastSession: last,
       title: text(meta['title']),
       color: text(meta['color']),
+      shape: text(meta['shape']),
+      imageKind: text(meta['imageKind']),
       chatSessionId: text(meta['chat']),
       createdAt: integer(meta['created']),
       pinned: meta['pinned'] == true,

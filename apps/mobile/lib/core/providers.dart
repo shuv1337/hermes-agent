@@ -988,6 +988,30 @@ final botsProvider = AsyncNotifierProvider<BotsNotifier, BotsViewState>(
   BotsNotifier.new,
 );
 
+/// Server-owned uploaded/generated/pet avatar. Shape avatars deliberately do
+/// not use the server's raster backfill: mobile draws their live face from the
+/// shared shape/color metadata so it can blink and move like Desktop.
+final botAvatarProvider = FutureProvider.autoDispose.family<Uint8List?, String>(
+  (ref, profileName) async {
+    final sync = ref.watch(sessionSyncProvider);
+    if (sync == null || profileName.trim().isEmpty) return null;
+    final result = await sync.gatewayRequest('profiles.get_asset', {
+      'name': profileName,
+      'asset': 'avatar',
+    });
+    if (result['found'] != true) return null;
+    final data = '${result['data'] ?? ''}';
+    final comma = data.indexOf(',');
+    final payload = comma >= 0 ? data.substring(comma + 1) : data;
+    if (payload.isEmpty) return null;
+    try {
+      return Uint8List.fromList(base64Decode(payload));
+    } catch (_) {
+      return null;
+    }
+  },
+);
+
 class BotsNotifier extends AsyncNotifier<BotsViewState> {
   @override
   Future<BotsViewState> build() async {
