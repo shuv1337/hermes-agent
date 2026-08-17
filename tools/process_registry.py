@@ -1733,11 +1733,55 @@ class ProcessRegistry:
             self.completion_queue.put(evt)
         return results
 
+    # Minimum characters of the random suffix required for prefix resolution.
+    # Short prefixes ("p", "pr", "proc_1") are too collision-prone to act on.
+    _MIN_PREFIX_CHARS = 4
+
     def get(self, session_id: str) -> Optional[ProcessSession]:
-        """Get a session by ID (running or finished)."""
+        """Get a session by ID (running or finished).
+
+        Accepts either the full ID or a unique ID prefix (inspired by Factory
+        Droid's task-ID prefixes, and the same UX as ``git``/``docker`` short
+        hashes): ``proc_4dae`` — or just the bare suffix ``4dae`` — resolves
+        to ``proc_4dae56ca81f6`` when exactly one session matches. Ambiguous
+        or too-short prefixes resolve to None (callers already report
+        "No process with ID ..."), never to an arbitrary pick.
+        """
         with self._lock:
             session = self._running.get(session_id) or self._finished.get(session_id)
+        if session is None:
+            session = self._resolve_prefix(session_id)
         return self._refresh_detached_session(session)
+
+    def _resolve_prefix(self, session_id: str) -> Optional[ProcessSession]:
+        """Resolve a unique session-ID prefix to its session, else None.
+
+        Exact lookups happen in :meth:`get` before this runs, so a full ID
+        never pays the scan. Matching is prefix-only (no substring) and
+        requires a unique hit; a bare suffix without the ``proc_`` lead is
+        normalized so users can paste just the hex tail.
+        """
+        if not session_id or not isinstance(session_id, str):
+            return None
+        query = session_id.strip()
+        if not query:
+            return None
+        # Allow the bare suffix form: "4dae56" -> "proc_4dae56".
+        if not query.startswith("proc_"):
+            query = f"proc_{query}"
+        suffix = query[len("proc_"):]
+        if len(suffix) < self._MIN_PREFIX_CHARS:
+            return None
+        with self._lock:
+            matches = [
+                s
+                for store in (self._running, self._finished)
+                for sid, s in store.items()
+                if sid.startswith(query)
+            ]
+        if len(matches) == 1:
+            return matches[0]
+        return None
 
     def _reconcile_local_exit(self, session: "ProcessSession") -> None:
         """Reconcile session.exited against the real child process state.
@@ -2695,6 +2739,7 @@ def _format_async_delegation(evt: dict) -> str:
     error = evt.get("error")
     api_calls = evt.get("api_calls", 0)
     duration = evt.get("duration_seconds", "?")
+    truncated = evt.get("truncated") or evt.get("exit_reason") == "max_iterations"
     dispatched_at = evt.get("dispatched_at")
     completed_at = evt.get("completed_at") or _time.time()
 
@@ -2735,7 +2780,8 @@ def _format_async_delegation(evt: dict) -> str:
             r_summary = r.get("summary")
             r_error = r.get("error")
             r_goal = goals[idx] if idx < len(goals) else r.get("goal", "")
-            icon = "✓" if r_status in ("completed", "success") else "✗"
+            r_truncated = r.get("truncated") or r.get("exit_reason") == "max_iterations"
+            icon = "⚠" if r_truncated else ("✓" if r_status in ("completed", "success") else "✗")
             lines.append("")
             header = f"--- {icon} TASK {idx + 1}/{n}"
             if r_goal:
@@ -2745,9 +2791,17 @@ def _format_async_delegation(evt: dict) -> str:
                 header += f", api_calls={r['api_calls']}"
             if r.get("duration_seconds") is not None:
                 header += f", {r['duration_seconds']}s"
+            if r_truncated:
+                header += ", TRUNCATED: hit max_iterations — work may be incomplete"
             header += ") ---"
             lines.append(header)
             if r_status in ("completed", "success") and r_summary:
+                if r_truncated:
+                    lines.append(
+                        "[TRUNCATED — subagent hit its iteration cap; the "
+                        "summary below may be incomplete. Verify before relying "
+                        "on it, or re-dispatch the unfinished part.]"
+                    )
                 lines.append(r_summary)
             elif r_summary:
                 if r_error:
@@ -2787,9 +2841,16 @@ def _format_async_delegation(evt: dict) -> str:
     if toolsets:
         lines.append(f"Toolsets: {', '.join(toolsets)}")
     lines.append(f"Role: {role}   Model: {model}")
-    lines.append(f"Status: {status}   API calls: {api_calls}   Duration: {duration}s")
+    _trunc = " [TRUNCATED: hit max_iterations — work may be incomplete]" if truncated else ""
+    lines.append(f"Status: {status}   API calls: {api_calls}   Duration: {duration}s{_trunc}")
     lines.append("--- RESULT ---")
     if status in ("completed", "success") and summary:
+        if truncated:
+            lines.append(
+                "[TRUNCATED — subagent hit its iteration cap; the summary below "
+                "may be incomplete. Verify before relying on it, or re-dispatch "
+                "the unfinished part.]"
+            )
         lines.append(summary)
     elif status == "interrupted":
         lines.append(
@@ -2897,7 +2958,7 @@ PROCESS_SCHEMA = {
             },
             "session_id": {
                 "type": "string",
-                "description": "Process session ID (from terminal background output). Required for all actions except 'list'."
+                "description": "Process session ID (from terminal background output). Required for all actions except 'list'. A unique ID prefix works too (e.g. 'proc_4dae' or just '4dae' for proc_4dae56ca81f6)."
             },
             "data": {
                 "type": "string",
