@@ -104,6 +104,8 @@
 	<string>Hermes converts your speech to text for the chat composer.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Hermes Go reads health and activity data you choose so your Health Coach bot can summarize trends on your private Hermes gateway.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Hermes Go does not save or change any data in Apple Health. It only reads the health data you choose to share, so your Health Coach bot can summarize trends on your private Hermes gateway.</string>
 	<!-- Plain HTTP is allowed to private/VPN gateways (Dart validator in
 	     GatewayAuthClient.validateBaseUrl is the actual policy gate: LAN,
 	     Tailscale/WireGuard, mDNS, CGNAT; public HTTP is still rejected

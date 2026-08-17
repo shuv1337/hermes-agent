@@ -28,6 +28,7 @@ import 'package:hermes_mobile/features/skills/skills_picker_sheet.dart';
 import 'package:hermes_mobile/features/sessions/chat_composer.dart';
 import 'package:hermes_mobile/features/sessions/context_usage_sheet.dart';
 import 'package:hermes_mobile/features/sessions/message_markdown.dart';
+import 'package:hermes_mobile/features/sessions/tool_message_card.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
 /// Distance (logical px) from the message list's "latest message" anchor
@@ -2566,7 +2567,9 @@ class _MessageBubble extends StatelessWidget {
                     ),
                   ),
                 ),
-              if (isTool || message.toolName != null)
+              if (isTool)
+                ToolMessageContent(message: message)
+              else if (message.toolName != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
@@ -2589,7 +2592,7 @@ class _MessageBubble extends StatelessWidget {
                     ),
                   ),
                 ),
-              if (body.isNotEmpty || !isSystem)
+              if (!isTool && (body.isNotEmpty || !isSystem))
                 _MessageBody(
                   text: body.isNotEmpty
                       ? body

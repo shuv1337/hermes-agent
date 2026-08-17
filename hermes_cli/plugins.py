@@ -54,6 +54,7 @@ from pathlib import Path
 from typing import (Any, Callable, Dict, Iterable, List, Mapping, Optional, Set, Tuple, Type, Union)
 
 from hermes_constants import (
+    get_default_hermes_root,
     get_hermes_home,
     hermes_home_key,
     reset_hermes_home_override,
@@ -4074,12 +4075,20 @@ class PluginManager:
         logger.debug("  bundled/platforms: %d manifest(s)", len(bundled_platforms))
         manifests.extend(bundled_platforms)
 
-        # 2. User plugins (~/.hermes/plugins/)
-        user_dir = get_hermes_home() / "plugins"
-        logger.debug("Scanning user plugins: %s", user_dir)
-        user_manifests = self._scan_directory(user_dir, source="user")
-        logger.debug("  user: %d manifest(s)", len(user_manifests))
-        manifests.extend(user_manifests)
+        # 2. User plugins. A profile-scoped process sets HERMES_HOME to
+        # <root>/profiles/<name>, but installed plugins still live in the
+        # shared Hermes root. Scan the root first, then the profile-local
+        # directory so an intentional profile override keeps precedence.
+        root_user_dir = get_default_hermes_root() / "plugins"
+        profile_user_dir = get_hermes_home() / "plugins"
+        user_dirs = [root_user_dir]
+        if profile_user_dir.resolve() != root_user_dir.resolve():
+            user_dirs.append(profile_user_dir)
+        for user_dir in user_dirs:
+            logger.debug("Scanning user plugins: %s", user_dir)
+            user_manifests = self._scan_directory(user_dir, source="user")
+            logger.debug("  user: %d manifest(s)", len(user_manifests))
+            manifests.extend(user_manifests)
 
         # 3. Project plugins (./.hermes/plugins/), only when explicitly opted
         # in. This must match the full discovery gate exactly.

@@ -112,6 +112,40 @@ void main() {
     );
   });
 
+  test(
+    'profile tool history preserves gateway context and arguments',
+    () async {
+      final realtime = _BotRealtime(
+        repo,
+        historyMessages: const [
+          {
+            'role': 'tool',
+            'name': 'tool_search',
+            'context': 'apple health sleep',
+            'args': {'query': 'apple health sleep'},
+          },
+        ],
+      );
+      repo.bindRealtime(realtime);
+      addTearDown(realtime.dispose);
+      final bot = HermesBotProfile.fromJson({
+        'name': 'coach',
+        'ui_meta': {
+          'hermes-bots': {'chat': 'bot-session', 'title': 'Fitness Coach'},
+        },
+      });
+
+      final target = await repo.openBotChat(bot);
+      final message = (await repo.syncMessages(target.session.id)).single;
+
+      expect(message.toolName, 'tool_search');
+      expect(message.content, 'apple health sleep');
+      expect(message.toolCalls, {
+        'args': {'query': 'apple health sleep'},
+      });
+    },
+  );
+
   test('a hidden pinned bot chat resumes instead of being recreated', () async {
     final realtime = _BotRealtime(repo, hidePinnedFromList: true);
     repo.bindRealtime(realtime);
@@ -938,6 +972,9 @@ class _BotRealtime extends GatewayRealtime {
     SessionSyncRepository repository, {
     this.soul = '',
     this.hidePinnedFromList = false,
+    this.historyMessages = const [
+      {'row_id': 7, 'role': 'assistant', 'text': 'Profile-specific answer'},
+    ],
   }) : super(
          profile: const ConnectionProfile(
            id: 'bot-test',
@@ -949,6 +986,7 @@ class _BotRealtime extends GatewayRealtime {
   final calls = <({String method, Map<String, dynamic> params})>[];
   final String soul;
   final bool hidePinnedFromList;
+  final List<Map<String, dynamic>> historyMessages;
 
   @override
   bool get isLive => true;
@@ -975,11 +1013,7 @@ class _BotRealtime extends GatewayRealtime {
               ],
       },
       'session.resume' => {'session_id': 'bot-live', 'messages': const []},
-      'session.history' => {
-        'messages': [
-          {'row_id': 7, 'role': 'assistant', 'text': 'Profile-specific answer'},
-        ],
-      },
+      'session.history' => {'messages': historyMessages},
       'session.create' => {
         'session_id': 'fresh-health-live',
         'stored_session_id': 'fresh-health-chat',

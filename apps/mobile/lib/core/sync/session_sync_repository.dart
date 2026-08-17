@@ -660,8 +660,15 @@ class SessionSyncRepository {
       ...raw,
       'id': stableId,
       'session_id': sessionId,
-      'content': raw['content'] ?? raw['text'],
+      // The profile gateway intentionally projects tool calls as a compact
+      // display context plus their original arguments. Preserve both: older
+      // clients dropped these fields and rendered every tool row as just an
+      // ellipsis after a history refresh.
+      'content': raw['content'] ?? raw['text'] ?? raw['context'],
       'tool_name': raw['tool_name'] ?? raw['name'],
+      'tool_calls':
+          raw['tool_calls'] ??
+          (raw['args'] == null ? null : <String, dynamic>{'args': raw['args']}),
     });
   }
 
