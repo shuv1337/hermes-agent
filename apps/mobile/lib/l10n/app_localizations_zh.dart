@@ -30,10 +30,34 @@ class AppLocalizationsZh extends AppLocalizations {
   String get navChatLive => '聊天 · 实时';
 
   @override
+  String get navBots => '机器人';
+
+  @override
   String get navJobs => '任务';
 
   @override
   String get navSettings => '设置';
+
+  @override
+  String get botsTitle => '机器人';
+
+  @override
+  String get botsEmpty => '机器人模式可用，但此服务器尚无配置文件。';
+
+  @override
+  String get botsNoConversation => '还没有对话';
+
+  @override
+  String get botsCachedRoster => '服务器重新连接时显示上次的列表。';
+
+  @override
+  String get modelLabel => '模型';
+
+  @override
+  String get lastActivity => '最近活动';
+
+  @override
+  String get messagesLabel => '消息';
 
   @override
   String get settingsTitle => '设置';

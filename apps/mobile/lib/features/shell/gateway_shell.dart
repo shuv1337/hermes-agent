@@ -6,12 +6,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/core/sync/session_touch.dart';
+import 'package:hermes_mobile/features/bots/bots_screen.dart';
 import 'package:hermes_mobile/features/jobs/jobs_screen.dart';
 import 'package:hermes_mobile/features/sessions/sessions_screen.dart';
 import 'package:hermes_mobile/features/settings/settings_screen.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
-/// Bottom nav: Chat | Jobs | Settings.
+enum GatewayTab { chat, bots, jobs, settings }
+
+List<GatewayTab> gatewayTabsFor({required bool botsAvailable}) => [
+  GatewayTab.chat,
+  if (botsAvailable) GatewayTab.bots,
+  GatewayTab.jobs,
+  GatewayTab.settings,
+];
+
+/// Bottom nav: Chat | [Bots] | Jobs | Settings.
+///
+/// Bots is capability-gated by the connected server, so an older gateway or
+/// a Hermes install without Bot Mode retains the original three-tab shell.
 class GatewayShell extends ConsumerStatefulWidget {
   const GatewayShell({super.key});
 
@@ -21,7 +34,7 @@ class GatewayShell extends ConsumerStatefulWidget {
 
 class _GatewayShellState extends ConsumerState<GatewayShell>
     with WidgetsBindingObserver {
-  int _tab = 0;
+  GatewayTab _tab = GatewayTab.chat;
   StreamSubscription<SessionTouch>? _liveSub;
   StreamSubscription<void>? _stateSub;
   var _live = false;
@@ -56,6 +69,7 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
     });
     await Future.wait([
       ref.read(sessionsProvider.notifier).softRefresh(),
+      ref.read(botsProvider.notifier).refresh(),
       ref.read(jobsProvider.notifier).refresh(),
       // Models: disk cache first (provider build); only soft-diff if empty cold.
       ref.read(modelOptionsProvider.notifier).softSync(forceRefresh: false),
@@ -72,6 +86,7 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
         touch.reason == 'complete' ||
         touch.reason == 'connect') {
       unawaited(ref.read(jobsProvider.notifier).refresh());
+      unawaited(ref.read(botsProvider.notifier).refresh());
     }
   }
 
@@ -88,6 +103,7 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
           if (ok) {
             unawaited(rt.refreshCaches(reason: 'resume'));
             unawaited(ref.read(sessionSyncProvider)?.flushPendingOverWs());
+            unawaited(ref.read(botsProvider.notifier).refresh());
           }
         }());
       case AppLifecycleState.paused:
@@ -117,7 +133,16 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
     ref.watch(gatewayRealtimeProvider);
 
     final l10n = context.l10n;
-    final pages = const [SessionsScreen(), JobsScreen(), SettingsScreen()];
+    final botsAvailable = ref.watch(botsProvider).value?.available ?? false;
+    final tabs = gatewayTabsFor(botsAvailable: botsAvailable);
+    final activeTab = tabs.contains(_tab) ? _tab : GatewayTab.chat;
+    final selectedIndex = tabs.indexOf(activeTab);
+    final page = switch (activeTab) {
+      GatewayTab.chat => const SessionsScreen(),
+      GatewayTab.bots => const BotsScreen(),
+      GatewayTab.jobs => const JobsScreen(),
+      GatewayTab.settings => const SettingsScreen(),
+    };
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     // NavigationBar has a compact default height. Give large accessibility
     // labels room to wrap instead of clipping or overlapping the gesture area.
@@ -128,35 +153,52 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
       // their TextFields cause Flutter to probe UIPasteboard.hasStrings even
       // though the user has not opened those screens. That API can deadlock
       // the main thread on iOS 27 beta.
-      body: pages[_tab],
+      body: page,
       bottomNavigationBar: NavigationBar(
         height: navigationHeight,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        selectedIndex: _tab,
+        selectedIndex: selectedIndex,
         onDestinationSelected: (i) {
-          setState(() => _tab = i);
-          if (i == 0) {
+          final selected = tabs[i];
+          setState(() => _tab = selected);
+          if (selected == GatewayTab.chat) {
             unawaited(ref.read(sessionsProvider.notifier).softRefresh());
           }
-          if (i == 1) ref.read(jobsProvider.notifier).refresh();
+          if (selected == GatewayTab.bots) {
+            unawaited(ref.read(botsProvider.notifier).refresh());
+          }
+          if (selected == GatewayTab.jobs) {
+            unawaited(ref.read(jobsProvider.notifier).refresh());
+          }
         },
-        destinations: [
-          NavigationDestination(
-            icon: Icon(_live ? Icons.chat_bubble : Icons.chat_bubble_outline),
-            selectedIcon: const Icon(Icons.chat_bubble),
-            label: _live ? l10n.navChatLive : l10n.navChat,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.schedule_outlined),
-            selectedIcon: const Icon(Icons.schedule),
-            label: l10n.navJobs,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.settings_outlined),
-            selectedIcon: const Icon(Icons.settings),
-            label: l10n.navSettings,
-          ),
-        ],
+        destinations: tabs
+            .map((tab) {
+              return switch (tab) {
+                GatewayTab.chat => NavigationDestination(
+                  icon: Icon(
+                    _live ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                  ),
+                  selectedIcon: const Icon(Icons.chat_bubble),
+                  label: _live ? l10n.navChatLive : l10n.navChat,
+                ),
+                GatewayTab.bots => NavigationDestination(
+                  icon: const Icon(Icons.smart_toy_outlined),
+                  selectedIcon: const Icon(Icons.smart_toy),
+                  label: l10n.navBots,
+                ),
+                GatewayTab.jobs => NavigationDestination(
+                  icon: const Icon(Icons.schedule_outlined),
+                  selectedIcon: const Icon(Icons.schedule),
+                  label: l10n.navJobs,
+                ),
+                GatewayTab.settings => NavigationDestination(
+                  icon: const Icon(Icons.settings_outlined),
+                  selectedIcon: const Icon(Icons.settings),
+                  label: l10n.navSettings,
+                ),
+              };
+            })
+            .toList(growable: false),
       ),
     );
   }

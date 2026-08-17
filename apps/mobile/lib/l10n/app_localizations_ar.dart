@@ -30,10 +30,35 @@ class AppLocalizationsAr extends AppLocalizations {
   String get navChatLive => 'محادثة · مباشر';
 
   @override
+  String get navBots => 'الروبوتات';
+
+  @override
   String get navJobs => 'مهام';
 
   @override
   String get navSettings => 'الإعدادات';
+
+  @override
+  String get botsTitle => 'الروبوتات';
+
+  @override
+  String get botsEmpty =>
+      'وضع الروبوت متاح، لكن هذا الخادم لا يحتوي على ملفات تعريف بعد.';
+
+  @override
+  String get botsNoConversation => 'لا توجد محادثات بعد';
+
+  @override
+  String get botsCachedRoster => 'يتم عرض آخر قائمة أثناء إعادة اتصال الخادم.';
+
+  @override
+  String get modelLabel => 'النموذج';
+
+  @override
+  String get lastActivity => 'آخر نشاط';
+
+  @override
+  String get messagesLabel => 'الرسائل';
 
   @override
   String get settingsTitle => 'الإعدادات';

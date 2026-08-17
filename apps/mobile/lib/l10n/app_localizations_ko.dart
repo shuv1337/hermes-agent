@@ -30,10 +30,34 @@ class AppLocalizationsKo extends AppLocalizations {
   String get navChatLive => '채팅 · 실시간';
 
   @override
+  String get navBots => '봇';
+
+  @override
   String get navJobs => '작업';
 
   @override
   String get navSettings => '설정';
+
+  @override
+  String get botsTitle => '봇';
+
+  @override
+  String get botsEmpty => '봇 모드를 사용할 수 있지만 이 서버에는 아직 프로필이 없습니다.';
+
+  @override
+  String get botsNoConversation => '아직 대화가 없습니다';
+
+  @override
+  String get botsCachedRoster => '서버가 다시 연결되는 동안 마지막 목록을 표시합니다.';
+
+  @override
+  String get modelLabel => '모델';
+
+  @override
+  String get lastActivity => '최근 활동';
+
+  @override
+  String get messagesLabel => '메시지';
 
   @override
   String get settingsTitle => '설정';

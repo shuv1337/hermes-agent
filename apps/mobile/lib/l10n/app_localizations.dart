@@ -148,6 +148,12 @@ abstract class AppLocalizations {
   /// **'Chat · live'**
   String get navChatLive;
 
+  /// No description provided for @navBots.
+  ///
+  /// In en, this message translates to:
+  /// **'Bots'**
+  String get navBots;
+
   /// No description provided for @navJobs.
   ///
   /// In en, this message translates to:
@@ -159,6 +165,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Settings'**
   String get navSettings;
+
+  /// No description provided for @botsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Bots'**
+  String get botsTitle;
+
+  /// No description provided for @botsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Bot Mode is available, but this server has no profiles yet.'**
+  String get botsEmpty;
+
+  /// No description provided for @botsNoConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'No conversations yet'**
+  String get botsNoConversation;
+
+  /// No description provided for @botsCachedRoster.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing the last roster while the server reconnects.'**
+  String get botsCachedRoster;
+
+  /// No description provided for @modelLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get modelLabel;
+
+  /// No description provided for @lastActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Last activity'**
+  String get lastActivity;
+
+  /// No description provided for @messagesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get messagesLabel;
 
   /// No description provided for @settingsTitle.
   ///

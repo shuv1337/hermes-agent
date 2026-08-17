@@ -30,10 +30,34 @@ class AppLocalizationsJa extends AppLocalizations {
   String get navChatLive => 'チャット · ライブ';
 
   @override
+  String get navBots => 'ボット';
+
+  @override
   String get navJobs => 'ジョブ';
 
   @override
   String get navSettings => '設定';
+
+  @override
+  String get botsTitle => 'ボット';
+
+  @override
+  String get botsEmpty => 'ボットモードは利用できますが、このサーバーにはまだプロフィールがありません。';
+
+  @override
+  String get botsNoConversation => 'まだ会話がありません';
+
+  @override
+  String get botsCachedRoster => 'サーバーの再接続中は最後の一覧を表示しています。';
+
+  @override
+  String get modelLabel => 'モデル';
+
+  @override
+  String get lastActivity => '最終アクティビティ';
+
+  @override
+  String get messagesLabel => 'メッセージ';
 
   @override
   String get settingsTitle => '設定';

@@ -776,6 +776,162 @@ class HermesJob {
   }
 }
 
+/// One server-side Hermes profile exposed through the Bot Mode roster.
+///
+/// The desktop plugin stores presentation data in
+/// `ui_meta['hermes-bots']`; keeping that metadata server-side lets mobile
+/// render the same names and ordering without maintaining a second roster.
+class HermesBotProfile {
+  const HermesBotProfile({
+    required this.name,
+    this.description,
+    this.model,
+    this.provider,
+    this.isDefault = false,
+    this.hasAvatar = false,
+    this.lastSession,
+    this.title,
+    this.color,
+    this.chatSessionId,
+    this.createdAt,
+    this.pinned = false,
+    this.raw = const {},
+  });
+
+  final String name;
+  final String? description;
+  final String? model;
+  final String? provider;
+  final bool isDefault;
+  final bool hasAvatar;
+  final HermesSession? lastSession;
+  final String? title;
+  final String? color;
+  final String? chatSessionId;
+  final int? createdAt;
+  final bool pinned;
+  final Map<String, dynamic> raw;
+
+  String get displayName {
+    final label = title?.trim();
+    if (label != null && label.isNotEmpty) return label;
+    if (isDefault || name.trim().toLowerCase() == 'default') return 'Hermes';
+    return name;
+  }
+
+  int get activityMillis {
+    final last = parseServerTimeMillis(lastSession?.lastActive);
+    return last > (createdAt ?? 0) ? last : (createdAt ?? 0);
+  }
+
+  factory HermesBotProfile.fromJson(Map<String, dynamic> json) {
+    final rawUi = json['ui_meta'];
+    final ui = rawUi is Map ? rawUi['hermes-bots'] : null;
+    final meta = ui is Map
+        ? ui.map((key, value) => MapEntry('$key', value))
+        : const <String, dynamic>{};
+    final rawLast = json['last_session'];
+    final last = rawLast is Map
+        ? HermesSession.fromJson(
+            rawLast.map((key, value) => MapEntry('$key', value)),
+          )
+        : null;
+
+    int? integer(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse('${value ?? ''}');
+    }
+
+    String? text(dynamic value) {
+      final result = _asString(value)?.trim();
+      return result == null || result.isEmpty ? null : result;
+    }
+
+    return HermesBotProfile(
+      name: text(json['name']) ?? '',
+      description: text(json['description']),
+      model: text(json['model']),
+      provider: text(json['provider']),
+      isDefault: json['is_default'] == true,
+      hasAvatar: json['has_avatar'] == true,
+      lastSession: last,
+      title: text(meta['title']),
+      color: text(meta['color']),
+      chatSessionId: text(meta['chat']),
+      createdAt: integer(meta['created']),
+      pinned: meta['pinned'] == true,
+      raw: Map<String, dynamic>.from(json),
+    );
+  }
+}
+
+/// Feature-detected Bot Mode roster returned by the gateway.
+class HermesBotRoster {
+  const HermesBotRoster({required this.available, this.profiles = const []});
+
+  const HermesBotRoster.unavailable() : available = false, profiles = const [];
+
+  final bool available;
+  final List<HermesBotProfile> profiles;
+
+  factory HermesBotRoster.fromServer(
+    Map<String, dynamic> profilePayload, {
+    Map<String, dynamic>? pluginPayload,
+  }) {
+    final features = profilePayload['features'];
+    final featureMap = features is Map
+        ? features.map((key, value) => MapEntry('$key', value))
+        : const <String, dynamic>{};
+    final plugins = pluginPayload?['plugins'];
+    final pluginAvailable =
+        plugins is List &&
+        plugins.whereType<Map>().any((entry) {
+          final id = '${entry['id'] ?? entry['name'] ?? ''}'.trim();
+          return id == 'hermes-bots' && entry['enabled'] != false;
+        });
+    final available =
+        profilePayload['bot_mode_protocol'] == true ||
+        profilePayload['bot_mode_available'] == true ||
+        featureMap['bot_mode'] == true ||
+        pluginAvailable;
+
+    final rawProfiles = profilePayload['profiles'];
+    final profiles = rawProfiles is List
+        ? rawProfiles
+              .whereType<Map>()
+              .map(
+                (entry) => HermesBotProfile.fromJson(
+                  entry.map((key, value) => MapEntry('$key', value)),
+                ),
+              )
+              .where((profile) => profile.name.isNotEmpty)
+              .toList(growable: false)
+        : const <HermesBotProfile>[];
+
+    profiles.sort((a, b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      return b.activityMillis.compareTo(a.activityMillis);
+    });
+    return HermesBotRoster(
+      available: available,
+      profiles: available ? profiles : const [],
+    );
+  }
+}
+
+/// Converts the ISO/unix timestamps used by gateway session rows to millis.
+int parseServerTimeMillis(String? raw) {
+  if (raw == null) return 0;
+  final value = raw.trim();
+  if (value.isEmpty) return 0;
+  final parsed = DateTime.tryParse(value);
+  if (parsed != null) return parsed.millisecondsSinceEpoch;
+  final number = num.tryParse(value);
+  if (number == null || number <= 0) return 0;
+  return number > 1e12 ? number.round() : (number * 1000).round();
+}
+
 class HermesCapabilities {
   const HermesCapabilities({
     required this.raw,

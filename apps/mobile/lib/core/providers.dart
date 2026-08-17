@@ -962,6 +962,98 @@ final sessionsProvider =
       SessionsNotifier.new,
     );
 
+class BotsViewState {
+  const BotsViewState({
+    required this.available,
+    this.profiles = const [],
+    this.syncError,
+  });
+
+  const BotsViewState.unavailable()
+    : available = false,
+      profiles = const [],
+      syncError = null;
+
+  final bool available;
+  final List<HermesBotProfile> profiles;
+  final String? syncError;
+}
+
+/// Server-driven Bot Mode roster.
+///
+/// Unsupported and older gateways resolve to `available == false`, which
+/// removes the tab. A transient reconnect error never removes a roster that
+/// the server already confirmed, avoiding navigation churn while a Mac wakes.
+final botsProvider = AsyncNotifierProvider<BotsNotifier, BotsViewState>(
+  BotsNotifier.new,
+);
+
+class BotsNotifier extends AsyncNotifier<BotsViewState> {
+  @override
+  Future<BotsViewState> build() async {
+    final sync = ref.watch(sessionSyncProvider);
+    if (sync == null) return const BotsViewState.unavailable();
+    try {
+      return await _fetch(sync);
+    } catch (e) {
+      debugPrint('BotsNotifier: capability probe failed: $e');
+      return const BotsViewState.unavailable();
+    }
+  }
+
+  Future<BotsViewState> _fetch(SessionSyncRepository sync) async {
+    final profiles = await sync.gatewayRequest('profiles.list', {
+      'include_sessions': true,
+    });
+
+    Map<String, dynamic>? plugins;
+    final protocolAvailable =
+        profiles['bot_mode_protocol'] == true ||
+        profiles['bot_mode_available'] == true;
+    if (!protocolAvailable) {
+      try {
+        plugins = await sync.gatewayRequest('plugins.list', const {});
+      } catch (_) {
+        // profiles.list is the canonical current capability source. The
+        // plugin catalog is only a compatibility fallback for older servers.
+      }
+    }
+
+    final roster = HermesBotRoster.fromServer(profiles, pluginPayload: plugins);
+    return BotsViewState(
+      available: roster.available,
+      profiles: roster.profiles,
+    );
+  }
+
+  Future<void> refresh() async {
+    final sync = ref.read(sessionSyncProvider);
+    if (sync == null) {
+      state = const AsyncData(BotsViewState.unavailable());
+      return;
+    }
+    final previous = state.value;
+    try {
+      state = AsyncData(await _fetch(sync));
+    } catch (e) {
+      debugPrint('BotsNotifier.refresh: $e');
+      if (previous?.available == true) {
+        state = AsyncData(
+          BotsViewState(
+            available: true,
+            profiles: previous!.profiles,
+            syncError: '$e',
+          ),
+        );
+      } else {
+        // Lack of a confirmed capability is intentionally indistinguishable
+        // from an unsupported server: the shell simply keeps the tab hidden.
+        state = const AsyncData(BotsViewState.unavailable());
+      }
+    }
+  }
+}
+
 class SessionsNotifier extends AsyncNotifier<List<HermesSession>> {
   @override
   Future<List<HermesSession>> build() async {

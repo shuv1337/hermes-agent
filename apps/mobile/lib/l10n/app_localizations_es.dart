@@ -30,10 +30,36 @@ class AppLocalizationsEs extends AppLocalizations {
   String get navChatLive => 'Chat · en vivo';
 
   @override
+  String get navBots => 'Bots';
+
+  @override
   String get navJobs => 'Trabajos';
 
   @override
   String get navSettings => 'Ajustes';
+
+  @override
+  String get botsTitle => 'Bots';
+
+  @override
+  String get botsEmpty =>
+      'El modo Bot está disponible, pero este servidor aún no tiene perfiles.';
+
+  @override
+  String get botsNoConversation => 'Aún no hay conversaciones';
+
+  @override
+  String get botsCachedRoster =>
+      'Mostrando la última lista mientras el servidor se reconecta.';
+
+  @override
+  String get modelLabel => 'Modelo';
+
+  @override
+  String get lastActivity => 'Última actividad';
+
+  @override
+  String get messagesLabel => 'Mensajes';
 
   @override
   String get settingsTitle => 'Ajustes';

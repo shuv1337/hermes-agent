@@ -12,8 +12,16 @@
 
   "navChat": "Chat",
   "navChatLive": "Chat · live",
+  "navBots": "Bots",
   "navJobs": "Jobs",
   "navSettings": "Settings",
+  "botsTitle": "Bots",
+  "botsEmpty": "Bot Mode is available, but this server has no profiles yet.",
+  "botsNoConversation": "No conversations yet",
+  "botsCachedRoster": "Showing the last roster while the server reconnects.",
+  "modelLabel": "Model",
+  "lastActivity": "Last activity",
+  "messagesLabel": "Messages",
 
   "settingsTitle": "Settings",
   "checkConnection": "Check connection",

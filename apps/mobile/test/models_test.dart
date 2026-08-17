@@ -83,6 +83,80 @@ void main() {
     expect(job.raw['future_server_field'], {'kept': true});
   });
 
+  test(
+    'bot roster is gated by the server capability and mirrors ui metadata',
+    () {
+      final roster = HermesBotRoster.fromServer({
+        'bot_mode_protocol': true,
+        'profiles': [
+          {
+            'name': 'researcher',
+            'model': 'gpt-5.6-terra',
+            'provider': 'openai-codex',
+            'description': 'Finds evidence',
+            'last_session': {
+              'id': 'session-1',
+              'preview': 'Latest findings',
+              'last_active': 1786924800,
+              'message_count': 9,
+            },
+            'ui_meta': {
+              'hermes-bots': {
+                'title': 'Research Desk',
+                'color': '#336699',
+                'chat': 'session-1',
+                'created': 1786800000000,
+                'pinned': true,
+              },
+            },
+          },
+          {'name': 'default', 'is_default': true},
+        ],
+      });
+
+      expect(roster.available, isTrue);
+      expect(roster.profiles, hasLength(2));
+      final researcher = roster.profiles.first;
+      expect(researcher.displayName, 'Research Desk');
+      expect(researcher.chatSessionId, 'session-1');
+      expect(researcher.lastSession?.preview, 'Latest findings');
+      expect(researcher.pinned, isTrue);
+      expect(roster.profiles.last.displayName, 'Hermes');
+    },
+  );
+
+  test(
+    'bot roster stays hidden when neither capability nor plugin is exposed',
+    () {
+      final roster = HermesBotRoster.fromServer({
+        'profiles': [
+          {'name': 'default'},
+        ],
+      });
+
+      expect(roster.available, isFalse);
+      expect(roster.profiles, isEmpty);
+    },
+  );
+
+  test('installed hermes-bots plugin is a compatibility capability signal', () {
+    final roster = HermesBotRoster.fromServer(
+      {
+        'profiles': [
+          {'name': 'default'},
+        ],
+      },
+      pluginPayload: {
+        'plugins': [
+          {'name': 'hermes-bots', 'enabled': true},
+        ],
+      },
+    );
+
+    expect(roster.available, isTrue);
+    expect(roster.profiles.single.displayName, 'Hermes');
+  });
+
   test('gateway book ignores malformed selector types', () {
     final book = GatewayBook.fromJson({
       'gateways': [
