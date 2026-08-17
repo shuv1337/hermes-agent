@@ -365,6 +365,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (dashboard == null) return;
     final health = AppleHealthSync(gatewayId: gatewayId, dashboard: dashboard);
     var enabled = await health.isEnabled;
+    var needsAuthorizationReview = await health.needsAuthorizationReview;
     var busy = false;
     String? message;
     Map<String, dynamic>? serverStatus;
@@ -389,6 +390,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             try {
               await action();
               lastReadCounts = await health.lastReadCounts;
+              needsAuthorizationReview = await health.needsAuthorizationReview;
               serverStatus = await dashboard.appleHealthStatus();
             } catch (e) {
               message = '$e';
@@ -404,10 +406,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ?.map((type) => '$type')
                   .toSet() ??
               const <String>{};
-          final hasSleep = serverTypes.any((type) => type.startsWith('SLEEP_'));
-          final lastSleepRead = lastReadCounts.entries
-              .where((entry) => entry.key.startsWith('SLEEP_'))
-              .fold(0, (sum, entry) => sum + entry.value);
+          final missingCategories = <String>[
+            if (!serverTypes.any((type) => type.startsWith('SLEEP_'))) 'Sleep',
+            if (!serverTypes.any(
+              (type) => const {
+                'HEART_RATE',
+                'RESTING_HEART_RATE',
+                'WALKING_HEART_RATE',
+                'HEART_RATE_VARIABILITY_SDNN',
+                'ELECTROCARDIOGRAM',
+              }.contains(type),
+            ))
+              'Heart',
+            if (!serverTypes.any(
+              (type) => const {
+                'WEIGHT',
+                'HEIGHT',
+                'BODY_MASS_INDEX',
+                'BODY_FAT_PERCENTAGE',
+                'LEAN_BODY_MASS',
+                'WAIST_CIRCUMFERENCE',
+              }.contains(type),
+            ))
+              'Body Measurements',
+            if (!serverTypes.any(
+              (type) => const {
+                'BLOOD_OXYGEN',
+                'BLOOD_GLUCOSE',
+                'BLOOD_PRESSURE_SYSTOLIC',
+                'BLOOD_PRESSURE_DIASTOLIC',
+                'BODY_TEMPERATURE',
+                'RESPIRATORY_RATE',
+              }.contains(type),
+            ))
+              'Vitals',
+          ];
           return SafeArea(
             child: SingleChildScrollView(
               child: Padding(
@@ -436,7 +469,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                     .requestReadAuthorization();
                                 if (!granted) {
                                   throw StateError(
-                                    'Apple Health read access was not granted',
+                                    'Apple Health could not show its access request',
                                   );
                                 }
                                 await health.sync(initial: true);
@@ -452,7 +485,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             : '$count samples on gateway${last == null ? '' : ' · last sync $last'}',
                       ),
                     ),
-                    if (enabled && !hasSleep)
+                    if (enabled && needsAuthorizationReview)
+                      Card(
+                        color: Theme.of(
+                          sheetContext,
+                        ).colorScheme.tertiaryContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            'Hermes Go now supports additional Body Measurements, Heart, Sleep, Vitals, Mobility, Nutrition, and Activity data. Tap Review Health access below, then choose Turn On All—or select the individual data you want to share.',
+                            style: TextStyle(
+                              color: Theme.of(
+                                sheetContext,
+                              ).colorScheme.onTertiaryContainer,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (enabled && missingCategories.isNotEmpty)
                       Card(
                         color: Theme.of(
                           sheetContext,
@@ -460,7 +510,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         child: Padding(
                           padding: const EdgeInsets.all(12),
                           child: Text(
-                            'No sleep samples have reached Hermes${lastReadCounts.isEmpty ? '.' : ' (the last phone read returned $lastSleepRead).'} Open the Health app, tap your profile, then Apps and Services → Hermes Go and allow Sleep access.',
+                            'No ${missingCategories.join(', ')} samples have reached Hermes${lastReadCounts.isEmpty ? '.' : ' in the last phone read.'} Tap Review Health access below and enable those categories. HealthKit may also return zero when your phone has no samples of that type.',
                             style: TextStyle(
                               color: Theme.of(
                                 sheetContext,

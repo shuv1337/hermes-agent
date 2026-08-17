@@ -18,13 +18,39 @@ class AppleHealthSync {
   final DashboardClient dashboard;
   final Health _health = Health();
 
+  /// HealthKit data used by the private gateway dataset. Keep this broad: a
+  /// coach cannot infer which measurements the user records, and HealthKit's
+  /// consent sheet remains the place where the user narrows access.
   static const types = <HealthDataType>[
     HealthDataType.STEPS,
     HealthDataType.ACTIVE_ENERGY_BURNED,
     HealthDataType.BASAL_ENERGY_BURNED,
+    HealthDataType.APPLE_MOVE_TIME,
+    HealthDataType.APPLE_STAND_HOUR,
+    HealthDataType.APPLE_STAND_TIME,
+    HealthDataType.EXERCISE_TIME,
+    HealthDataType.DISTANCE_WALKING_RUNNING,
+    HealthDataType.DISTANCE_CYCLING,
+    HealthDataType.DISTANCE_SWIMMING,
+    HealthDataType.FLIGHTS_CLIMBED,
+    HealthDataType.WALKING_SPEED,
+    HealthDataType.WORKOUT,
     HealthDataType.HEART_RATE,
     HealthDataType.RESTING_HEART_RATE,
+    HealthDataType.WALKING_HEART_RATE,
     HealthDataType.HEART_RATE_VARIABILITY_SDNN,
+    HealthDataType.ATRIAL_FIBRILLATION_BURDEN,
+    HealthDataType.HIGH_HEART_RATE_EVENT,
+    HealthDataType.LOW_HEART_RATE_EVENT,
+    HealthDataType.IRREGULAR_HEART_RATE_EVENT,
+    HealthDataType.ELECTROCARDIOGRAM,
+    HealthDataType.BLOOD_OXYGEN,
+    HealthDataType.BLOOD_GLUCOSE,
+    HealthDataType.BLOOD_PRESSURE_SYSTOLIC,
+    HealthDataType.BLOOD_PRESSURE_DIASTOLIC,
+    HealthDataType.RESPIRATORY_RATE,
+    HealthDataType.PERIPHERAL_PERFUSION_INDEX,
+    HealthDataType.ELECTRODERMAL_ACTIVITY,
     HealthDataType.SLEEP_ASLEEP,
     HealthDataType.SLEEP_AWAKE,
     HealthDataType.SLEEP_DEEP,
@@ -34,18 +60,44 @@ class AppleHealthSync {
     HealthDataType.WEIGHT,
     HealthDataType.BODY_MASS_INDEX,
     HealthDataType.BODY_FAT_PERCENTAGE,
+    HealthDataType.LEAN_BODY_MASS,
     HealthDataType.HEIGHT,
+    HealthDataType.WAIST_CIRCUMFERENCE,
     HealthDataType.BODY_TEMPERATURE,
-    HealthDataType.WORKOUT,
+    HealthDataType.SLEEP_WRIST_TEMPERATURE,
+    HealthDataType.INSULIN_DELIVERY,
+    HealthDataType.MINDFULNESS,
+    HealthDataType.WATER,
+    HealthDataType.DIETARY_ENERGY_CONSUMED,
+    HealthDataType.DIETARY_CARBS_CONSUMED,
+    HealthDataType.DIETARY_PROTEIN_CONSUMED,
+    HealthDataType.DIETARY_FATS_CONSUMED,
+    HealthDataType.DIETARY_FIBER,
+    HealthDataType.DIETARY_SUGAR,
+    HealthDataType.DIETARY_CAFFEINE,
+    HealthDataType.DIETARY_SODIUM,
+    HealthDataType.HEADACHE_NOT_PRESENT,
+    HealthDataType.HEADACHE_MILD,
+    HealthDataType.HEADACHE_MODERATE,
+    HealthDataType.HEADACHE_SEVERE,
+    HealthDataType.HEADACHE_UNSPECIFIED,
   ];
+
+  static const authorizationVersion = 2;
 
   String get _enabledKey => 'hermes_go_health_enabled:$gatewayId';
   String get _cursorKey => 'hermes_go_health_cursor:$gatewayId';
   String get _diagnosticsKey => 'hermes_go_health_diagnostics:$gatewayId';
+  String get _authorizationVersionKey =>
+      'hermes_go_health_authorization_version:$gatewayId';
   final _storage = ConnectionStore.durableSecureStorage();
 
   Future<bool> get isEnabled async =>
       (await _storage.read(key: _enabledKey)) == 'true';
+
+  Future<bool> get needsAuthorizationReview async =>
+      (await _storage.read(key: _authorizationVersionKey)) !=
+      '$authorizationVersion';
 
   Future<void> setEnabled(bool value) async {
     if (value) {
@@ -59,6 +111,7 @@ class AppleHealthSync {
     await _storage.delete(key: _enabledKey);
     await _storage.delete(key: _cursorKey);
     await _storage.delete(key: _diagnosticsKey);
+    await _storage.delete(key: _authorizationVersionKey);
   }
 
   Future<Map<String, int>> get lastReadCounts async {
@@ -82,7 +135,13 @@ class AppleHealthSync {
       types,
       permissions: List.filled(types.length, HealthDataAccess.READ),
     );
-    if (granted) await setEnabled(true);
+    if (granted) {
+      await _storage.write(
+        key: _authorizationVersionKey,
+        value: '$authorizationVersion',
+      );
+      await setEnabled(true);
+    }
     return granted;
   }
 
@@ -139,7 +198,7 @@ class AppleHealthSync {
         'schema_version': 1,
         'device_id': _health.deviceId,
         'batch_id': const Uuid().v4(),
-        'app_version': '28',
+        'app_version': '29',
         'samples': payload,
       });
       accepted += (response['accepted'] as num?)?.toInt() ?? 0;

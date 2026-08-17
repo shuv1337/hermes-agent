@@ -30,3 +30,26 @@ def test_ingest_is_idempotent_and_queryable(tmp_path):
     assert result["sample_count"] == 1
     assert result["metrics"]["STEPS"][0]["value"]["numericValue"] == 1234
 
+
+def test_ingest_accepts_expanded_health_categories(tmp_path):
+    storage = _load()
+    storage.DEFAULT_DB = tmp_path / "health.sqlite3"
+    samples = [
+        {
+            "uuid": f"sample-{kind}", "type": kind,
+            "dateFrom": "2026-08-16T10:00:00Z",
+            "dateTo": "2026-08-16T10:01:00Z",
+            "value": {"numericValue": 1},
+        }
+        for kind in (
+            "BLOOD_OXYGEN", "RESPIRATORY_RATE", "LEAN_BODY_MASS",
+            "SLEEP_WRIST_TEMPERATURE", "DIETARY_ENERGY_CONSUMED",
+        )
+    ]
+
+    result = storage.ingest(
+        device_id="phone", batch_id="expanded", app_version="29",
+        samples=samples,
+    )
+
+    assert result["accepted"] == len(samples)
