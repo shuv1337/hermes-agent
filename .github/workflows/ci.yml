@@ -1,23 +1,18 @@
 name: CI
 
-# Orchestrator workflow. Runs ``detect-changes`` once, then conditionally
-# calls the sub-workflows that a PR can actually affect. A final
-# ``all-checks-pass`` gate job aggregates results so branch protection only
-# needs to require a single check.
+# Manual fork validation. Runs ``detect-changes`` once, then calls the
+# reusable validation workflows. A final ``all-checks-pass`` job aggregates
+# their results.
 #
 # Sub-workflows are triggered via ``workflow_call`` and keep their own job
 # definitions, matrices, and concurrency settings. They no longer have
 # ``push:`` / ``pull_request:`` triggers of their own — everything flows
 # through this file.
 #
-# SECURITY: this workflow runs PR-controlled actions, workflows, and code.
-# Do not add ``secrets: inherit`` or GitHub App credentials here. Trusted
-# main-only automation uses protected environments in its own workflows.
+# Do not add ``secrets: inherit`` or GitHub App credentials here.
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -198,8 +193,6 @@ jobs:
   # Gate: runs after everything. ``if: always()`` ensures it reports a
   # status even when some deps were skipped. Only actual ``failure``
   # results cause it to fail; ``skipped`` is treated as success.
-  #
-  # Branch protection should require ONLY this check.
   #
   # Outputs ``needs-json`` — a compact ``{job_name: result}`` dict — so
   # the live comment poller can list failed jobs in the PR comment.
