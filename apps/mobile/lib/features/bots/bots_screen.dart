@@ -488,13 +488,8 @@ Future<void> _openBotChat(
     if (!context.mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => SessionChatScreen(
-          session: target.session,
-          profileName: bot.name,
-          initialMessage: target.created
-              ? 'Hey, tell me about yourself!'
-              : null,
-        ),
+        builder: (_) =>
+            buildBotChatScreen(session: target.session, profileName: bot.name),
       ),
     );
     if (context.mounted) {
@@ -506,4 +501,11 @@ Future<void> _openBotChat(
       context,
     ).showSnackBar(SnackBar(content: Text('$error')));
   }
+}
+
+SessionChatScreen buildBotChatScreen({
+  required HermesSession session,
+  required String profileName,
+}) {
+  return SessionChatScreen(session: session, profileName: profileName);
 }

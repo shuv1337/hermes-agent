@@ -39,4 +39,13 @@ void main() {
       'recent',
     ]);
   });
+
+  test('new bot chats open without an injected starter message', () {
+    final screen = buildBotChatScreen(
+      session: HermesSession(id: 'new-bot-chat'),
+      profileName: 'fitness-coach',
+    );
+
+    expect(screen.initialMessage, isNull);
+  });
 }
