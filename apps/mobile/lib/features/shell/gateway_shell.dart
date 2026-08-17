@@ -35,6 +35,7 @@ class GatewayShell extends ConsumerStatefulWidget {
 class _GatewayShellState extends ConsumerState<GatewayShell>
     with WidgetsBindingObserver {
   GatewayTab _tab = GatewayTab.chat;
+  final Set<GatewayTab> _visitedTabs = {GatewayTab.chat};
   StreamSubscription<SessionTouch>? _liveSub;
   StreamSubscription<void>? _stateSub;
   var _live = false;
@@ -137,30 +138,41 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
     final tabs = gatewayTabsFor(botsAvailable: botsAvailable);
     final activeTab = tabs.contains(_tab) ? _tab : GatewayTab.chat;
     final selectedIndex = tabs.indexOf(activeTab);
-    final page = switch (activeTab) {
-      GatewayTab.chat => const SessionsScreen(),
-      GatewayTab.bots => const BotsScreen(),
-      GatewayTab.jobs => const JobsScreen(),
-      GatewayTab.settings => const SettingsScreen(),
-    };
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     // NavigationBar has a compact default height. Give large accessibility
     // labels room to wrap instead of clipping or overlapping the gesture area.
     final navigationHeight = math.max(80.0, 58.0 + (38.0 * textScale));
 
     return Scaffold(
-      // Do not eagerly build hidden tabs. Besides wasting cold-start work,
-      // their TextFields cause Flutter to probe UIPasteboard.hasStrings even
-      // though the user has not opened those screens. That API can deadlock
-      // the main thread on iOS 27 beta.
-      body: page,
+      // Tabs are created only after their first visit, then retained offstage.
+      // This keeps the selected conversation/composer/scroll position alive
+      // while avoiding eager hidden TextFields and their UIPasteboard probes
+      // during cold start (which can deadlock the iOS 27 beta main thread).
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          for (final tab in GatewayTab.values)
+            if (_visitedTabs.contains(tab) && tabs.contains(tab))
+              Offstage(
+                key: ValueKey(tab),
+                offstage: tab != activeTab,
+                child: TickerMode(
+                  enabled: tab == activeTab,
+                  child: _pageFor(tab),
+                ),
+              ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         height: navigationHeight,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         selectedIndex: selectedIndex,
         onDestinationSelected: (i) {
           final selected = tabs[i];
-          setState(() => _tab = selected);
+          setState(() {
+            _tab = selected;
+            _visitedTabs.add(selected);
+          });
           if (selected == GatewayTab.chat) {
             unawaited(ref.read(sessionsProvider.notifier).softRefresh());
           }
@@ -202,4 +214,11 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
       ),
     );
   }
+
+  Widget _pageFor(GatewayTab tab) => switch (tab) {
+    GatewayTab.chat => const SessionsScreen(),
+    GatewayTab.bots => const BotsScreen(),
+    GatewayTab.jobs => const JobsScreen(),
+    GatewayTab.settings => const SettingsScreen(),
+  };
 }

@@ -26,11 +26,16 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
   Timer? _refreshTimer;
 
   @override
-  void initState() {
-    super.initState();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      unawaited(ref.read(botsProvider.notifier).refresh());
-    });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (TickerMode.valuesOf(context).enabled) {
+      _refreshTimer ??= Timer.periodic(const Duration(seconds: 15), (_) {
+        unawaited(ref.read(botsProvider.notifier).refresh());
+      });
+    } else {
+      _refreshTimer?.cancel();
+      _refreshTimer = null;
+    }
   }
 
   @override
