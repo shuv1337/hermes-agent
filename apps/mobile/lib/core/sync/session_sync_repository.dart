@@ -997,6 +997,69 @@ class SessionSyncRepository {
     return (session: created, created: true);
   }
 
+  /// Create a real Bot Mode profile, then attach the same server-owned visual
+  /// metadata Desktop consumes. Credentials/model configuration are inherited
+  /// from the primary profile; OAuth state is shared rather than copied so
+  /// refresh tokens cannot diverge between the main agent and its bots.
+  Future<HermesBotProfile> createBot({
+    required String name,
+    required String title,
+    required String description,
+    required String shape,
+    required String color,
+  }) async {
+    final slug = name.trim();
+    final cleanTitle = title.trim();
+    final cleanDescription = description.trim();
+    final displayName = cleanTitle.isEmpty ? slug : cleanTitle;
+    final descriptionText = [
+      cleanTitle,
+      cleanDescription,
+    ].where((part) => part.isNotEmpty).join(' — ');
+    final soul = [
+      '# $displayName',
+      '',
+      if (cleanTitle.isNotEmpty) '**Role:** $cleanTitle',
+      if (cleanDescription.isNotEmpty) '**Mission:** $cleanDescription',
+      '',
+      'You are $displayName, a persistent named agent (profile `$slug`) on this machine.',
+      'You keep your own memory, skills, and conversation history across sessions.',
+    ].join('\n');
+
+    await gatewayRequest('profiles.create', {
+      'name': slug,
+      'description': descriptionText,
+      'clone_from': 'default',
+      'share_auth': true,
+      'soul': soul,
+    });
+
+    final createdAt = DateTime.now().millisecondsSinceEpoch;
+    final metadata = <String, dynamic>{
+      'shape': shape,
+      'color': color,
+      'imageKind': 'shape',
+      'title': cleanTitle,
+      'created': createdAt,
+      'custom': true,
+    };
+    final configured = await gatewayRequest('profiles.configure', {
+      'name': slug,
+      'ui_meta': {'hermes-bots': metadata},
+    });
+    final applied = configured['applied'];
+    if (applied is Map && applied['ui_meta'] != true) {
+      throw StateError(
+        'The profile was created, but its Bot Mode metadata could not be saved',
+      );
+    }
+    return HermesBotProfile.fromJson({
+      'name': slug,
+      'description': descriptionText,
+      'ui_meta': {'hermes-bots': metadata},
+    });
+  }
+
   Future<void> _pinBotChat(HermesBotProfile bot, String sessionId) async {
     final rawUi = bot.raw['ui_meta'];
     final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;

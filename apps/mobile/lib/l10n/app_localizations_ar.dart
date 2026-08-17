@@ -39,7 +39,35 @@ class AppLocalizationsAr extends AppLocalizations {
   String get botsTitle => 'الروبوتات';
 
   @override
-  String get botsEmpty => 'لا توجد روبوتات بعد. أنشئ واحدًا في Hermes Desktop.';
+  String get botsEmpty => 'لا توجد روبوتات بعد. اضغط + لإنشاء واحد.';
+
+  @override
+  String get newBotTitle => 'روبوت جديد';
+
+  @override
+  String get newBotSubtitle =>
+      'زميل مُسمّى له ذاكرته ومهاراته ومحادثته الخاصة.';
+
+  @override
+  String get botNameLabel => 'الاسم';
+
+  @override
+  String get botNameHelper => 'يُستخدم كمعرّف @';
+
+  @override
+  String get botNameTaken => 'هذا المعرّف موجود بالفعل';
+
+  @override
+  String get botDescriptionLabel => 'الوصف';
+
+  @override
+  String get botAppearanceLabel => 'المظهر';
+
+  @override
+  String get createBotAction => 'إنشاء روبوت';
+
+  @override
+  String get creatingBot => 'جارٍ الإنشاء…';
 
   @override
   String get botsNoConversation => 'لا توجد محادثات بعد';

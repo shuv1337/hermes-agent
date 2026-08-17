@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/bots/bot_avatar.dart';
+import 'package:hermes_mobile/features/bots/create_bot_sheet.dart';
 import 'package:hermes_mobile/features/sessions/session_chat_screen.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
@@ -46,6 +47,11 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
       appBar: AppBar(
         title: Text(context.l10n.botsTitle),
         actions: [
+          IconButton(
+            tooltip: context.l10n.createBotAction,
+            onPressed: _createBot,
+            icon: const Icon(Icons.add),
+          ),
           IconButton(
             tooltip: context.l10n.sync,
             onPressed: () => ref.read(botsProvider.notifier).refresh(),
@@ -123,6 +129,18 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _createBot() async {
+    final existing = ref.read(botsProvider).value?.profiles ?? const [];
+    final created = await showCreateBotSheet(
+      context,
+      existingNames: {for (final bot in existing) bot.name},
+    );
+    if (!mounted || created == null) return;
+    await ref.read(botsProvider.notifier).refresh();
+    if (!mounted) return;
+    await _openBotChat(context, ref, created);
   }
 }
 

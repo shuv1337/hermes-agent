@@ -39,7 +39,36 @@ class AppLocalizationsDe extends AppLocalizations {
   String get botsTitle => 'Bots';
 
   @override
-  String get botsEmpty => 'Noch keine Bots. Erstelle einen in Hermes Desktop.';
+  String get botsEmpty =>
+      'Noch keine Bots. Tippe auf +, um einen zu erstellen.';
+
+  @override
+  String get newBotTitle => 'Neuer Bot';
+
+  @override
+  String get newBotSubtitle =>
+      'Ein benannter Teamkollege mit eigenem Gedächtnis, Fähigkeiten und Chat.';
+
+  @override
+  String get botNameLabel => 'Name';
+
+  @override
+  String get botNameHelper => 'Wird als @Handle verwendet';
+
+  @override
+  String get botNameTaken => 'Dieses Handle existiert bereits';
+
+  @override
+  String get botDescriptionLabel => 'Beschreibung';
+
+  @override
+  String get botAppearanceLabel => 'Erscheinungsbild';
+
+  @override
+  String get createBotAction => 'Bot erstellen';
+
+  @override
+  String get creatingBot => 'Wird erstellt…';
 
   @override
   String get botsNoConversation => 'Noch keine Unterhaltungen';

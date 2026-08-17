@@ -39,7 +39,34 @@ class AppLocalizationsZh extends AppLocalizations {
   String get botsTitle => '机器人';
 
   @override
-  String get botsEmpty => '还没有机器人。请在 Hermes Desktop 中创建。';
+  String get botsEmpty => '还没有机器人。点按 + 即可创建。';
+
+  @override
+  String get newBotTitle => '新建机器人';
+
+  @override
+  String get newBotSubtitle => '拥有独立记忆、技能和聊天的命名队友。';
+
+  @override
+  String get botNameLabel => '名称';
+
+  @override
+  String get botNameHelper => '用作 @用户名';
+
+  @override
+  String get botNameTaken => '该用户名已存在';
+
+  @override
+  String get botDescriptionLabel => '描述';
+
+  @override
+  String get botAppearanceLabel => '外观';
+
+  @override
+  String get createBotAction => '创建机器人';
+
+  @override
+  String get creatingBot => '正在创建…';
 
   @override
   String get botsNoConversation => '还没有对话';

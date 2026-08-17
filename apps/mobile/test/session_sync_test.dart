@@ -112,6 +112,38 @@ void main() {
     );
   });
 
+  test('bot creation writes profile and desktop-compatible metadata', () async {
+    final realtime = _BotRealtime(repo);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+
+    final bot = await repo.createBot(
+      name: 'techno',
+      title: 'Senior cat wrangler',
+      description: 'Caturday jokes',
+      shape: 'hexagon',
+      color: '#f97316',
+    );
+
+    expect(bot.name, 'techno');
+    expect(bot.displayName, 'Senior cat wrangler');
+    final create = realtime.calls.singleWhere(
+      (call) => call.method == 'profiles.create',
+    );
+    expect(create.params['name'], 'techno');
+    expect(create.params['clone_from'], 'default');
+    expect(create.params['share_auth'], isTrue);
+    final configure = realtime.calls.singleWhere(
+      (call) => call.method == 'profiles.configure',
+    );
+    final ui = configure.params['ui_meta'] as Map;
+    final metadata = ui['hermes-bots'] as Map;
+    expect(metadata['shape'], 'hexagon');
+    expect(metadata['color'], '#f97316');
+    expect(metadata['imageKind'], 'shape');
+    expect(metadata['title'], 'Senior cat wrangler');
+  });
+
   test(
     'runtime hydration resumes once and keeps the session-specific model',
     () async {
@@ -429,6 +461,9 @@ class _BotRealtime extends GatewayRealtime {
         'messages': [
           {'row_id': 7, 'role': 'assistant', 'text': 'Profile-specific answer'},
         ],
+      },
+      'profiles.configure' => {
+        'applied': {'ui_meta': true},
       },
       _ => <String, dynamic>{},
     };

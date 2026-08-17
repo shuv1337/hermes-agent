@@ -169,8 +169,62 @@ abstract class AppLocalizations {
   /// No description provided for @botsEmpty.
   ///
   /// In en, this message translates to:
-  /// **'No bots yet. Create one in Hermes Desktop.'**
+  /// **'No bots yet. Tap + to create one.'**
   String get botsEmpty;
+
+  /// No description provided for @newBotTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New Bot'**
+  String get newBotTitle;
+
+  /// No description provided for @newBotSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A named teammate with its own memory, skills, and chat.'**
+  String get newBotSubtitle;
+
+  /// No description provided for @botNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get botNameLabel;
+
+  /// No description provided for @botNameHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Used as the @handle'**
+  String get botNameHelper;
+
+  /// No description provided for @botNameTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'That handle already exists'**
+  String get botNameTaken;
+
+  /// No description provided for @botDescriptionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get botDescriptionLabel;
+
+  /// No description provided for @botAppearanceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get botAppearanceLabel;
+
+  /// No description provided for @createBotAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Bot'**
+  String get createBotAction;
+
+  /// No description provided for @creatingBot.
+  ///
+  /// In en, this message translates to:
+  /// **'Creating…'**
+  String get creatingBot;
 
   /// No description provided for @botsNoConversation.
   ///

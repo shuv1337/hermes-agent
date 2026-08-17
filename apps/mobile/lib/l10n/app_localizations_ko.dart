@@ -39,7 +39,34 @@ class AppLocalizationsKo extends AppLocalizations {
   String get botsTitle => '봇';
 
   @override
-  String get botsEmpty => '아직 봇이 없습니다. Hermes Desktop에서 만들어 주세요.';
+  String get botsEmpty => '아직 봇이 없습니다. +를 눌러 만들어 주세요.';
+
+  @override
+  String get newBotTitle => '새 봇';
+
+  @override
+  String get newBotSubtitle => '자체 메모리, 기술, 채팅을 가진 이름 있는 팀원입니다.';
+
+  @override
+  String get botNameLabel => '이름';
+
+  @override
+  String get botNameHelper => '@핸들로 사용됩니다';
+
+  @override
+  String get botNameTaken => '이미 존재하는 핸들입니다';
+
+  @override
+  String get botDescriptionLabel => '설명';
+
+  @override
+  String get botAppearanceLabel => '모양';
+
+  @override
+  String get createBotAction => '봇 만들기';
+
+  @override
+  String get creatingBot => '만드는 중…';
 
   @override
   String get botsNoConversation => '아직 대화가 없습니다';
