@@ -1037,30 +1037,42 @@ class SessionSyncRepository {
   /// reuse its pinned chat when present, recover to its newest session when a
   /// pin is stale, or create a hidden Bot Chat when none exists.
   Future<({HermesSession session, bool created})> openBotChat(
-    HermesBotProfile bot,
-  ) async {
+    HermesBotProfile bot, {
+    bool routingChecked = false,
+  }) async {
     final profile = bot.name.trim();
     if (profile.isEmpty) throw StateError('Bot profile name is missing');
     final rawUi = bot.raw['ui_meta'];
     final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;
     final healthCoach = rawMeta is Map && rawMeta['healthCoach'] == true;
-    final routingVersion = rawMeta is Map
-        ? (rawMeta['healthRoutingVersion'] as num?)?.toInt()
-        : null;
-    if (healthCoach && routingVersion != _healthRoutingVersion) {
-      // One-time migration for Health Coach bots created before the native
-      // HealthKit bridge had explicit routing. It refreshes the profile soul,
-      // enables the plugin toolset, and pins a fresh schema-bearing session.
-      final migrated = await updateBot(
-        bot: bot,
-        title: bot.displayName,
-        description: bot.description ?? '',
-        shape: bot.shape ?? 'circle',
-        color: bot.color ?? '#f97316',
-        usePhoto: bot.usesImageAvatar,
-        healthCoach: true,
-      );
-      return openBotChat(migrated);
+    if (healthCoach && !routingChecked) {
+      final described = await gatewayRequest('profiles.describe', {
+        'name': profile,
+      });
+      final soul = '${described['soul'] ?? ''}';
+      final toolsets = described['toolsets'];
+      final nativeToolsEnabled =
+          toolsets is List &&
+          toolsets.whereType<Map>().any(
+            (toolset) =>
+                toolset['name'] == 'apple_health' && toolset['enabled'] == true,
+          );
+      final nativeRoutingInstalled = soul.contains(_healthCoachSoulMarker);
+      if (!nativeRoutingInstalled || !nativeToolsEnabled) {
+        // One-time migration for Health Coach bots created before the native
+        // HealthKit bridge had explicit routing. It refreshes the profile soul,
+        // enables the plugin toolset, and pins a fresh schema-bearing session.
+        final migrated = await updateBot(
+          bot: bot,
+          title: bot.displayName,
+          description: bot.description ?? '',
+          shape: bot.shape ?? 'circle',
+          color: bot.color ?? '#f97316',
+          usePhoto: bot.usesImageAvatar,
+          healthCoach: true,
+        );
+        return openBotChat(migrated, routingChecked: true);
+      }
     }
     final listed = await gatewayRequest('session.list', {
       'profile': profile,
