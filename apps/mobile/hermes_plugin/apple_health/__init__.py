@@ -3,9 +3,65 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
 
 from .storage import status, summary
+
+
+_STATUS_DESCRIPTION = (
+    "Check whether Hermes Go has synced Apple Health data and which metrics "
+    "are available."
+)
+_SUMMARY_DESCRIPTION = (
+    "Read Apple Health samples for an explicit, bounded date range. Always "
+    "choose only the metrics needed for the user's question. For sleep, "
+    "request the available SLEEP_* metrics and bound start/end to the night "
+    "being discussed. Use for health coaching and trends; do not diagnose."
+)
+_STATUS_SCHEMA = {
+    "name": "apple_health_status",
+    "description": _STATUS_DESCRIPTION,
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": False,
+    },
+}
+_SUMMARY_SCHEMA = {
+    "name": "apple_health_summary",
+    "description": _SUMMARY_DESCRIPTION,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "start": {
+                "type": "string",
+                "description": (
+                    "Inclusive ISO-8601 start with timezone, e.g. the local "
+                    "evening before a requested night's sleep."
+                ),
+            },
+            "end": {
+                "type": "string",
+                "description": (
+                    "Exclusive ISO-8601 end with timezone, e.g. noon after "
+                    "a requested night's sleep."
+                ),
+            },
+            "metrics": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "description": (
+                    "Metric names returned by apple_health_status. Request "
+                    "only relevant metrics; for sleep use the available "
+                    "SLEEP_* names."
+                ),
+            },
+        },
+        "required": ["start", "end", "metrics"],
+        "additionalProperties": False,
+    },
+}
 
 
 def _available() -> bool:
@@ -17,18 +73,28 @@ def _status_handler(args: dict, **_: object) -> str:
 
 
 def _summary_handler(args: dict, **_: object) -> str:
-    end = str(args.get("end") or datetime.now(timezone.utc).isoformat())
-    start = str(args.get("start") or (datetime.now(timezone.utc) - timedelta(days=7)).isoformat())
+    end = str(args.get("end") or "").strip()
+    start = str(args.get("start") or "").strip()
     metrics = args.get("metrics")
-    return json.dumps(summary(start, end, metrics if isinstance(metrics, list) else None))
+    clean_metrics = (
+        [str(metric).strip() for metric in metrics if str(metric).strip()]
+        if isinstance(metrics, list)
+        else []
+    )
+    if not start or not end or not clean_metrics:
+        return json.dumps({
+            "error": "start, end, and at least one metric are required",
+            "available_metrics": status().get("types", []),
+        })
+    return json.dumps(summary(start, end, clean_metrics))
 
 
 def register(ctx) -> None:
     ctx.register_tool(
         name="apple_health_status",
         toolset="apple_health",
-        description="Check whether Hermes Go has synced Apple Health data and which metrics are available.",
-        schema={"type": "object", "properties": {}, "required": []},
+        description=_STATUS_DESCRIPTION,
+        schema=_STATUS_SCHEMA,
         handler=_status_handler,
         check_fn=_available,
         emoji="❤️",
@@ -36,18 +102,9 @@ def register(ctx) -> None:
     ctx.register_tool(
         name="apple_health_summary",
         toolset="apple_health",
-        description="Read Apple Health samples for a bounded date range. Use for health coaching and trend analysis; do not diagnose medical conditions.",
-        schema={
-            "type": "object",
-            "properties": {
-                "start": {"type": "string", "description": "Inclusive ISO-8601 start; defaults to 7 days ago."},
-                "end": {"type": "string", "description": "Exclusive ISO-8601 end; defaults to now."},
-                "metrics": {"type": "array", "items": {"type": "string"}, "description": "Optional metric names from apple_health_status."},
-            },
-            "required": [],
-        },
+        description=_SUMMARY_DESCRIPTION,
+        schema=_SUMMARY_SCHEMA,
         handler=_summary_handler,
         check_fn=_available,
         emoji="📈",
     )
-

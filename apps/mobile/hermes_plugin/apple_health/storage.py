@@ -187,6 +187,15 @@ def status() -> dict[str, Any]:
 
 def summary(start: str, end: str, metrics: list[str] | None = None) -> dict[str, Any]:
     requested = [m.upper() for m in (metrics or []) if m.upper() in ALLOWED_TYPES]
+    if metrics is not None and not requested:
+        return {
+            "start": start,
+            "end": end,
+            "sample_count": 0,
+            "metrics": {},
+            "truncated": False,
+            "error": "No recognized Apple Health metrics were requested",
+        }
     params: list[Any] = [start, end]
     where = "start_at >= ? AND start_at < ?"
     if requested:
@@ -205,11 +214,13 @@ def summary(start: str, end: str, metrics: list[str] | None = None) -> dict[str,
             "source": row["source_name"],
         })
     # Bound tool output. Daily coaching needs trends, not an unbounded raw dump.
+    truncated = False
     for kind, values in list(by_type.items()):
         if len(values) > 500:
+            truncated = True
             by_type[kind] = values[-500:]
     return {"start": start, "end": end, "sample_count": len(rows), "metrics": by_type,
-            "truncated": any(len(v) >= 500 for v in by_type.values())}
+            "truncated": truncated}
 
 
 def clear() -> int:
