@@ -510,7 +510,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         child: Padding(
                           padding: const EdgeInsets.all(12),
                           child: Text(
-                            'No ${missingCategories.join(', ')} samples have reached Hermes${lastReadCounts.isEmpty ? '.' : ' in the last phone read.'} Tap Review Health access below and enable those categories. HealthKit may also return zero when your phone has no samples of that type.',
+                            'No ${missingCategories.join(', ')} samples have reached Hermes${lastReadCounts.isEmpty ? '.' : ' in the last phone read.'} Existing access must be changed in Health → Sharing → Apps → Hermes Go. HealthKit may also return zero when your phone has no samples of that type.',
                             style: TextStyle(
                               color: Theme.of(
                                 sheetContext,
@@ -531,9 +531,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onPressed: !enabled || busy
                           ? null
                           : () => run(() async {
-                              final result = await health.sync();
+                              // If whole coaching categories have never reached
+                              // the gateway, reread the useful history window.
+                              // An incremental cursor can otherwise miss an
+                              // older weight measurement immediately after the
+                              // user fixes Health access outside the app.
+                              final result = await health.sync(
+                                initial: missingCategories.isNotEmpty,
+                              );
                               message = result.sleepRead == 0
-                                  ? 'Synced ${result.accepted} samples, but HealthKit returned no sleep data. Review Hermes Go’s Sleep permission in the Health app.'
+                                  ? 'Synced ${result.accepted} samples, but HealthKit returned no sleep data. In Health, open Sharing → Apps → Hermes Go and change Sleep to Full Access.'
                                   : 'Synced ${result.accepted} new or updated samples, including ${result.sleepRead} sleep samples';
                             }),
                       icon: busy
@@ -547,15 +554,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     TextButton.icon(
                       onPressed: busy || serverStatus == null
                           ? null
-                          : () => run(() async {
-                              await health.requestReadAuthorization();
-                              final result = await health.sync(initial: true);
-                              message = result.sleepRead == 0
-                                  ? 'HealthKit still returned no sleep samples. Confirm Sleep is enabled for Hermes Go in the Health app.'
-                                  : 'HealthKit returned ${result.sleepRead} sleep samples';
-                            }),
+                          : () async {
+                              await run(() async {
+                                final accepted = await health
+                                    .requestReadAuthorization();
+                                message = accepted
+                                    ? 'HealthKit processed the access request.'
+                                    : 'HealthKit could not process the access request.';
+                              });
+                              if (!sheetContext.mounted) return;
+                              await showDialog<void>(
+                                context: sheetContext,
+                                builder: (dialogContext) => AlertDialog(
+                                  title: const Text('Change Health access'),
+                                  content: const Text(
+                                    'If no Apple permission sheet appeared, HealthKit has already recorded a choice for every requested data type. iOS will not show those existing choices again here.\n\nOpen the Health app, then go to Sharing → Apps → Hermes Go. Change any item showing None—including Sleep, Weight, Heart, and Vitals—to Full Access. Return here and tap Sync now to backfill the last 30 days.',
+                                  ),
+                                  actions: [
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.pop(dialogContext),
+                                      child: const Text('Got it'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
                       icon: const Icon(Icons.privacy_tip_outlined),
-                      label: const Text('Review Health access'),
+                      label: const Text('Review / change Health access'),
                     ),
                     TextButton.icon(
                       onPressed: busy || serverStatus == null || count == 0
