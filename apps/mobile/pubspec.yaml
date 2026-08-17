@@ -1,7 +1,7 @@
 name: hermes_mobile
 description: "Hermes Go — Go further. Stay connected. Mobile gateway connector."
 publish_to: "none"
-version: 0.1.0+35
+version: 0.1.0+36
 
 environment:
   sdk: ^3.12.2
@@ -38,7 +38,10 @@ dependencies:
   url_launcher: ^6.3.2
   webview_flutter: ^4.14.1
   scrollview_observer: ^1.27.0
-  health: 13.3.1
+  # Local hardening of health 13.3.1: HealthKit unit mismatches must not abort
+  # the process before Dart can handle them.
+  health:
+    path: packages/health
 
 dev_dependencies:
   flutter_test:
