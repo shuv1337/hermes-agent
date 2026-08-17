@@ -24,6 +24,25 @@ import 'package:hermes_mobile/l10n/l10n.dart';
 const _healthCoachSoulMarker = '<!-- hermes-go-health-coach -->';
 const _healthRoutingVersion = 1;
 
+String _withHealthRouting(String soul, {required bool healthCoach}) {
+  final lines = soul.split('\n');
+  final marker = lines.indexOf(_healthCoachSoulMarker);
+  if (marker >= 0) {
+    final removeCount = (lines.length - marker).clamp(0, 3);
+    lines.removeRange(marker, marker + removeCount);
+    if (marker > 0 && lines[marker - 1].isEmpty) lines.removeAt(marker - 1);
+  }
+  if (healthCoach) {
+    lines.addAll([
+      '',
+      _healthCoachSoulMarker,
+      'For Apple Health questions, use `apple_health_status` and `apple_health_summary` as the authoritative source.',
+      'Do not read legacy Shortcut export files unless the user explicitly asks about that old pipeline.',
+    ]);
+  }
+  return lines.join('\n').trim();
+}
+
 String _generatedBotSoul(
   String profile,
   String title,
@@ -1211,6 +1230,14 @@ class SessionSyncRepository {
     return stored;
   }
 
+  Future<BotProfileConfiguration> describeBotProfile(String name) async {
+    final profile = name.trim();
+    if (profile.isEmpty) throw StateError('Profile name is missing');
+    return BotProfileConfiguration.fromJson(
+      await gatewayRequest('profiles.describe', {'name': profile}),
+    );
+  }
+
   /// Create a real Bot Mode profile, then attach the same server-owned visual
   /// metadata Desktop consumes. Credentials/model configuration are inherited
   /// from the primary profile; OAuth state is shared rather than copied so
@@ -1222,6 +1249,15 @@ class SessionSyncRepository {
     required String shape,
     required String color,
     bool healthCoach = false,
+    String? cloneFrom = 'default',
+    bool shareAuth = true,
+    bool noSkills = false,
+    String customSoul = '',
+    String model = '',
+    String provider = '',
+    List<String>? disabledSkills,
+    List<String>? enabledToolsets,
+    List<String>? enabledMcpServers,
   }) async {
     final slug = name.trim();
     final cleanTitle = title.trim();
@@ -1230,19 +1266,28 @@ class SessionSyncRepository {
       cleanTitle,
       cleanDescription,
     ].where((part) => part.isNotEmpty).join(' — ');
-    final soul = _generatedBotSoul(
-      slug,
-      cleanTitle,
-      cleanDescription,
-      healthCoach: healthCoach,
-    );
+    final soul = customSoul.trim().isEmpty
+        ? _generatedBotSoul(
+            slug,
+            cleanTitle,
+            cleanDescription,
+            healthCoach: healthCoach,
+          )
+        : _withHealthRouting(customSoul.trim(), healthCoach: healthCoach);
+    final cleanModel = model.trim();
+    final cleanProvider = provider.trim();
 
     await gatewayRequest('profiles.create', {
       'name': slug,
       'description': descriptionText,
-      'clone_from': 'default',
-      'share_auth': true,
+      'clone_from': cloneFrom?.trim().isEmpty == true ? null : cloneFrom,
+      'share_auth': shareAuth,
+      'no_skills': noSkills,
       'soul': soul,
+      if (cleanModel.isNotEmpty && cleanProvider.isNotEmpty) ...{
+        'model': cleanModel,
+        'provider': cleanProvider,
+      },
     });
 
     final createdAt = DateTime.now().millisecondsSinceEpoch;
@@ -1258,7 +1303,9 @@ class SessionSyncRepository {
     };
     final described = await gatewayRequest('profiles.describe', {'name': slug});
     final rawToolsets = described['toolsets'];
-    final enabledToolsets = rawToolsets is List
+    final resolvedToolsets = enabledToolsets != null
+        ? [...enabledToolsets]
+        : rawToolsets is List
         ? rawToolsets
               .whereType<Map>()
               .where((toolset) => toolset['enabled'] == true)
@@ -1268,21 +1315,32 @@ class SessionSyncRepository {
               )
               .toList()
         : <String>[];
-    if (healthCoach) enabledToolsets.add('apple_health');
+    resolvedToolsets.removeWhere((toolset) => toolset == 'apple_health');
+    if (healthCoach) resolvedToolsets.add('apple_health');
     final configured = await gatewayRequest('profiles.configure', {
       'name': slug,
       'ui_meta': {'hermes-bots': metadata},
-      if (enabledToolsets.isNotEmpty) 'enabled_toolsets': enabledToolsets,
+      'disabled_skills': ?disabledSkills,
+      if (enabledToolsets != null || healthCoach)
+        'enabled_toolsets': resolvedToolsets,
+      'enabled_mcp_servers': ?enabledMcpServers,
     });
     final applied = configured['applied'];
-    if (applied is Map && applied['ui_meta'] != true) {
+    if (applied is Map &&
+        (applied['ui_meta'] != true ||
+            (disabledSkills != null && applied['skills'] != true) ||
+            ((enabledToolsets != null || healthCoach) &&
+                applied['toolsets'] != true) ||
+            (enabledMcpServers != null && applied['mcp_servers'] != true))) {
       throw StateError(
-        'The profile was created, but its Bot Mode metadata could not be saved',
+        'The profile was created, but some advanced settings could not be saved',
       );
     }
     return HermesBotProfile.fromJson({
       'name': slug,
       'description': descriptionText,
+      if (cleanModel.isNotEmpty) 'model': cleanModel,
+      if (cleanProvider.isNotEmpty) 'provider': cleanProvider,
       'ui_meta': {'hermes-bots': metadata},
     });
   }
@@ -1304,6 +1362,12 @@ class SessionSyncRepository {
     Uint8List? avatarBytes,
     bool avatarChanged = false,
     bool healthCoach = false,
+    String? soul,
+    String model = '',
+    String provider = '',
+    List<String>? disabledSkills,
+    List<String>? enabledToolsets,
+    List<String>? enabledMcpServers,
   }) async {
     final profile = bot.name.trim();
     if (profile.isEmpty) throw StateError('Bot profile name is missing');
@@ -1348,16 +1412,20 @@ class SessionSyncRepository {
       'name': profile,
     });
     final existingSoul = '${described['soul'] ?? ''}';
-    final updatedSoul = _updateGeneratedBotSoul(
-      existingSoul,
-      profile: profile,
-      title: title.trim(),
-      description: description.trim(),
-      healthCoach: healthCoach,
-    );
+    final updatedSoul = soul == null
+        ? _updateGeneratedBotSoul(
+            existingSoul,
+            profile: profile,
+            title: title.trim(),
+            description: description.trim(),
+            healthCoach: healthCoach,
+          )
+        : _withHealthRouting(soul.trim(), healthCoach: healthCoach);
     final soulChanged = updatedSoul != null && updatedSoul != existingSoul;
     final rawToolsets = described['toolsets'];
-    final enabledToolsets = rawToolsets is List
+    final resolvedToolsets = enabledToolsets != null
+        ? [...enabledToolsets]
+        : rawToolsets is List
         ? rawToolsets
               .whereType<Map>()
               .where((toolset) => toolset['enabled'] == true)
@@ -1367,31 +1435,51 @@ class SessionSyncRepository {
               )
               .toList()
         : <String>[];
-    if (healthCoach) enabledToolsets.add('apple_health');
+    resolvedToolsets.removeWhere((toolset) => toolset == 'apple_health');
+    if (healthCoach) resolvedToolsets.add('apple_health');
 
     final cleanDescription = description.trim();
+    final cleanModel = model.trim();
+    final cleanProvider = provider.trim();
     final configured = await gatewayRequest('profiles.configure', {
       'name': profile,
       'description': cleanDescription,
       if (soulChanged) 'soul': updatedSoul,
+      if (cleanModel.isNotEmpty && cleanProvider.isNotEmpty) ...{
+        'model': cleanModel,
+        'provider': cleanProvider,
+      },
       'ui_meta': {'hermes-bots': metadata},
-      if (enabledToolsets.isNotEmpty) 'enabled_toolsets': enabledToolsets,
+      'disabled_skills': ?disabledSkills,
+      if (enabledToolsets != null || wasHealthCoach || healthCoach)
+        'enabled_toolsets': resolvedToolsets,
+      'enabled_mcp_servers': ?enabledMcpServers,
     });
     final applied = configured['applied'];
     if (applied is Map &&
         (applied['ui_meta'] != true ||
             applied['description'] != true ||
-            (soulChanged && applied['soul'] != true))) {
+            (soulChanged && applied['soul'] != true) ||
+            (cleanModel.isNotEmpty && applied['model'] != true) ||
+            (disabledSkills != null && applied['skills'] != true) ||
+            ((enabledToolsets != null || wasHealthCoach || healthCoach) &&
+                applied['toolsets'] != true) ||
+            (enabledMcpServers != null && applied['mcp_servers'] != true))) {
       throw StateError('Server could not save all bot profile changes');
     }
 
     // Tool schemas and system prompts are fixed for a session to preserve
     // prompt caching. Pin a fresh Bot Chat after either changes.
-    if (wasHealthCoach != healthCoach || soulChanged) {
+    if (wasHealthCoach != healthCoach ||
+        soulChanged ||
+        cleanModel.isNotEmpty ||
+        disabledSkills != null ||
+        enabledToolsets != null ||
+        enabledMcpServers != null) {
       final fresh = await _createSessionOnGateway(
         title: 'Bot Chat',
-        model: bot.model,
-        provider: bot.provider,
+        model: cleanModel.isNotEmpty ? cleanModel : bot.model,
+        provider: cleanProvider.isNotEmpty ? cleanProvider : bot.provider,
         profile: profile,
         hidden: false,
       );
@@ -1412,6 +1500,8 @@ class SessionSyncRepository {
       ...bot.raw,
       'name': profile,
       'description': cleanDescription,
+      if (cleanModel.isNotEmpty) 'model': cleanModel,
+      if (cleanProvider.isNotEmpty) 'provider': cleanProvider,
       'has_avatar': usePhoto && (avatarBytes != null || bot.hasAvatar),
       'ui_meta': {'hermes-bots': metadata},
     });
@@ -3751,6 +3841,83 @@ class SessionSyncRepository {
     }
     return null;
   }
+}
+
+class BotCapabilityOption {
+  const BotCapabilityOption({
+    required this.name,
+    required this.enabled,
+    this.label = '',
+    this.description = '',
+    this.detail = '',
+  });
+
+  final String name;
+  final bool enabled;
+  final String label;
+  final String description;
+  final String detail;
+
+  BotCapabilityOption copyWith({bool? enabled}) => BotCapabilityOption(
+    name: name,
+    enabled: enabled ?? this.enabled,
+    label: label,
+    description: description,
+    detail: detail,
+  );
+}
+
+class BotProfileConfiguration {
+  const BotProfileConfiguration({
+    required this.soul,
+    required this.model,
+    required this.provider,
+    required this.skills,
+    required this.toolsets,
+    required this.mcpServers,
+  });
+
+  factory BotProfileConfiguration.fromJson(Map<String, dynamic> json) {
+    List<BotCapabilityOption> options(Object? raw, {bool mcp = false}) =>
+        raw is! List
+        ? const []
+        : raw
+              .whereType<Map>()
+              .map((item) {
+                final name = '${item['name'] ?? ''}'.trim();
+                return BotCapabilityOption(
+                  name: name,
+                  enabled: item['enabled'] == true,
+                  label: '${item['label'] ?? ''}'.trim(),
+                  description: '${item['description'] ?? ''}'.trim(),
+                  detail: mcp
+                      ? '${item['transport'] ?? ''}'.trim()
+                      : item['tool_count'] == null
+                      ? ''
+                      : '${item['tool_count']} tools',
+                );
+              })
+              .where((item) => item.name.isNotEmpty)
+              .toList(growable: false);
+
+    final model = json['model'];
+    final modelMap = model is Map ? model : const {};
+    return BotProfileConfiguration(
+      soul: '${json['soul'] ?? ''}',
+      model: '${modelMap['default'] ?? ''}'.trim(),
+      provider: '${modelMap['provider'] ?? ''}'.trim(),
+      skills: options(json['skills']),
+      toolsets: options(json['toolsets']),
+      mcpServers: options(json['mcp_servers'], mcp: true),
+    );
+  }
+
+  final String soul;
+  final String model;
+  final String provider;
+  final List<BotCapabilityOption> skills;
+  final List<BotCapabilityOption> toolsets;
+  final List<BotCapabilityOption> mcpServers;
 }
 
 class ChatSendResult {

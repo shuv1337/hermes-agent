@@ -56,6 +56,7 @@ void main() {
     expect(find.text('Name'), findsOneWidget);
     expect(find.text('Title'), findsOneWidget);
     expect(find.text('Description'), findsOneWidget);
+    expect(find.textContaining('Advanced · model'), findsOneWidget);
     expect(find.text('Create Bot'), findsOneWidget);
   });
 
@@ -113,6 +114,7 @@ void main() {
     expect(find.widgetWithText(TextField, 'Caturday jokes'), findsOneWidget);
     expect(find.text('Photo library'), findsOneWidget);
     expect(find.text('Camera'), findsOneWidget);
+    expect(find.textContaining('Advanced · model'), findsOneWidget);
     expect(find.text('Save'), findsOneWidget);
   });
 }

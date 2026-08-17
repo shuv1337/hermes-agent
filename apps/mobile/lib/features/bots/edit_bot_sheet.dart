@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/health/apple_health_sync.dart';
 import 'package:hermes_mobile/core/providers.dart';
+import 'package:hermes_mobile/features/bots/bot_advanced_editor.dart';
 import 'package:hermes_mobile/features/bots/bot_avatar.dart';
 import 'package:hermes_mobile/features/bots/create_bot_sheet.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
@@ -40,6 +41,7 @@ class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
   late String _color;
   late bool _usePhoto;
   late bool _healthCoach;
+  final _advanced = BotAdvancedController.edit();
   Uint8List? _pickedAvatar;
   bool _avatarChanged = false;
   bool _busy = false;
@@ -63,6 +65,7 @@ class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
   void dispose() {
     _title.dispose();
     _description.dispose();
+    _advanced.dispose();
     super.dispose();
   }
 
@@ -155,6 +158,12 @@ class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
         avatarBytes: _pickedAvatar,
         avatarChanged: _avatarChanged,
         healthCoach: _healthCoach,
+        soul: _advanced.dirtySoul ? _advanced.soul.text : null,
+        model: _advanced.dirtyModel ? _advanced.model : '',
+        provider: _advanced.dirtyModel ? _advanced.provider : '',
+        disabledSkills: _advanced.disabledSkills,
+        enabledToolsets: _advanced.enabledToolsets,
+        enabledMcpServers: _advanced.enabledMcpServers,
       );
       ref.invalidate(botAvatarProvider(widget.bot.name));
       if (mounted) Navigator.of(context).pop(true);
@@ -252,6 +261,12 @@ class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
                 subtitle: const Text(
                   'Allow this bot to query Apple Health data synced privately from this iPhone.',
                 ),
+              ),
+              BotAdvancedEditor(
+                controller: _advanced,
+                profile: widget.bot.name,
+                profileNames: const {},
+                enabled: !_busy,
               ),
               const SizedBox(height: 10),
               Text(l10n.botAppearanceLabel, style: theme.textTheme.titleSmall),

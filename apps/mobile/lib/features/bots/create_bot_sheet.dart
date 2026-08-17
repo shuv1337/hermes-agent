@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/health/apple_health_sync.dart';
 import 'package:hermes_mobile/core/providers.dart';
+import 'package:hermes_mobile/features/bots/bot_advanced_editor.dart';
 import 'package:hermes_mobile/features/bots/bot_avatar.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
@@ -68,6 +69,7 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
   var _color = '#f97316';
   var _busy = false;
   var _healthCoach = false;
+  final _advanced = BotAdvancedController.create();
   String? _error;
 
   String get _slug => botSlugify(_name.text);
@@ -80,6 +82,7 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
     _name.dispose();
     _title.dispose();
     _description.dispose();
+    _advanced.dispose();
     super.dispose();
   }
 
@@ -130,6 +133,15 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
         shape: _shape,
         color: _color,
         healthCoach: _healthCoach,
+        cloneFrom: _advanced.cloneFrom,
+        shareAuth: _advanced.shareAuth,
+        noSkills: _advanced.noSkills,
+        customSoul: _advanced.soul.text,
+        model: _advanced.model,
+        provider: _advanced.provider,
+        disabledSkills: _advanced.disabledSkills,
+        enabledToolsets: _advanced.enabledToolsets,
+        enabledMcpServers: _advanced.enabledMcpServers,
       );
       if (mounted) Navigator.of(context).pop(bot);
     } catch (error) {
@@ -222,6 +234,12 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                 subtitle: const Text(
                   'Read your selected Apple Health data from this bot. Data syncs privately to your Hermes gateway.',
                 ),
+              ),
+              BotAdvancedEditor(
+                controller: _advanced,
+                profile: _slug,
+                profileNames: widget.existingNames,
+                enabled: !_busy,
               ),
               const SizedBox(height: 10),
               Text(l10n.botAppearanceLabel, style: theme.textTheme.titleSmall),

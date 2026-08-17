@@ -253,6 +253,59 @@ void main() {
     expect(metadata['title'], 'Senior cat wrangler');
   });
 
+  test('advanced bot creation reaches the server profile contract', () async {
+    final realtime = _BotRealtime(repo);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+
+    await repo.createBot(
+      name: 'triage',
+      title: 'Inbox Triage',
+      description: 'Sort incoming work',
+      shape: 'circle',
+      color: '#f97316',
+      cloneFrom: null,
+      shareAuth: false,
+      noSkills: true,
+      customSoul: '# Custom persona',
+      model: 'gpt-5.6-sol',
+      provider: 'openai-codex',
+      disabledSkills: const ['unused-skill'],
+      enabledToolsets: const ['web'],
+      enabledMcpServers: const ['notion'],
+    );
+
+    final create = realtime.calls.singleWhere(
+      (call) => call.method == 'profiles.create',
+    );
+    expect(create.params['clone_from'], isNull);
+    expect(create.params['share_auth'], isFalse);
+    expect(create.params['no_skills'], isTrue);
+    expect(create.params['soul'], startsWith('# Custom persona'));
+    expect(create.params['model'], 'gpt-5.6-sol');
+    expect(create.params['provider'], 'openai-codex');
+    final configure = realtime.calls.singleWhere(
+      (call) => call.method == 'profiles.configure',
+    );
+    expect(configure.params['disabled_skills'], ['unused-skill']);
+    expect(configure.params['enabled_toolsets'], ['web']);
+    expect(configure.params['enabled_mcp_servers'], ['notion']);
+  });
+
+  test('bot profile description parses server-owned capabilities', () async {
+    final realtime = _BotRealtime(repo);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+
+    final profile = await repo.describeBotProfile('default');
+
+    expect(profile.model, 'gpt-5.6-terra');
+    expect(profile.provider, 'openai-codex');
+    expect(profile.skills.single.name, 'apple-health');
+    expect(profile.toolsets.single.enabled, isTrue);
+    expect(profile.mcpServers.single.name, 'notion');
+  });
+
   test(
     'Health Coach creation routes health questions to native tools',
     () async {
@@ -423,6 +476,58 @@ void main() {
       expect(metadata['healthCoach'], isTrue);
     },
   );
+
+  test('advanced bot edits update persona model and capabilities', () async {
+    final realtime = _BotRealtime(repo, soul: '# Existing persona');
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+    final bot = HermesBotProfile.fromJson({
+      'name': 'techno',
+      'description': 'Old description',
+      'ui_meta': {
+        'hermes-bots': {
+          'title': 'Techno',
+          'chat': 'old-chat',
+          'healthCoach': false,
+        },
+      },
+    });
+
+    await repo.updateBot(
+      bot: bot,
+      title: 'Techno',
+      description: 'New description',
+      shape: 'circle',
+      color: '#f97316',
+      usePhoto: false,
+      soul: '# Deliberate persona',
+      model: 'gpt-5.6-sol',
+      provider: 'openai-codex',
+      disabledSkills: const ['unused-skill'],
+      enabledToolsets: const ['web'],
+      enabledMcpServers: const ['notion'],
+    );
+
+    final configure = realtime.calls.firstWhere(
+      (call) =>
+          call.method == 'profiles.configure' && call.params['model'] != null,
+    );
+    expect(configure.params['soul'], '# Deliberate persona');
+    expect(configure.params['model'], 'gpt-5.6-sol');
+    expect(configure.params['provider'], 'openai-codex');
+    expect(configure.params['disabled_skills'], ['unused-skill']);
+    expect(configure.params['enabled_toolsets'], ['web']);
+    expect(configure.params['enabled_mcp_servers'], ['notion']);
+    expect(
+      realtime.calls.where((call) => call.method == 'session.create'),
+      hasLength(1),
+    );
+    final fresh = realtime.calls.singleWhere(
+      (call) => call.method == 'session.create',
+    );
+    expect(fresh.params['model'], 'gpt-5.6-sol');
+    expect(fresh.params['provider'], 'openai-codex');
+  });
 
   test(
     'renaming a bot updates its generated soul and pins a fresh session',
@@ -800,9 +905,35 @@ class _BotRealtime extends GatewayRealtime {
         'stored_session_id': 'fresh-health-chat',
       },
       'profiles.configure' => {
-        'applied': {'ui_meta': true, 'description': true, 'soul': true},
+        'applied': {
+          'ui_meta': true,
+          'description': true,
+          'soul': true,
+          'model': true,
+          'skills': true,
+          'toolsets': true,
+          'mcp_servers': true,
+        },
       },
-      'profiles.describe' => {'soul': soul, 'toolsets': const []},
+      'profiles.describe' => {
+        'soul': soul,
+        'model': {'default': 'gpt-5.6-terra', 'provider': 'openai-codex'},
+        'skills': [
+          {'name': 'apple-health', 'enabled': true},
+        ],
+        'toolsets': [
+          {
+            'name': 'web',
+            'label': 'Web',
+            'description': 'Search and browse',
+            'tool_count': 4,
+            'enabled': true,
+          },
+        ],
+        'mcp_servers': [
+          {'name': 'notion', 'enabled': false, 'transport': 'http'},
+        ],
+      },
       'profiles.set_asset' => {'ok': true, 'asset': 'avatar', 'size': 4},
       _ => <String, dynamic>{},
     };

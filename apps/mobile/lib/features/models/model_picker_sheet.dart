@@ -98,6 +98,7 @@ Future<ModelPick?> showModelPickerSheet(
   String? initialProvider,
   String? initialReasoningEffort,
   bool? initialFastMode,
+  bool showRuntimeOptions = true,
 }) {
   unawaited(
     ref
@@ -114,6 +115,7 @@ Future<ModelPick?> showModelPickerSheet(
       initialProvider: initialProvider,
       initialReasoningEffort: initialReasoningEffort,
       initialFastMode: initialFastMode,
+      showRuntimeOptions: showRuntimeOptions,
     ),
   );
 }
@@ -125,6 +127,7 @@ class _ModelPickerBody extends ConsumerStatefulWidget {
     this.initialProvider,
     this.initialReasoningEffort,
     this.initialFastMode,
+    this.showRuntimeOptions = true,
   });
 
   final String? sessionId;
@@ -132,6 +135,7 @@ class _ModelPickerBody extends ConsumerStatefulWidget {
   final String? initialProvider;
   final String? initialReasoningEffort;
   final bool? initialFastMode;
+  final bool showRuntimeOptions;
 
   @override
   ConsumerState<_ModelPickerBody> createState() => _ModelPickerBodyState();
@@ -357,129 +361,131 @@ class _ModelPickerBodyState extends ConsumerState<_ModelPickerBody> {
                 ],
               ),
             ),
-            // Options for the *draft* model (capability-gated).
-            Card(
-              margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      draftModel == null || draftModel.isEmpty
-                          ? context.l10n.reasoningOptions
-                          : '${context.l10n.reasoningOptions} · $draftModel',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: theme.colorScheme.primary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (waitingCaps) ...[
-                      const SizedBox(height: 8),
+            // Options for the *draft* model (capability-gated). Profile model
+            // pins cannot persist these per-session runtime controls.
+            if (widget.showRuntimeOptions)
+              Card(
+                margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                       Text(
-                        context.l10n.modelCapsLoading,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.55,
-                          ),
+                        draftModel == null || draftModel.isEmpty
+                            ? context.l10n.reasoningOptions
+                            : '${context.l10n.reasoningOptions} · $draftModel',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.primary,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ] else if (!hasThinkingControl &&
-                        !hasEffortControl &&
-                        !fastControl.supported) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        context.l10n.modelNoOptions,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.55,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (!waitingCaps && hasThinkingControl) ...[
-                      SwitchListTile.adaptive(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(context.l10n.thinking),
-                        subtitle: Text(
-                          thinkingOn
-                              ? context.l10n.thinkingOnHint
-                              : context.l10n.thinkingOffHint,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        value: thinkingOn,
-                        onChanged: (on) {
-                          hermesHaptic(HapticIntent.selection);
-                          setState(() {
-                            _effort = on
-                                ? _defaultEffortFor(caps, effortOptions)
-                                : 'none';
-                          });
-                        },
-                      ),
-                    ],
-                    if (!waitingCaps && thinkingOn && hasEffortControl) ...[
-                      Text(
-                        context.l10n.effort,
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.65,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final option in effortOptions)
-                            Tooltip(
-                              message: option.description ?? '',
-                              child: ChoiceChip(
-                                label: Text(
-                                  reasoningEffortFullLabel(option.effort),
-                                ),
-                                selected: resolvedEffort == option.effort,
-                                onSelected: (_) {
-                                  hermesHaptic(HapticIntent.selection);
-                                  setState(() => _effort = option.effort);
-                                },
-                              ),
+                      if (waitingCaps) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          context.l10n.modelCapsLoading,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.55,
                             ),
-                        ],
-                      ),
-                    ],
-                    if (!waitingCaps && fastControl.supported) ...[
-                      if (hasThinkingControl || hasEffortControl)
-                        const SizedBox(height: 4),
-                      SwitchListTile.adaptive(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(context.l10n.fastMode),
-                        subtitle: Text(
-                          context.l10n.fastModeHint,
-                          style: theme.textTheme.bodySmall,
+                          ),
                         ),
-                        value: fastControl.on,
-                        onChanged: (on) {
-                          hermesHaptic(HapticIntent.selection);
-                          setState(() {
-                            _fast = on;
-                            if (fastControl.kind == FastControlKind.variant) {
-                              _draftModel = on
-                                  ? fastControl.fastId
-                                  : fastControl.baseId;
-                            }
-                          });
-                        },
-                      ),
+                      ] else if (!hasThinkingControl &&
+                          !hasEffortControl &&
+                          !fastControl.supported) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          context.l10n.modelNoOptions,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.55,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (!waitingCaps && hasThinkingControl) ...[
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(context.l10n.thinking),
+                          subtitle: Text(
+                            thinkingOn
+                                ? context.l10n.thinkingOnHint
+                                : context.l10n.thinkingOffHint,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          value: thinkingOn,
+                          onChanged: (on) {
+                            hermesHaptic(HapticIntent.selection);
+                            setState(() {
+                              _effort = on
+                                  ? _defaultEffortFor(caps, effortOptions)
+                                  : 'none';
+                            });
+                          },
+                        ),
+                      ],
+                      if (!waitingCaps && thinkingOn && hasEffortControl) ...[
+                        Text(
+                          context.l10n.effort,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.65,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final option in effortOptions)
+                              Tooltip(
+                                message: option.description ?? '',
+                                child: ChoiceChip(
+                                  label: Text(
+                                    reasoningEffortFullLabel(option.effort),
+                                  ),
+                                  selected: resolvedEffort == option.effort,
+                                  onSelected: (_) {
+                                    hermesHaptic(HapticIntent.selection);
+                                    setState(() => _effort = option.effort);
+                                  },
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                      if (!waitingCaps && fastControl.supported) ...[
+                        if (hasThinkingControl || hasEffortControl)
+                          const SizedBox(height: 4),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(context.l10n.fastMode),
+                          subtitle: Text(
+                            context.l10n.fastModeHint,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          value: fastControl.on,
+                          onChanged: (on) {
+                            hermesHaptic(HapticIntent.selection);
+                            setState(() {
+                              _fast = on;
+                              if (fastControl.kind == FastControlKind.variant) {
+                                _draftModel = on
+                                    ? fastControl.fastId
+                                    : fastControl.baseId;
+                              }
+                            });
+                          },
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
             Expanded(
               child: options.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
