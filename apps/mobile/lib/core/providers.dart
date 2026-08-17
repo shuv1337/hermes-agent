@@ -1488,6 +1488,20 @@ class JobsViewState {
   final bool fromCache;
 }
 
+class JobDetailViewState {
+  const JobDetailViewState({
+    required this.job,
+    required this.runs,
+    this.syncError,
+    this.fromCache = false,
+  });
+
+  final HermesJob job;
+  final List<HermesSession> runs;
+  final String? syncError;
+  final bool fromCache;
+}
+
 final jobsProvider = AsyncNotifierProvider<JobsNotifier, JobsViewState>(
   JobsNotifier.new,
 );
@@ -1620,6 +1634,7 @@ class JobsNotifier extends AsyncNotifier<JobsViewState> {
           lastRunAt: Value(j.lastRunAt),
           lastStatus: Value(j.lastStatus),
           nextRunAt: Value(j.nextRunAt),
+          detailsJson: Value(jsonEncode(j.raw)),
           syncStatus: const Value('synced'),
           updatedAt: now,
         ),
@@ -1633,6 +1648,17 @@ class JobsNotifier extends AsyncNotifier<JobsViewState> {
   }
 
   HermesJob _jobFromRow(CachedJob r) {
+    final details = r.detailsJson;
+    if (details != null && details.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(details);
+        if (decoded is Map) {
+          return HermesJob.fromJson(decoded.cast<String, dynamic>());
+        }
+      } catch (e) {
+        debugPrint('Jobs: cached detail decode failed for ${r.id}: $e');
+      }
+    }
     return HermesJob(
       id: r.id,
       name: r.name,
@@ -1645,6 +1671,139 @@ class JobsNotifier extends AsyncNotifier<JobsViewState> {
       lastStatus: r.lastStatus,
       nextRunAt: r.nextRunAt,
     );
+  }
+
+  Map<String, dynamic> _sessionToJson(HermesSession session) => {
+    'id': session.id,
+    'source': session.source,
+    'user_id': session.userId,
+    'model': session.model,
+    'title': session.title,
+    'started_at': session.startedAt,
+    'ended_at': session.endedAt,
+    'end_reason': session.endReason,
+    'message_count': session.messageCount,
+    'tool_call_count': session.toolCallCount,
+    'last_active': session.lastActive,
+    'preview': session.preview,
+    'parent_session_id': session.parentSessionId,
+  };
+
+  Future<JobDetailViewState> loadJobDetail(String jobId) async {
+    final profile = ref.read(connectionProfileProvider).value;
+    final current = state.value?.jobs
+        .where((job) => job.id == jobId)
+        .firstOrNull;
+    if (profile == null) {
+      if (current == null) throw StateError('No gateway selected');
+      return JobDetailViewState(job: current, runs: const [], fromCache: true);
+    }
+    final db = ref.read(appDatabaseProvider);
+    final cachedJobs = await db.jobsForGateway(profile.id);
+    final cachedRow = cachedJobs.where((row) => row.id == jobId).firstOrNull;
+    final job = cachedRow == null
+        ? current
+        : (cachedRow.detailsJson == null && current != null
+              ? current
+              : _jobFromRow(cachedRow));
+    if (job == null) throw StateError('Job not found');
+    final runRows = await db.jobRunsForJob(profile.id, jobId);
+    final runs = <HermesSession>[];
+    for (final row in runRows) {
+      try {
+        final decoded = jsonDecode(row.sessionJson);
+        if (decoded is Map) {
+          final run = HermesSession.fromJson(decoded.cast<String, dynamic>());
+          if (run.id.isNotEmpty) runs.add(run);
+        }
+      } catch (e) {
+        debugPrint('Jobs: cached run decode failed for ${row.sessionId}: $e');
+      }
+    }
+    return JobDetailViewState(job: job, runs: runs, fromCache: true);
+  }
+
+  /// Refresh detail and run history independently. Either successful response
+  /// updates its cache; a failure keeps the last known half of the screen.
+  Future<JobDetailViewState> refreshJobDetail(String jobId) async {
+    var local = await loadJobDetail(jobId);
+    final profile = ref.read(connectionProfileProvider).value;
+    final dash = ref.read(dashboardClientProvider);
+    if (profile == null || dash == null) {
+      return JobDetailViewState(
+        job: local.job,
+        runs: local.runs,
+        syncError: 'Gateway unavailable. Showing saved job information.',
+        fromCache: true,
+      );
+    }
+    final db = ref.read(appDatabaseProvider);
+    final errors = <String>[];
+    var job = local.job;
+    var runs = local.runs;
+
+    try {
+      job = await dash.getCronJob(jobId);
+      await db.upsertJob(
+        CachedJobsCompanion.insert(
+          gatewayId: profile.id,
+          id: job.id,
+          name: Value(job.name),
+          schedule: Value(job.schedule),
+          prompt: Value(job.prompt),
+          deliver: Value(job.deliver),
+          enabled: Value(job.enabled),
+          state: Value(job.state),
+          lastRunAt: Value(job.lastRunAt),
+          lastStatus: Value(job.lastStatus),
+          nextRunAt: Value(job.nextRunAt),
+          detailsJson: Value(jsonEncode(job.raw)),
+          syncStatus: const Value('synced'),
+          updatedAt: DateTime.now().toUtc(),
+        ),
+      );
+      final listState = state.value;
+      if (listState != null) {
+        state = AsyncData(
+          JobsViewState(
+            jobs: [
+              for (final existing in listState.jobs)
+                if (existing.id == jobId) job else existing,
+            ],
+            syncError: listState.syncError,
+            fromCache: listState.fromCache,
+          ),
+        );
+      }
+    } catch (e) {
+      errors.add('Job details: ${_friendlyErr(e)}');
+    }
+
+    try {
+      runs = await dash.listCronJobRuns(jobId, limit: 20);
+      final now = DateTime.now().toUtc();
+      await db.replaceJobRuns(profile.id, jobId, [
+        for (final run in runs)
+          CachedJobRunsCompanion.insert(
+            gatewayId: profile.id,
+            jobId: jobId,
+            sessionId: run.id,
+            sessionJson: jsonEncode(_sessionToJson(run)),
+            lastActive: Value(run.lastActive ?? run.startedAt),
+            updatedAt: now,
+          ),
+      ]);
+    } catch (e) {
+      errors.add('Run history: ${_friendlyErr(e)}');
+    }
+
+    local = JobDetailViewState(
+      job: job,
+      runs: runs,
+      syncError: errors.isEmpty ? null : errors.join('\n'),
+      fromCache: errors.isNotEmpty,
+    );
+    return local;
   }
 
   List<HermesJob> _jobsFromWs(Map<String, dynamic> raw) {

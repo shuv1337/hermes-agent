@@ -129,12 +129,30 @@ class CachedJobs extends Table {
   TextColumn get lastStatus => text().nullable()();
   TextColumn get nextRunAt => text().nullable()();
 
+  /// Full server row for richer offline details and forward compatibility.
+  TextColumn get detailsJson => text().nullable()();
+
   /// synced | deleted_pending
   TextColumn get syncStatus => text().withDefault(const Constant('synced'))();
   DateTimeColumn get updatedAt => dateTime()();
 
   @override
   Set<Column> get primaryKey => {gatewayId, id};
+}
+
+/// Bounded run-history cache for a cron job. Each row is the ordinary Hermes
+/// session returned by `/api/cron/jobs/{id}/runs`, retained separately from
+/// recents so a general session-list refresh cannot evict job history.
+class CachedJobRuns extends Table {
+  TextColumn get gatewayId => text()();
+  TextColumn get jobId => text()();
+  TextColumn get sessionId => text()();
+  TextColumn get sessionJson => text()();
+  TextColumn get lastActive => text().nullable()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {gatewayId, jobId, sessionId};
 }
 
 /// Installed skills cached per gateway (survive offline / failed pulls).
@@ -158,6 +176,7 @@ class CachedSkills extends Table {
     CachedMessages,
     PendingOps,
     CachedJobs,
+    CachedJobRuns,
     CachedSkills,
     DeletedMessages,
   ],
@@ -168,7 +187,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -198,6 +217,15 @@ class AppDatabase extends _$AppDatabase {
         // `ALTER TABLE ... ADD COLUMN`). No row is rewritten or dropped, and
         // pre-v5 tombstones keep working with a null fingerprint.
         await m.addColumn(deletedMessages, deletedMessages.fingerprint);
+      }
+      if (from < 6) {
+        // v1 had no jobs table; its from<2 step above creates the current
+        // table (already including detailsJson), so only older existing job
+        // tables need ALTER TABLE.
+        if (from >= 2) {
+          await m.addColumn(cachedJobs, cachedJobs.detailsJson);
+        }
+        await m.createTable(cachedJobRuns);
       }
     },
   );
@@ -673,12 +701,20 @@ class AppDatabase extends _$AppDatabase {
                 (r) => r.gatewayId.equals(gatewayId) & r.id.equals(l.id),
               ))
               .go();
+          await (delete(cachedJobRuns)..where(
+                (r) => r.gatewayId.equals(gatewayId) & r.jobId.equals(l.id),
+              ))
+              .go();
           continue;
         }
         // Was synced, not on server anymore → gone for real.
         if (l.syncStatus == 'synced') {
           await (delete(cachedJobs)..where(
                 (r) => r.gatewayId.equals(gatewayId) & r.id.equals(l.id),
+              ))
+              .go();
+          await (delete(cachedJobRuns)..where(
+                (r) => r.gatewayId.equals(gatewayId) & r.jobId.equals(l.id),
               ))
               .go();
         }
@@ -698,9 +734,47 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> removeJob(String gatewayId, String jobId) {
-    return (delete(
-      cachedJobs,
-    )..where((r) => r.gatewayId.equals(gatewayId) & r.id.equals(jobId))).go();
+    return transaction(() async {
+      await (delete(
+        cachedJobs,
+      )..where((r) => r.gatewayId.equals(gatewayId) & r.id.equals(jobId))).go();
+      await (delete(cachedJobRuns)..where(
+            (r) => r.gatewayId.equals(gatewayId) & r.jobId.equals(jobId),
+          ))
+          .go();
+    });
+  }
+
+  Future<List<CachedJobRun>> jobRunsForJob(String gatewayId, String jobId) {
+    return (select(cachedJobRuns)
+          ..where((r) => r.gatewayId.equals(gatewayId) & r.jobId.equals(jobId))
+          ..orderBy([
+            (r) => OrderingTerm(
+              expression: r.lastActive,
+              mode: OrderingMode.desc,
+              nulls: NullsOrder.last,
+            ),
+            (r) => OrderingTerm.desc(r.updatedAt),
+          ]))
+        .get();
+  }
+
+  /// Replace history only after a successful server response. A failed or
+  /// offline refresh leaves the last known runs intact.
+  Future<void> replaceJobRuns(
+    String gatewayId,
+    String jobId,
+    List<CachedJobRunsCompanion> rows,
+  ) {
+    return transaction(() async {
+      await (delete(cachedJobRuns)..where(
+            (r) => r.gatewayId.equals(gatewayId) & r.jobId.equals(jobId),
+          ))
+          .go();
+      if (rows.isNotEmpty) {
+        await batch((b) => b.insertAllOnConflictUpdate(cachedJobRuns, rows));
+      }
+    });
   }
 
   // ── Skills ─────────────────────────────────────────────────────────
@@ -740,6 +814,9 @@ class AppDatabase extends _$AppDatabase {
       )..where((r) => r.gatewayId.equals(gatewayId))).go();
       await (delete(
         cachedJobs,
+      )..where((r) => r.gatewayId.equals(gatewayId))).go();
+      await (delete(
+        cachedJobRuns,
       )..where((r) => r.gatewayId.equals(gatewayId))).go();
       await (delete(
         cachedSkills,

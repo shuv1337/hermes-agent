@@ -4,6 +4,7 @@ import 'package:timeago/timeago.dart' as timeago;
 
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/providers.dart';
+import 'package:hermes_mobile/features/jobs/job_detail_screen.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
 /// Cron / scheduled jobs on the host agent.
@@ -156,6 +157,11 @@ class _JobTile extends ConsumerWidget {
     final when = _rel(job.lastRunAt ?? job.nextRunAt);
 
     return ListTile(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => JobDetailScreen(initialJob: job),
+        ),
+      ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       title: Text(
         job.displayName,

@@ -101,13 +101,23 @@ void main() {
       '"message_id" TEXT NOT NULL, "deleted_at" INTEGER NOT NULL, '
       'PRIMARY KEY ("gateway_id", "session_id", "message_id"))';
 
+  const createDeletedMessagesV5 =
+      'CREATE TABLE "deleted_messages" ('
+      '"gateway_id" TEXT NOT NULL, "session_id" TEXT NOT NULL, '
+      '"message_id" TEXT NOT NULL, "deleted_at" INTEGER NOT NULL, '
+      '"fingerprint" TEXT NULL, '
+      'PRIMARY KEY ("gateway_id", "session_id", "message_id"))';
+
   List<String> schemaAt(int version) => <String>[
     createCachedSessions,
     version >= 4 ? createCachedMessagesV4 : createCachedMessagesV1,
     createPendingOps,
     if (version >= 2) createCachedJobs,
     if (version >= 3) createCachedSkills,
-    if (version >= 4) createDeletedMessagesV4,
+    if (version >= 5)
+      createDeletedMessagesV5
+    else if (version >= 4)
+      createDeletedMessagesV4,
   ];
 
   /// Opens [AppDatabase] on an in-memory database that already holds the
@@ -145,7 +155,7 @@ void main() {
     );
   }
 
-  for (final from in [1, 2, 3, 4]) {
+  for (final from in [1, 2, 3, 4, 5]) {
     group('upgrade from schema v$from', () {
       late AppDatabase db;
 
@@ -165,7 +175,7 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.data.values.single, 5);
+        expect(version.data.values.single, 6);
       });
 
       test(
@@ -215,6 +225,7 @@ void main() {
 
       test('the tables added by later versions are usable', () async {
         expect(await db.jobsForGateway('gw1'), isEmpty);
+        expect(await db.jobRunsForJob('gw1', 'job1'), isEmpty);
         expect(await db.skillsForGateway('gw1'), isEmpty);
         expect(await db.sessionsForGateway('gw1'), isEmpty);
         expect(await db.pendingOpsForGateway('gw1'), isEmpty);
@@ -231,6 +242,7 @@ void main() {
       (await db.tombstonesForSession('gw1', 's1')).single.fingerprint,
       'fp',
     );
+    expect(await db.jobRunsForJob('gw1', 'job1'), isEmpty);
     await db.close();
   });
 }

@@ -2508,6 +2508,17 @@ class $CachedJobsTable extends CachedJobs
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _detailsJsonMeta = const VerificationMeta(
+    'detailsJson',
+  );
+  @override
+  late final GeneratedColumn<String> detailsJson = GeneratedColumn<String>(
+    'details_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _syncStatusMeta = const VerificationMeta(
     'syncStatus',
   );
@@ -2544,6 +2555,7 @@ class $CachedJobsTable extends CachedJobs
     lastRunAt,
     lastStatus,
     nextRunAt,
+    detailsJson,
     syncStatus,
     updatedAt,
   ];
@@ -2626,6 +2638,15 @@ class $CachedJobsTable extends CachedJobs
         nextRunAt.isAcceptableOrUnknown(data['next_run_at']!, _nextRunAtMeta),
       );
     }
+    if (data.containsKey('details_json')) {
+      context.handle(
+        _detailsJsonMeta,
+        detailsJson.isAcceptableOrUnknown(
+          data['details_json']!,
+          _detailsJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('sync_status')) {
       context.handle(
         _syncStatusMeta,
@@ -2693,6 +2714,10 @@ class $CachedJobsTable extends CachedJobs
         DriftSqlType.string,
         data['${effectivePrefix}next_run_at'],
       ),
+      detailsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}details_json'],
+      ),
       syncStatus: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}sync_status'],
@@ -2723,6 +2748,9 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
   final String? lastStatus;
   final String? nextRunAt;
 
+  /// Full server row for richer offline details and forward compatibility.
+  final String? detailsJson;
+
   /// synced | deleted_pending
   final String syncStatus;
   final DateTime updatedAt;
@@ -2738,6 +2766,7 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
     this.lastRunAt,
     this.lastStatus,
     this.nextRunAt,
+    this.detailsJson,
     required this.syncStatus,
     required this.updatedAt,
   });
@@ -2773,6 +2802,9 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
     if (!nullToAbsent || nextRunAt != null) {
       map['next_run_at'] = Variable<String>(nextRunAt);
     }
+    if (!nullToAbsent || detailsJson != null) {
+      map['details_json'] = Variable<String>(detailsJson);
+    }
     map['sync_status'] = Variable<String>(syncStatus);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -2807,6 +2839,9 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
       nextRunAt: nextRunAt == null && nullToAbsent
           ? const Value.absent()
           : Value(nextRunAt),
+      detailsJson: detailsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(detailsJson),
       syncStatus: Value(syncStatus),
       updatedAt: Value(updatedAt),
     );
@@ -2829,6 +2864,7 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
       lastRunAt: serializer.fromJson<String?>(json['lastRunAt']),
       lastStatus: serializer.fromJson<String?>(json['lastStatus']),
       nextRunAt: serializer.fromJson<String?>(json['nextRunAt']),
+      detailsJson: serializer.fromJson<String?>(json['detailsJson']),
       syncStatus: serializer.fromJson<String>(json['syncStatus']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -2848,6 +2884,7 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
       'lastRunAt': serializer.toJson<String?>(lastRunAt),
       'lastStatus': serializer.toJson<String?>(lastStatus),
       'nextRunAt': serializer.toJson<String?>(nextRunAt),
+      'detailsJson': serializer.toJson<String?>(detailsJson),
       'syncStatus': serializer.toJson<String>(syncStatus),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -2865,6 +2902,7 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
     Value<String?> lastRunAt = const Value.absent(),
     Value<String?> lastStatus = const Value.absent(),
     Value<String?> nextRunAt = const Value.absent(),
+    Value<String?> detailsJson = const Value.absent(),
     String? syncStatus,
     DateTime? updatedAt,
   }) => CachedJob(
@@ -2879,6 +2917,7 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
     lastRunAt: lastRunAt.present ? lastRunAt.value : this.lastRunAt,
     lastStatus: lastStatus.present ? lastStatus.value : this.lastStatus,
     nextRunAt: nextRunAt.present ? nextRunAt.value : this.nextRunAt,
+    detailsJson: detailsJson.present ? detailsJson.value : this.detailsJson,
     syncStatus: syncStatus ?? this.syncStatus,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2897,6 +2936,9 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
           ? data.lastStatus.value
           : this.lastStatus,
       nextRunAt: data.nextRunAt.present ? data.nextRunAt.value : this.nextRunAt,
+      detailsJson: data.detailsJson.present
+          ? data.detailsJson.value
+          : this.detailsJson,
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
@@ -2918,6 +2960,7 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
           ..write('lastRunAt: $lastRunAt, ')
           ..write('lastStatus: $lastStatus, ')
           ..write('nextRunAt: $nextRunAt, ')
+          ..write('detailsJson: $detailsJson, ')
           ..write('syncStatus: $syncStatus, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2937,6 +2980,7 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
     lastRunAt,
     lastStatus,
     nextRunAt,
+    detailsJson,
     syncStatus,
     updatedAt,
   );
@@ -2955,6 +2999,7 @@ class CachedJob extends DataClass implements Insertable<CachedJob> {
           other.lastRunAt == this.lastRunAt &&
           other.lastStatus == this.lastStatus &&
           other.nextRunAt == this.nextRunAt &&
+          other.detailsJson == this.detailsJson &&
           other.syncStatus == this.syncStatus &&
           other.updatedAt == this.updatedAt);
 }
@@ -2971,6 +3016,7 @@ class CachedJobsCompanion extends UpdateCompanion<CachedJob> {
   final Value<String?> lastRunAt;
   final Value<String?> lastStatus;
   final Value<String?> nextRunAt;
+  final Value<String?> detailsJson;
   final Value<String> syncStatus;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -2986,6 +3032,7 @@ class CachedJobsCompanion extends UpdateCompanion<CachedJob> {
     this.lastRunAt = const Value.absent(),
     this.lastStatus = const Value.absent(),
     this.nextRunAt = const Value.absent(),
+    this.detailsJson = const Value.absent(),
     this.syncStatus = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -3002,6 +3049,7 @@ class CachedJobsCompanion extends UpdateCompanion<CachedJob> {
     this.lastRunAt = const Value.absent(),
     this.lastStatus = const Value.absent(),
     this.nextRunAt = const Value.absent(),
+    this.detailsJson = const Value.absent(),
     this.syncStatus = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -3020,6 +3068,7 @@ class CachedJobsCompanion extends UpdateCompanion<CachedJob> {
     Expression<String>? lastRunAt,
     Expression<String>? lastStatus,
     Expression<String>? nextRunAt,
+    Expression<String>? detailsJson,
     Expression<String>? syncStatus,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -3036,6 +3085,7 @@ class CachedJobsCompanion extends UpdateCompanion<CachedJob> {
       if (lastRunAt != null) 'last_run_at': lastRunAt,
       if (lastStatus != null) 'last_status': lastStatus,
       if (nextRunAt != null) 'next_run_at': nextRunAt,
+      if (detailsJson != null) 'details_json': detailsJson,
       if (syncStatus != null) 'sync_status': syncStatus,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -3054,6 +3104,7 @@ class CachedJobsCompanion extends UpdateCompanion<CachedJob> {
     Value<String?>? lastRunAt,
     Value<String?>? lastStatus,
     Value<String?>? nextRunAt,
+    Value<String?>? detailsJson,
     Value<String>? syncStatus,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -3070,6 +3121,7 @@ class CachedJobsCompanion extends UpdateCompanion<CachedJob> {
       lastRunAt: lastRunAt ?? this.lastRunAt,
       lastStatus: lastStatus ?? this.lastStatus,
       nextRunAt: nextRunAt ?? this.nextRunAt,
+      detailsJson: detailsJson ?? this.detailsJson,
       syncStatus: syncStatus ?? this.syncStatus,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -3112,6 +3164,9 @@ class CachedJobsCompanion extends UpdateCompanion<CachedJob> {
     if (nextRunAt.present) {
       map['next_run_at'] = Variable<String>(nextRunAt.value);
     }
+    if (detailsJson.present) {
+      map['details_json'] = Variable<String>(detailsJson.value);
+    }
     if (syncStatus.present) {
       map['sync_status'] = Variable<String>(syncStatus.value);
     }
@@ -3138,7 +3193,435 @@ class CachedJobsCompanion extends UpdateCompanion<CachedJob> {
           ..write('lastRunAt: $lastRunAt, ')
           ..write('lastStatus: $lastStatus, ')
           ..write('nextRunAt: $nextRunAt, ')
+          ..write('detailsJson: $detailsJson, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedJobRunsTable extends CachedJobRuns
+    with TableInfo<$CachedJobRunsTable, CachedJobRun> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedJobRunsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _gatewayIdMeta = const VerificationMeta(
+    'gatewayId',
+  );
+  @override
+  late final GeneratedColumn<String> gatewayId = GeneratedColumn<String>(
+    'gateway_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _jobIdMeta = const VerificationMeta('jobId');
+  @override
+  late final GeneratedColumn<String> jobId = GeneratedColumn<String>(
+    'job_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+    'session_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sessionJsonMeta = const VerificationMeta(
+    'sessionJson',
+  );
+  @override
+  late final GeneratedColumn<String> sessionJson = GeneratedColumn<String>(
+    'session_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastActiveMeta = const VerificationMeta(
+    'lastActive',
+  );
+  @override
+  late final GeneratedColumn<String> lastActive = GeneratedColumn<String>(
+    'last_active',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    gatewayId,
+    jobId,
+    sessionId,
+    sessionJson,
+    lastActive,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_job_runs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CachedJobRun> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('gateway_id')) {
+      context.handle(
+        _gatewayIdMeta,
+        gatewayId.isAcceptableOrUnknown(data['gateway_id']!, _gatewayIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_gatewayIdMeta);
+    }
+    if (data.containsKey('job_id')) {
+      context.handle(
+        _jobIdMeta,
+        jobId.isAcceptableOrUnknown(data['job_id']!, _jobIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_jobIdMeta);
+    }
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionIdMeta);
+    }
+    if (data.containsKey('session_json')) {
+      context.handle(
+        _sessionJsonMeta,
+        sessionJson.isAcceptableOrUnknown(
+          data['session_json']!,
+          _sessionJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionJsonMeta);
+    }
+    if (data.containsKey('last_active')) {
+      context.handle(
+        _lastActiveMeta,
+        lastActive.isAcceptableOrUnknown(data['last_active']!, _lastActiveMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {gatewayId, jobId, sessionId};
+  @override
+  CachedJobRun map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedJobRun(
+      gatewayId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gateway_id'],
+      )!,
+      jobId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}job_id'],
+      )!,
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_id'],
+      )!,
+      sessionJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_json'],
+      )!,
+      lastActive: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_active'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CachedJobRunsTable createAlias(String alias) {
+    return $CachedJobRunsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedJobRun extends DataClass implements Insertable<CachedJobRun> {
+  final String gatewayId;
+  final String jobId;
+  final String sessionId;
+  final String sessionJson;
+  final String? lastActive;
+  final DateTime updatedAt;
+  const CachedJobRun({
+    required this.gatewayId,
+    required this.jobId,
+    required this.sessionId,
+    required this.sessionJson,
+    this.lastActive,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['gateway_id'] = Variable<String>(gatewayId);
+    map['job_id'] = Variable<String>(jobId);
+    map['session_id'] = Variable<String>(sessionId);
+    map['session_json'] = Variable<String>(sessionJson);
+    if (!nullToAbsent || lastActive != null) {
+      map['last_active'] = Variable<String>(lastActive);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  CachedJobRunsCompanion toCompanion(bool nullToAbsent) {
+    return CachedJobRunsCompanion(
+      gatewayId: Value(gatewayId),
+      jobId: Value(jobId),
+      sessionId: Value(sessionId),
+      sessionJson: Value(sessionJson),
+      lastActive: lastActive == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastActive),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory CachedJobRun.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedJobRun(
+      gatewayId: serializer.fromJson<String>(json['gatewayId']),
+      jobId: serializer.fromJson<String>(json['jobId']),
+      sessionId: serializer.fromJson<String>(json['sessionId']),
+      sessionJson: serializer.fromJson<String>(json['sessionJson']),
+      lastActive: serializer.fromJson<String?>(json['lastActive']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'gatewayId': serializer.toJson<String>(gatewayId),
+      'jobId': serializer.toJson<String>(jobId),
+      'sessionId': serializer.toJson<String>(sessionId),
+      'sessionJson': serializer.toJson<String>(sessionJson),
+      'lastActive': serializer.toJson<String?>(lastActive),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  CachedJobRun copyWith({
+    String? gatewayId,
+    String? jobId,
+    String? sessionId,
+    String? sessionJson,
+    Value<String?> lastActive = const Value.absent(),
+    DateTime? updatedAt,
+  }) => CachedJobRun(
+    gatewayId: gatewayId ?? this.gatewayId,
+    jobId: jobId ?? this.jobId,
+    sessionId: sessionId ?? this.sessionId,
+    sessionJson: sessionJson ?? this.sessionJson,
+    lastActive: lastActive.present ? lastActive.value : this.lastActive,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  CachedJobRun copyWithCompanion(CachedJobRunsCompanion data) {
+    return CachedJobRun(
+      gatewayId: data.gatewayId.present ? data.gatewayId.value : this.gatewayId,
+      jobId: data.jobId.present ? data.jobId.value : this.jobId,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      sessionJson: data.sessionJson.present
+          ? data.sessionJson.value
+          : this.sessionJson,
+      lastActive: data.lastActive.present
+          ? data.lastActive.value
+          : this.lastActive,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedJobRun(')
+          ..write('gatewayId: $gatewayId, ')
+          ..write('jobId: $jobId, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('sessionJson: $sessionJson, ')
+          ..write('lastActive: $lastActive, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    gatewayId,
+    jobId,
+    sessionId,
+    sessionJson,
+    lastActive,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedJobRun &&
+          other.gatewayId == this.gatewayId &&
+          other.jobId == this.jobId &&
+          other.sessionId == this.sessionId &&
+          other.sessionJson == this.sessionJson &&
+          other.lastActive == this.lastActive &&
+          other.updatedAt == this.updatedAt);
+}
+
+class CachedJobRunsCompanion extends UpdateCompanion<CachedJobRun> {
+  final Value<String> gatewayId;
+  final Value<String> jobId;
+  final Value<String> sessionId;
+  final Value<String> sessionJson;
+  final Value<String?> lastActive;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const CachedJobRunsCompanion({
+    this.gatewayId = const Value.absent(),
+    this.jobId = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    this.sessionJson = const Value.absent(),
+    this.lastActive = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedJobRunsCompanion.insert({
+    required String gatewayId,
+    required String jobId,
+    required String sessionId,
+    required String sessionJson,
+    this.lastActive = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : gatewayId = Value(gatewayId),
+       jobId = Value(jobId),
+       sessionId = Value(sessionId),
+       sessionJson = Value(sessionJson),
+       updatedAt = Value(updatedAt);
+  static Insertable<CachedJobRun> custom({
+    Expression<String>? gatewayId,
+    Expression<String>? jobId,
+    Expression<String>? sessionId,
+    Expression<String>? sessionJson,
+    Expression<String>? lastActive,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (gatewayId != null) 'gateway_id': gatewayId,
+      if (jobId != null) 'job_id': jobId,
+      if (sessionId != null) 'session_id': sessionId,
+      if (sessionJson != null) 'session_json': sessionJson,
+      if (lastActive != null) 'last_active': lastActive,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedJobRunsCompanion copyWith({
+    Value<String>? gatewayId,
+    Value<String>? jobId,
+    Value<String>? sessionId,
+    Value<String>? sessionJson,
+    Value<String?>? lastActive,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return CachedJobRunsCompanion(
+      gatewayId: gatewayId ?? this.gatewayId,
+      jobId: jobId ?? this.jobId,
+      sessionId: sessionId ?? this.sessionId,
+      sessionJson: sessionJson ?? this.sessionJson,
+      lastActive: lastActive ?? this.lastActive,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (gatewayId.present) {
+      map['gateway_id'] = Variable<String>(gatewayId.value);
+    }
+    if (jobId.present) {
+      map['job_id'] = Variable<String>(jobId.value);
+    }
+    if (sessionId.present) {
+      map['session_id'] = Variable<String>(sessionId.value);
+    }
+    if (sessionJson.present) {
+      map['session_json'] = Variable<String>(sessionJson.value);
+    }
+    if (lastActive.present) {
+      map['last_active'] = Variable<String>(lastActive.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedJobRunsCompanion(')
+          ..write('gatewayId: $gatewayId, ')
+          ..write('jobId: $jobId, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('sessionJson: $sessionJson, ')
+          ..write('lastActive: $lastActive, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -4067,6 +4550,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $CachedMessagesTable cachedMessages = $CachedMessagesTable(this);
   late final $PendingOpsTable pendingOps = $PendingOpsTable(this);
   late final $CachedJobsTable cachedJobs = $CachedJobsTable(this);
+  late final $CachedJobRunsTable cachedJobRuns = $CachedJobRunsTable(this);
   late final $CachedSkillsTable cachedSkills = $CachedSkillsTable(this);
   late final $DeletedMessagesTable deletedMessages = $DeletedMessagesTable(
     this,
@@ -4080,6 +4564,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     cachedMessages,
     pendingOps,
     cachedJobs,
+    cachedJobRuns,
     cachedSkills,
     deletedMessages,
   ];
@@ -5202,6 +5687,7 @@ typedef $$CachedJobsTableCreateCompanionBuilder =
       Value<String?> lastRunAt,
       Value<String?> lastStatus,
       Value<String?> nextRunAt,
+      Value<String?> detailsJson,
       Value<String> syncStatus,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -5219,6 +5705,7 @@ typedef $$CachedJobsTableUpdateCompanionBuilder =
       Value<String?> lastRunAt,
       Value<String?> lastStatus,
       Value<String?> nextRunAt,
+      Value<String?> detailsJson,
       Value<String> syncStatus,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -5285,6 +5772,11 @@ class $$CachedJobsTableFilterComposer
 
   ColumnFilters<String> get nextRunAt => $composableBuilder(
     column: $table.nextRunAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get detailsJson => $composableBuilder(
+    column: $table.detailsJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5363,6 +5855,11 @@ class $$CachedJobsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get detailsJson => $composableBuilder(
+    column: $table.detailsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get syncStatus => $composableBuilder(
     column: $table.syncStatus,
     builder: (column) => ColumnOrderings(column),
@@ -5418,6 +5915,11 @@ class $$CachedJobsTableAnnotationComposer
   GeneratedColumn<String> get nextRunAt =>
       $composableBuilder(column: $table.nextRunAt, builder: (column) => column);
 
+  GeneratedColumn<String> get detailsJson => $composableBuilder(
+    column: $table.detailsJson,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get syncStatus => $composableBuilder(
     column: $table.syncStatus,
     builder: (column) => column,
@@ -5469,6 +5971,7 @@ class $$CachedJobsTableTableManager
                 Value<String?> lastRunAt = const Value.absent(),
                 Value<String?> lastStatus = const Value.absent(),
                 Value<String?> nextRunAt = const Value.absent(),
+                Value<String?> detailsJson = const Value.absent(),
                 Value<String> syncStatus = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -5484,6 +5987,7 @@ class $$CachedJobsTableTableManager
                 lastRunAt: lastRunAt,
                 lastStatus: lastStatus,
                 nextRunAt: nextRunAt,
+                detailsJson: detailsJson,
                 syncStatus: syncStatus,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -5501,6 +6005,7 @@ class $$CachedJobsTableTableManager
                 Value<String?> lastRunAt = const Value.absent(),
                 Value<String?> lastStatus = const Value.absent(),
                 Value<String?> nextRunAt = const Value.absent(),
+                Value<String?> detailsJson = const Value.absent(),
                 Value<String> syncStatus = const Value.absent(),
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -5516,6 +6021,7 @@ class $$CachedJobsTableTableManager
                 lastRunAt: lastRunAt,
                 lastStatus: lastStatus,
                 nextRunAt: nextRunAt,
+                detailsJson: detailsJson,
                 syncStatus: syncStatus,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -5540,6 +6046,229 @@ typedef $$CachedJobsTableProcessedTableManager =
       $$CachedJobsTableUpdateCompanionBuilder,
       (CachedJob, BaseReferences<_$AppDatabase, $CachedJobsTable, CachedJob>),
       CachedJob,
+      PrefetchHooks Function()
+    >;
+typedef $$CachedJobRunsTableCreateCompanionBuilder =
+    CachedJobRunsCompanion Function({
+      required String gatewayId,
+      required String jobId,
+      required String sessionId,
+      required String sessionJson,
+      Value<String?> lastActive,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$CachedJobRunsTableUpdateCompanionBuilder =
+    CachedJobRunsCompanion Function({
+      Value<String> gatewayId,
+      Value<String> jobId,
+      Value<String> sessionId,
+      Value<String> sessionJson,
+      Value<String?> lastActive,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$CachedJobRunsTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedJobRunsTable> {
+  $$CachedJobRunsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get gatewayId => $composableBuilder(
+    column: $table.gatewayId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get jobId => $composableBuilder(
+    column: $table.jobId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sessionJson => $composableBuilder(
+    column: $table.sessionJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastActive => $composableBuilder(
+    column: $table.lastActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedJobRunsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedJobRunsTable> {
+  $$CachedJobRunsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get gatewayId => $composableBuilder(
+    column: $table.gatewayId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get jobId => $composableBuilder(
+    column: $table.jobId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sessionJson => $composableBuilder(
+    column: $table.sessionJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastActive => $composableBuilder(
+    column: $table.lastActive,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedJobRunsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedJobRunsTable> {
+  $$CachedJobRunsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get gatewayId =>
+      $composableBuilder(column: $table.gatewayId, builder: (column) => column);
+
+  GeneratedColumn<String> get jobId =>
+      $composableBuilder(column: $table.jobId, builder: (column) => column);
+
+  GeneratedColumn<String> get sessionId =>
+      $composableBuilder(column: $table.sessionId, builder: (column) => column);
+
+  GeneratedColumn<String> get sessionJson => $composableBuilder(
+    column: $table.sessionJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastActive => $composableBuilder(
+    column: $table.lastActive,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$CachedJobRunsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CachedJobRunsTable,
+          CachedJobRun,
+          $$CachedJobRunsTableFilterComposer,
+          $$CachedJobRunsTableOrderingComposer,
+          $$CachedJobRunsTableAnnotationComposer,
+          $$CachedJobRunsTableCreateCompanionBuilder,
+          $$CachedJobRunsTableUpdateCompanionBuilder,
+          (
+            CachedJobRun,
+            BaseReferences<_$AppDatabase, $CachedJobRunsTable, CachedJobRun>,
+          ),
+          CachedJobRun,
+          PrefetchHooks Function()
+        > {
+  $$CachedJobRunsTableTableManager(_$AppDatabase db, $CachedJobRunsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedJobRunsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedJobRunsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedJobRunsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> gatewayId = const Value.absent(),
+                Value<String> jobId = const Value.absent(),
+                Value<String> sessionId = const Value.absent(),
+                Value<String> sessionJson = const Value.absent(),
+                Value<String?> lastActive = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedJobRunsCompanion(
+                gatewayId: gatewayId,
+                jobId: jobId,
+                sessionId: sessionId,
+                sessionJson: sessionJson,
+                lastActive: lastActive,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String gatewayId,
+                required String jobId,
+                required String sessionId,
+                required String sessionJson,
+                Value<String?> lastActive = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CachedJobRunsCompanion.insert(
+                gatewayId: gatewayId,
+                jobId: jobId,
+                sessionId: sessionId,
+                sessionJson: sessionJson,
+                lastActive: lastActive,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedJobRunsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CachedJobRunsTable,
+      CachedJobRun,
+      $$CachedJobRunsTableFilterComposer,
+      $$CachedJobRunsTableOrderingComposer,
+      $$CachedJobRunsTableAnnotationComposer,
+      $$CachedJobRunsTableCreateCompanionBuilder,
+      $$CachedJobRunsTableUpdateCompanionBuilder,
+      (
+        CachedJobRun,
+        BaseReferences<_$AppDatabase, $CachedJobRunsTable, CachedJobRun>,
+      ),
+      CachedJobRun,
       PrefetchHooks Function()
     >;
 typedef $$CachedSkillsTableCreateCompanionBuilder =
@@ -6023,6 +6752,8 @@ class $AppDatabaseManager {
       $$PendingOpsTableTableManager(_db, _db.pendingOps);
   $$CachedJobsTableTableManager get cachedJobs =>
       $$CachedJobsTableTableManager(_db, _db.cachedJobs);
+  $$CachedJobRunsTableTableManager get cachedJobRuns =>
+      $$CachedJobRunsTableTableManager(_db, _db.cachedJobRuns);
   $$CachedSkillsTableTableManager get cachedSkills =>
       $$CachedSkillsTableTableManager(_db, _db.cachedSkills);
   $$DeletedMessagesTableTableManager get deletedMessages =>

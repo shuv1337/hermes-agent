@@ -7,6 +7,8 @@ void main() {
     final state = SessionRuntimeState.fromJson({
       'model': 'gpt-5.4',
       'provider': 'openai-codex',
+      'model_snapshot': 'old-model',
+      'provider_snapshot': 'custom',
       'reasoning_effort': 'high',
       'service_tier': 'priority',
     });
@@ -42,6 +44,43 @@ void main() {
     });
 
     expect(message.reasoning, 'first\nsecond');
+  });
+
+  test('cron job preserves rich server detail without conflating errors', () {
+    final job = HermesJob.fromJson({
+      'id': 'job-1',
+      'name': 'Health sync',
+      'last_status': 'error',
+      'last_error': 'Model configuration drifted',
+      'last_delivery_error': 'No home channel',
+      'model': 'gpt-5.6-terra',
+      'provider': 'openai-codex',
+      'model_snapshot': 'old-model',
+      'provider_snapshot': 'custom',
+      'created_at': '2026-08-01T12:00:00Z',
+      'paused_reason': 'manual',
+      'skill': 'health-tracking',
+      'skills': ['health-tracking', 'apple-health'],
+      'workdir': '/workspace',
+      'context_from': 'origin',
+      'enabled_toolsets': ['web', 'terminal'],
+      'no_agent': false,
+      'repeat': {'completed': 42, 'times': 100},
+      'future_server_field': {'kept': true},
+    });
+
+    expect(job.lastStatus, 'error');
+    expect(job.lastError, 'Model configuration drifted');
+    expect(job.lastDeliveryError, 'No home channel');
+    expect(job.model, 'gpt-5.6-terra');
+    expect(job.provider, 'openai-codex');
+    expect(job.modelSnapshot, 'old-model');
+    expect(job.providerSnapshot, 'custom');
+    expect(job.skills, ['health-tracking', 'apple-health']);
+    expect(job.completedRuns, 42);
+    expect(job.totalRuns, 100);
+    expect(job.enabledToolsets, ['web', 'terminal']);
+    expect(job.raw['future_server_field'], {'kept': true});
   });
 
   test('gateway book ignores malformed selector types', () {

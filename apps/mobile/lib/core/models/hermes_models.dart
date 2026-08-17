@@ -619,24 +619,66 @@ class HermesJob {
     this.name,
     this.schedule,
     this.prompt,
+    this.script,
     this.deliver,
     this.enabled,
     this.state,
     this.lastRunAt,
     this.lastStatus,
     this.nextRunAt,
+    this.lastError,
+    this.lastDeliveryError,
+    this.model,
+    this.provider,
+    this.modelSnapshot,
+    this.providerSnapshot,
+    this.createdAt,
+    this.pausedAt,
+    this.pausedReason,
+    this.skill,
+    this.skills = const [],
+    this.workdir,
+    this.contextFrom,
+    this.enabledToolsets = const [],
+    this.noAgent,
+    this.completedRuns,
+    this.totalRuns,
+    this.raw = const {},
   });
 
   final String id;
   final String? name;
   final String? schedule;
   final String? prompt;
+  final String? script;
   final String? deliver;
   final bool? enabled;
   final String? state;
   final String? lastRunAt;
   final String? lastStatus;
   final String? nextRunAt;
+  final String? lastError;
+  final String? lastDeliveryError;
+  final String? model;
+  final String? provider;
+  final String? modelSnapshot;
+  final String? providerSnapshot;
+  final String? createdAt;
+  final String? pausedAt;
+  final String? pausedReason;
+  final String? skill;
+  final List<String> skills;
+  final String? workdir;
+  final String? contextFrom;
+  final List<String> enabledToolsets;
+  final bool? noAgent;
+  final int? completedRuns;
+  final int? totalRuns;
+
+  /// Original server row retained for forward-compatible offline caching.
+  /// Typed fields above drive today's UI; a newer server can add data without
+  /// the phone erasing it on the next cache write.
+  final Map<String, dynamic> raw;
 
   String get displayName {
     final n = name?.trim();
@@ -674,25 +716,62 @@ class HermesJob {
     }
 
     final id = str(map['id'] ?? map['job_id'] ?? map['jobId']) ?? '';
+    final rawSkills = map['skills'];
+    final skills = rawSkills is List
+        ? rawSkills
+              .map(str)
+              .whereType<String>()
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false)
+        : const <String>[];
+    final rawToolsets = map['enabled_toolsets'];
+    final enabledToolsets = rawToolsets is List
+        ? rawToolsets
+              .map(str)
+              .whereType<String>()
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false)
+        : const <String>[];
+    final repeat = map['repeat'];
+    int? integer(dynamic value) {
+      if (value is int) return value;
+      return int.tryParse('${value ?? ''}');
+    }
 
     return HermesJob(
       id: id,
       name: str(map['name'] ?? map['title'] ?? map['label']),
       schedule: schedule,
       prompt: str(map['prompt']),
+      script: str(map['script']),
       deliver: str(map['deliver'] ?? map['delivery']),
       enabled: map['enabled'] is bool
           ? map['enabled'] as bool
           : map['enabled']?.toString().toLowerCase() == 'true',
       state: str(map['state'] ?? map['status']),
       lastRunAt: str(map['last_run_at'] ?? map['last_run'] ?? map['lastRunAt']),
-      lastStatus: str(
-        map['last_status'] ??
-            map['last_run_status'] ??
-            map['last_error'] ??
-            map['lastError'],
-      ),
+      lastStatus: str(map['last_status'] ?? map['last_run_status']),
       nextRunAt: str(map['next_run_at'] ?? map['next_run'] ?? map['nextRunAt']),
+      lastError: str(map['last_error'] ?? map['lastError']),
+      lastDeliveryError: str(
+        map['last_delivery_error'] ?? map['lastDeliveryError'],
+      ),
+      model: str(map['model']),
+      provider: str(map['provider']),
+      modelSnapshot: str(map['model_snapshot']),
+      providerSnapshot: str(map['provider_snapshot']),
+      createdAt: str(map['created_at'] ?? map['createdAt']),
+      pausedAt: str(map['paused_at'] ?? map['pausedAt']),
+      pausedReason: str(map['paused_reason'] ?? map['pausedReason']),
+      skill: str(map['skill']),
+      skills: skills,
+      workdir: str(map['workdir']),
+      contextFrom: str(map['context_from']),
+      enabledToolsets: enabledToolsets,
+      noAgent: map['no_agent'] is bool ? map['no_agent'] as bool : null,
+      completedRuns: repeat is Map ? integer(repeat['completed']) : null,
+      totalRuns: repeat is Map ? integer(repeat['times']) : null,
+      raw: Map<String, dynamic>.from(map),
     );
   }
 }

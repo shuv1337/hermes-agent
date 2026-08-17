@@ -21,6 +21,7 @@ import 'package:hermes_mobile/core/network/gateway_auth.dart';
 /// | deleteSession                 | DELETE /api/sessions/{id} |
 /// | getGlobalModelOptions         | GET  /api/model/options |
 /// | getCronJobs                   | GET  /api/cron/jobs |
+/// | getCronJob / getCronJobRuns  | GET  /api/cron/jobs/{id}[/runs] |
 /// | pause/resume/triggerCronJob   | POST /api/cron/jobs/{id}/… |
 /// | getStatus                     | GET  /api/status |
 ///
@@ -417,6 +418,50 @@ class DashboardClient {
       }
     }
     return out;
+  }
+
+  Future<HermesJob> getCronJob(String jobId) async {
+    final dio = await _ensureDio();
+    final res = await dio.get<dynamic>(
+      '/api/cron/jobs/${Uri.encodeComponent(jobId)}',
+    );
+    _throwIfAuth(res);
+    if (res.statusCode != 200 || res.data is! Map) {
+      throw DioException(
+        requestOptions: res.requestOptions,
+        response: res,
+        message: 'getCronJob HTTP ${res.statusCode}',
+      );
+    }
+    return HermesJob.fromJson((res.data as Map).cast<String, dynamic>());
+  }
+
+  Future<List<HermesSession>> listCronJobRuns(
+    String jobId, {
+    int limit = 20,
+  }) async {
+    final dio = await _ensureDio();
+    final res = await dio.get<dynamic>(
+      '/api/cron/jobs/${Uri.encodeComponent(jobId)}/runs',
+      queryParameters: {'limit': limit.clamp(1, 100)},
+    );
+    _throwIfAuth(res);
+    if (res.statusCode != 200) {
+      throw DioException(
+        requestOptions: res.requestOptions,
+        response: res,
+        message: 'getCronJobRuns HTTP ${res.statusCode}',
+      );
+    }
+    final body = res.data;
+    final raw = body is Map && body['runs'] is List
+        ? body['runs'] as List
+        : const [];
+    return raw
+        .whereType<Map>()
+        .map((row) => HermesSession.fromJson(row.cast<String, dynamic>()))
+        .where((session) => session.id.isNotEmpty)
+        .toList(growable: false);
   }
 
   /// Desktop `pauseCronJob` — hermes.ts L787-791.
