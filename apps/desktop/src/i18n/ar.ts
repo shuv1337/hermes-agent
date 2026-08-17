@@ -61,6 +61,7 @@ export const ar = defineLocale({
       connectingGateway: 'جار الاتصال ببوابة سطح المكتب',
       loadingSettings: 'جار تحميل إعدادات Hermes',
       loadingSessions: 'جار تحميل الجلسات الأخيرة',
+      retryingRemoteBackend: 'جارٍ إعادة الاتصال بخادم Hermes البعيد…',
       startingDesktopConnection: 'جار بدء اتصال سطح المكتب',
       startingHermesDesktop: 'جار تشغيل Hermes Desktop...'
     },
@@ -603,6 +604,10 @@ export const ar = defineLocale({
       heading: 'حول Hermes',
       version: value => `الإصدار ${value}`,
       versionUnavailable: 'الإصدار غير متاح',
+      bundleOutOfSync: 'إصدار التطبيق قديم',
+      bundleOutOfSyncDesc:
+        'تم تحديث وقت تشغيل Hermes، لكن تطبيق سطح المكتب نفسه لا يزال إصدارًا قديمًا — لن تظهر ميزات الواجهة الجديدة (مثل Bot Mode) حتى يتم تحديث التطبيق. شغّل التحديث أدناه لإعادة بناء التطبيق. إذا لم يختفِ هذا التحذير، فأعد التثبيت من أحدث مثبّت لسطح المكتب.',
+      bundleOutOfSyncAction: 'الحصول على المثبّت',
       updates: 'التحديثات',
       checkNow: 'التحقق الآن',
       checking: 'جار التحقق...',
@@ -1633,6 +1638,8 @@ export const ar = defineLocale({
       newWorktreeDesc: 'سمِّ الفرع لشجرة العمل هذه.',
       branchPlaceholder: 'مثال: my-feature',
       startWorkFailed: 'تعذّر إنشاء شجرة العمل',
+      worktreeStaleBackend:
+        'حدِّث خادم Hermes لإنشاء أشجار العمل عبر هذا الاتصال البعيد — فهو أقدم من واجهة git worktree.',
       worktreeProjectLabel: 'المشروع',
       worktreeProjectPlaceholder: 'ابحث في المشاريع…',
       worktreeProjectNone: 'لا توجد مشاريع بمجلد',
@@ -2121,6 +2128,7 @@ export const ar = defineLocale({
       inferenceNotReady: 'الاستدلال غير جاهز',
       checkingInference: 'جار فحص الاستدلال',
       disconnected: 'منقطع',
+      reconnectGateway: 'إعادة الاتصال بالبوابة',
       openSystem: 'فتح النظام',
       connection: label => `الاتصال: ${label}`,
       recentActivity: 'النشاط الأخير',

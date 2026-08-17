@@ -214,9 +214,107 @@ function connectionScopeKey(profile) {
   return String(profile ?? '').trim() || null
 }
 
+/** Which Hermes profile the remote SSH dashboard should actually run as.
+ *  Registry pool keys (`conn:mac-mini::default`) are desktop routing labels —
+ *  they must never be sent to the remote as a profile name. `default` and
+ *  empty mean the remote root home. */
+function resolveRemoteSshDashboardProfile(configuredRemoteProfile, poolOrProfileKey) {
+  const configured = String(configuredRemoteProfile || '').trim()
+
+  if (configured && configured !== 'default') {
+    return configured
+  }
+
+  const key = String(poolOrProfileKey || '').trim()
+  const requested = key.startsWith('conn:') ? key.split('::').pop() || '' : key
+
+  if (!requested || requested === 'default') {
+    return ''
+  }
+
+  return requested
+}
+
 // Coerce a remote auth mode to one of the two supported values ('token' default).
 function normAuthMode(mode) {
   return mode === 'oauth' ? 'oauth' : 'token'
+}
+
+const REMOTE_HEADER_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+
+const FORBIDDEN_REMOTE_HEADER_NAMES = new Set([
+  'authorization',
+  'connection',
+  'content-length',
+  'content-type',
+  'cookie',
+  'host',
+  'origin',
+  'referer',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+  'x-hermes-session-token'
+])
+
+function normalizeRemoteHeaders(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {}
+  }
+
+  const out = {}
+
+  for (const [name, secret] of Object.entries(raw)) {
+    const headerName = String(name || '').trim()
+    const lower = headerName.toLowerCase()
+
+    if (!headerName || !REMOTE_HEADER_NAME_RE.test(headerName) || FORBIDDEN_REMOTE_HEADER_NAMES.has(lower)) {
+      continue
+    }
+
+    if (typeof secret === 'string') {
+      const value = secret.trim()
+
+      if (value) {
+        out[headerName] = { encoding: 'plain', value }
+      }
+
+      continue
+    }
+
+    if (secret && typeof secret === 'object') {
+      const encoding = String((secret as any).encoding || '')
+      const value = String((secret as any).value || '')
+
+      if (value && (encoding === 'safeStorage' || encoding === 'plain' || !encoding)) {
+        out[headerName] = { encoding: encoding || 'plain', value }
+      }
+    }
+  }
+
+  return out
+}
+
+function remoteRequestMatchesBaseUrl(requestUrl, baseUrl) {
+  try {
+    const request = new URL(requestUrl)
+    const base = new URL(baseUrl)
+    const basePath = base.pathname.replace(/\/+$/, '')
+
+    const requestProtocol =
+      request.protocol === 'ws:' ? 'http:' : request.protocol === 'wss:' ? 'https:' : request.protocol
+
+    const baseProtocol = base.protocol === 'ws:' ? 'http:' : base.protocol === 'wss:' ? 'https:' : base.protocol
+
+    if (requestProtocol !== baseProtocol || request.host !== base.host) {
+      return false
+    }
+
+    return !basePath || request.pathname === basePath || request.pathname.startsWith(`${basePath}/`)
+  } catch {
+    return false
+  }
 }
 
 // True for connection modes that resolve to a REMOTE backend. 'cloud' is a
@@ -236,6 +334,9 @@ function normalizeSshConfig(entry) {
   }
 
   let host = String(entry.host || '').trim()
+
+  // Tolerate a pasted command: "ssh root@box" → "root@box".
+  host = host.replace(/^ssh\s+/i, '').trim()
 
   if (!host) {
     return null
@@ -367,8 +468,8 @@ function hostLabelFromBaseUrl(baseUrl) {
  *
  * The config may carry a `profiles` map keyed by name; an entry counts as an
  * override only with a remote-like `mode` (remote or cloud) and a non-empty
- * `url`. Pure: `token` is the raw stored secret; main.ts decrypts it. Returns
- * `{ url, authMode, token } | null`.
+ * `url`. Pure: `token` and `headers` are raw stored secrets; main.ts decrypts
+ * them. Returns `{ url, authMode, token, headers } | null`.
  */
 function profileRemoteOverride(config, profile) {
   const key = connectionScopeKey(profile)
@@ -384,13 +485,27 @@ function profileRemoteOverride(config, profile) {
     return null
   }
 
-  return { url, authMode: normAuthMode(entry.authMode), token: entry.token }
+  const headers = normalizeRemoteHeaders(entry.headers)
+
+  return {
+    url,
+    authMode: normAuthMode(entry.authMode),
+    token: entry.token,
+    ...(Object.keys(headers).length > 0 ? { headers } : {})
+  }
 }
 
 export interface ProfileRouteOptions {
+  /** Profile name on a separately-scoped backend when it differs from the
+   * desktop's local routing label (managed SSH `remoteProfile`). */
+  backendProfile?: null | string
   globalRemote?: boolean
   primaryProfile?: null | string
   profileRemoteOverride?: boolean
+  /** The primary profile's own backend resolves to a remote host. */
+  primaryRemoteActive?: boolean
+  /** A stored per-profile entry exists for this profile (local or remote). */
+  ownEntry?: boolean
 }
 
 export interface ProfileBackendRoute {
@@ -438,19 +553,78 @@ function resolveProfileBackendRoute(profile, opts: ProfileRouteOptions = {}): Pr
     return { backend: 'primary', descriptorProfile: scopedProfile, scopePath: true }
   }
 
+  if (opts.primaryRemoteActive && !opts.ownEntry) {
+    // The primary profile's own backend is a remote gateway (per-profile
+    // override or env) and this sub-profile has no stored entry of its own.
+    // Route through that gateway with profile scoping instead of spawning a
+    // fresh local backend that shares nothing but the name (#88296).
+    return { backend: 'primary', descriptorProfile: scopedProfile, scopePath: true }
+  }
+
   return { backend: 'pool', descriptorProfile: null, scopePath: false }
 }
 
 /**
- * Add renderer-side `request.profile` to a REST path when the route says the
- * serving backend is not already scoped to that profile.
+ * Reconcile the renderer's desktop-facing profile label with the backend's
+ * profile namespace, then add `request.profile` when a shared backend needs it.
+ *
+ * A managed SSH override can deliberately map local `mara` to remote `default`.
+ * Endpoint-level filters (cron list / blueprint instantiate) arrive as an
+ * explicit `?profile=mara`; translate only that self-scope. Cross-profile
+ * selectors such as `all` or another concrete profile retain their meaning.
  */
 function pathWithGlobalRemoteProfile(path, profile, opts: ProfileRouteOptions = {}) {
+  const translated = translateSelfProfileQuery(path, profile, opts.backendProfile)
+
+  if (translated !== path) {
+    return translated
+  }
+
   if (!resolveProfileBackendRoute(profile, opts).scopePath) {
     return path
   }
 
   return pathWithProfileScope(path, profile)
+}
+
+/**
+ * Translate an explicit self-profile query from a Desktop routing alias to the
+ * backend's own profile namespace (a managed SSH `remoteProfile` can map local
+ * `mara` to remote `default`). Only a `?profile=` equal to the alias itself is
+ * rewritten; cross-profile selectors (`all`, another concrete profile) and
+ * unfiltered paths pass through untouched. Used by the v1 profile route above
+ * and by the registry SSH branch of the `hermes:api` handler — both routes
+ * reach a backend whose namespace is the remote profile, not the alias.
+ */
+function translateSelfProfileQuery(path, profile, backendProfile) {
+  const scopedProfile = connectionScopeKey(profile)
+  const backend = connectionScopeKey(backendProfile)
+
+  if (!scopedProfile || !backend || backend === scopedProfile) {
+    return path
+  }
+
+  const rawPath = String(path || '')
+
+  if (!rawPath) {
+    return path
+  }
+
+  let parsed
+
+  try {
+    parsed = new URL(rawPath, 'http://hermes.local')
+  } catch {
+    return path
+  }
+
+  if (connectionScopeKey(parsed.searchParams.get('profile')) !== scopedProfile) {
+    return path
+  }
+
+  parsed.searchParams.set('profile', backend)
+
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`
 }
 
 /**
@@ -636,6 +810,7 @@ export {
   localProfileEntry,
   modeIsRemoteLike,
   normalizeRemoteBaseUrl,
+  normalizeRemoteHeaders,
   normalizeSshConfig,
   normAuthMode,
   pathWithGlobalRemoteProfile,
@@ -645,10 +820,13 @@ export {
   profileHasRemoteConnection,
   profileRemoteOverride,
   profileSshOverride,
+  remoteRequestMatchesBaseUrl,
   resolveAuthMode,
   resolveProfileBackendRoute,
+  resolveRemoteSshDashboardProfile,
   resolveTestWsUrl,
   RT_COOKIE_VARIANTS,
   savedProfileSsh,
-  tokenPreview
+  tokenPreview,
+  translateSelfProfileQuery
 }

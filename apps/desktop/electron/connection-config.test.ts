@@ -31,6 +31,7 @@ import {
   localProfileEntry,
   modeIsRemoteLike,
   normalizeRemoteBaseUrl,
+  normalizeRemoteHeaders,
   normalizeSshConfig,
   normAuthMode,
   pathWithGlobalRemoteProfile,
@@ -38,12 +39,15 @@ import {
   profileHasRemoteConnection,
   profileRemoteOverride,
   profileSshOverride,
+  remoteRequestMatchesBaseUrl,
   resolveAuthMode,
   resolveProfileBackendRoute,
+  resolveRemoteSshDashboardProfile,
   resolveTestWsUrl,
   RT_COOKIE_VARIANTS,
   savedProfileSsh,
-  tokenPreview
+  tokenPreview,
+  translateSelfProfileQuery
 } from './connection-config'
 
 // --- connectionScopeKey / normAuthMode ---
@@ -55,11 +59,60 @@ test('connectionScopeKey trims to a name or null for the global scope', () => {
   assert.equal(connectionScopeKey(undefined), null)
 })
 
+test('resolveRemoteSshDashboardProfile never sends a conn: pool key to the remote', () => {
+  // Clicking Mac Mini / Spark default used `remoteProfile || poolKey`, which
+  // spawned a dashboard for the fictional profile "conn:mac-mini::default".
+  assert.equal(resolveRemoteSshDashboardProfile('', 'conn:mac-mini::default'), '')
+  assert.equal(resolveRemoteSshDashboardProfile(undefined, 'conn:spark::default'), '')
+  assert.equal(resolveRemoteSshDashboardProfile('', 'conn:mac-mini::dixie'), 'dixie')
+  assert.equal(resolveRemoteSshDashboardProfile('', 'bob'), 'bob')
+  assert.equal(resolveRemoteSshDashboardProfile('', 'default'), '')
+  assert.equal(resolveRemoteSshDashboardProfile('writer', 'conn:mac-mini::default'), 'writer')
+})
+
 test('normAuthMode coerces to token unless explicitly oauth', () => {
   assert.equal(normAuthMode('oauth'), 'oauth')
   assert.equal(normAuthMode('token'), 'token')
   assert.equal(normAuthMode(undefined), 'token')
   assert.equal(normAuthMode('weird'), 'token')
+})
+
+test('normalizeRemoteHeaders keeps safe proxy headers and drops transport/auth headers', () => {
+  assert.deepEqual(
+    normalizeRemoteHeaders({
+      ' CF-Access-Client-Id ': { encoding: 'plain', value: 'id' },
+      'CF-Access-Client-Secret': 'secret',
+      Authorization: { encoding: 'plain', value: 'bearer' },
+      Cookie: { encoding: 'plain', value: 'a=b' },
+      Host: { encoding: 'plain', value: 'example.com' },
+      'X-Hermes-Session-Token': { encoding: 'plain', value: 'token' },
+      'Bad Header': { encoding: 'plain', value: 'bad' },
+      Empty: { encoding: 'plain', value: '' }
+    }),
+    {
+      'CF-Access-Client-Id': { encoding: 'plain', value: 'id' },
+      'CF-Access-Client-Secret': { encoding: 'plain', value: 'secret' }
+    }
+  )
+})
+
+test('remoteRequestMatchesBaseUrl treats HTTPS and WSS as the same gateway origin', () => {
+  assert.equal(
+    remoteRequestMatchesBaseUrl(
+      'wss://hermes.example.com/gateway/api/ws?ticket=abc',
+      'https://hermes.example.com/gateway'
+    ),
+    true
+  )
+  assert.equal(remoteRequestMatchesBaseUrl('ws://hermes.example.com/api/ws', 'http://hermes.example.com'), true)
+  assert.equal(
+    remoteRequestMatchesBaseUrl('wss://hermes.example.com/other/api/ws', 'https://hermes.example.com/gateway'),
+    false
+  )
+  assert.equal(
+    remoteRequestMatchesBaseUrl('wss://other.example.com/gateway/api/ws', 'https://hermes.example.com/gateway'),
+    false
+  )
 })
 
 // --- modeIsRemoteLike ---
@@ -112,6 +165,30 @@ test('profileRemoteOverride returns the per-profile remote with defaulted auth m
 test('profileRemoteOverride preserves an explicit oauth auth mode', () => {
   const config = { profiles: { coder: { mode: 'remote', url: 'https://x', authMode: 'oauth' } } }
   assert.equal(profileRemoteOverride(config, 'coder').authMode, 'oauth')
+})
+
+test('profileRemoteOverride preserves normalized remote headers', () => {
+  const config = {
+    profiles: {
+      coder: {
+        mode: 'remote',
+        url: 'https://x',
+        headers: {
+          'CF-Access-Client-Id': { encoding: 'safeStorage', value: 'encrypted-id' },
+          Authorization: { encoding: 'plain', value: 'blocked' }
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(profileRemoteOverride(config, 'coder'), {
+    url: 'https://x',
+    authMode: 'token',
+    token: undefined,
+    headers: {
+      'CF-Access-Client-Id': { encoding: 'safeStorage', value: 'encrypted-id' }
+    }
+  })
 })
 
 test('profileRemoteOverride treats a cloud entry as a remote override', () => {
@@ -200,6 +277,27 @@ test('normalizeSshConfig handles IPv6 and strict port bounds', () => {
   })
 })
 
+test('normalizeSshConfig strips a pasted "ssh " command prefix', () => {
+  assert.deepEqual(normalizeSshConfig({ mode: 'ssh', host: 'ssh root@box' }), {
+    mode: 'ssh',
+    host: 'box',
+    user: 'root'
+  })
+  assert.deepEqual(normalizeSshConfig({ mode: 'ssh', host: 'SSH root@box:2222' }), {
+    mode: 'ssh',
+    host: 'box',
+    user: 'root',
+    port: 2222
+  })
+  // "ssh " with no destination trims to a bare "ssh" host — same as the
+  // legitimately-named case below; the strip only fires on "ssh <dest>".
+  // A host legitimately named "ssh" (no space) is untouched.
+  assert.deepEqual(normalizeSshConfig({ mode: 'ssh', host: 'ssh' }), {
+    mode: 'ssh',
+    host: 'ssh'
+  })
+})
+
 test('localProfileEntry preserves inactive SSH drafts but drops Cloud state', () => {
   const ssh = { mode: 'ssh', host: 'box', user: 'alice', remoteHermesPath: '/hermes' }
   assert.deepEqual(localProfileEntry(ssh), { mode: 'local', savedSsh: ssh })
@@ -259,6 +357,30 @@ const ROUTES = [
     name: 'a local non-primary profile gets its own pooled backend',
     profile: 'coder',
     opts: { primaryProfile: 'default', globalRemote: false, profileRemoteOverride: false },
+    expected: { backend: 'pool', descriptorProfile: null, scopePath: false }
+  },
+  {
+    name: 'a remote sub-profile without a local entry routes through the primary remote gateway',
+    profile: 'pm',
+    opts: {
+      primaryProfile: 'default',
+      globalRemote: false,
+      profileRemoteOverride: false,
+      primaryRemoteActive: true,
+      ownEntry: false
+    },
+    expected: { backend: 'primary', descriptorProfile: 'pm', scopePath: true }
+  },
+  {
+    name: 'a sub-profile with its own local entry still pools locally under a remote primary',
+    profile: 'pm',
+    opts: {
+      primaryProfile: 'default',
+      globalRemote: false,
+      profileRemoteOverride: false,
+      primaryRemoteActive: true,
+      ownEntry: true
+    },
     expected: { backend: 'pool', descriptorProfile: null, scopePath: false }
   }
 ]
@@ -370,6 +492,59 @@ test('pathWithGlobalRemoteProfile skips local and per-profile remote override pa
     }),
     '/api/model/info'
   )
+})
+
+test('pathWithGlobalRemoteProfile translates a desktop SSH alias in an explicit profile query', () => {
+  assert.equal(
+    pathWithGlobalRemoteProfile('/api/cron/jobs?profile=mara', 'mara', {
+      globalRemote: false,
+      profileRemoteOverride: true,
+      backendProfile: 'default'
+    }),
+    '/api/cron/jobs?profile=default'
+  )
+})
+
+test('pathWithGlobalRemoteProfile preserves cross-profile selectors when translating an SSH alias', () => {
+  const opts = {
+    globalRemote: false,
+    profileRemoteOverride: true,
+    backendProfile: 'default'
+  }
+
+  assert.equal(pathWithGlobalRemoteProfile('/api/cron/jobs?profile=all', 'mara', opts), '/api/cron/jobs?profile=all')
+  assert.equal(
+    pathWithGlobalRemoteProfile('/api/cron/jobs?profile=worker', 'mara', opts),
+    '/api/cron/jobs?profile=worker'
+  )
+})
+
+// --- translateSelfProfileQuery (registry SSH-scoped hermes:api contract) ---
+
+test('translateSelfProfileQuery rewrites the self-profile filter into the backend namespace', () => {
+  assert.equal(
+    translateSelfProfileQuery('/api/cron/jobs?profile=mara', 'mara', 'default'),
+    '/api/cron/jobs?profile=default'
+  )
+  assert.equal(
+    translateSelfProfileQuery('/api/cron/blueprints/instantiate?profile=mara', 'mara', 'default'),
+    '/api/cron/blueprints/instantiate?profile=default'
+  )
+})
+
+test('translateSelfProfileQuery leaves cross-profile and unfiltered paths untouched', () => {
+  assert.equal(translateSelfProfileQuery('/api/cron/jobs?profile=all', 'mara', 'default'), '/api/cron/jobs?profile=all')
+  assert.equal(
+    translateSelfProfileQuery('/api/cron/jobs?profile=worker', 'mara', 'default'),
+    '/api/cron/jobs?profile=worker'
+  )
+  assert.equal(translateSelfProfileQuery('/api/cron/jobs', 'mara', 'default'), '/api/cron/jobs')
+})
+
+test('translateSelfProfileQuery no-ops when alias and backend profile agree or are missing', () => {
+  assert.equal(translateSelfProfileQuery('/api/cron/jobs?profile=mara', 'mara', 'mara'), '/api/cron/jobs?profile=mara')
+  assert.equal(translateSelfProfileQuery('/api/cron/jobs?profile=mara', 'mara', ''), '/api/cron/jobs?profile=mara')
+  assert.equal(translateSelfProfileQuery('/api/cron/jobs?profile=mara', '', 'default'), '/api/cron/jobs?profile=mara')
 })
 
 test('pathWithGlobalRemoteProfile skips empty profile/path safely', () => {
