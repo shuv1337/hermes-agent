@@ -19,6 +19,7 @@ import 'package:hermes_mobile/core/network/gateway_auth.dart';
 /// | listSessions                  | GET  /api/sessions |
 /// | getSessionMessages            | GET  /api/sessions/{id}/messages |
 /// | deleteSession                 | DELETE /api/sessions/{id} |
+/// | deleteProfile                 | DELETE /api/profiles/{name} |
 /// | getGlobalModelOptions         | GET  /api/model/options |
 /// | getCronJobs                   | GET  /api/cron/jobs |
 /// | getCronJob / getCronJobRuns  | GET  /api/cron/jobs/{id}[/runs] |
@@ -200,6 +201,30 @@ class DashboardClient {
       '/api/sessions/${Uri.encodeComponent(sessionId)}',
     );
     _throwIfAuth(res);
+  }
+
+  /// Permanently delete a non-default Hermes profile. Bot Mode bots are real
+  /// profiles, so this is the same server-owned operation Desktop uses after
+  /// its confirmation dialog.
+  Future<void> deleteProfile(String name) async {
+    final profileName = name.trim();
+    if (profileName.isEmpty) throw ArgumentError.value(name, 'name');
+    if (profileName.toLowerCase() == 'default') {
+      throw StateError('The default profile cannot be deleted.');
+    }
+    final dio = await _ensureDio();
+    final res = await dio.delete<dynamic>(
+      '/api/profiles/${Uri.encodeComponent(profileName)}',
+    );
+    _throwIfAuth(res);
+    if (res.statusCode != null && res.statusCode! >= 400) {
+      lastError = 'deleteProfile HTTP ${res.statusCode}: ${res.data}';
+      throw DioException(
+        requestOptions: res.requestOptions,
+        response: res,
+        message: lastError,
+      );
+    }
   }
 
   /// Desktop `renameSession` — PATCH /api/sessions/{id} `{ title }`.

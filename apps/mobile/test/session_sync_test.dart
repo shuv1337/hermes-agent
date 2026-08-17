@@ -350,6 +350,28 @@ void main() {
     },
   );
 
+  test('bot pins update server metadata without losing fields', () async {
+    final realtime = _BotRealtime(repo);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+    final bot = HermesBotProfile.fromJson({
+      'name': 'techno',
+      'ui_meta': {
+        'hermes-bots': {'title': 'Senior cat wrangler', 'group': 'Cats'},
+      },
+    });
+
+    await repo.updateBotPinned(bot, true);
+
+    final configure = realtime.calls.singleWhere(
+      (call) => call.method == 'profiles.configure',
+    );
+    final metadata = (configure.params['ui_meta'] as Map)['hermes-bots'] as Map;
+    expect(metadata['pinned'], isTrue);
+    expect(metadata['title'], 'Senior cat wrangler');
+    expect(metadata['group'], 'Cats');
+  });
+
   test('bot profile description parses server-owned capabilities', () async {
     final realtime = _BotRealtime(repo);
     repo.bindRealtime(realtime);

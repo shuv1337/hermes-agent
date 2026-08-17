@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/features/bots/bots_screen.dart';
+import 'package:hermes_mobile/core/providers.dart';
 
 HermesBotProfile _bot(String name, {String? group}) {
   return HermesBotProfile.fromJson({
@@ -27,5 +28,15 @@ void main() {
       'Health and Fitness',
     ]);
     expect(sections[2].bots.map((bot) => bot.name), ['fitness', 'sleep']);
+  });
+
+  test('session pins keep the requested session at the top', () {
+    final recent = HermesSession(id: 'recent', title: 'Recent');
+    final older = HermesSession(id: 'older', title: 'Older');
+
+    expect(orderSessionsWithPins([recent, older], ['older']).map((s) => s.id), [
+      'older',
+      'recent',
+    ]);
   });
 }

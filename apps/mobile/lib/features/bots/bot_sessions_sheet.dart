@@ -87,6 +87,10 @@ class _BotSessionsSheetState extends ConsumerState<_BotSessionsSheet> {
         .toList(growable: false);
   }
 
+  Future<void> _togglePin(HermesSession session) async {
+    await ref.read(pinnedSessionsProvider.notifier).toggle(session.id);
+  }
+
   Future<void> _newSession() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -146,7 +150,9 @@ class _BotSessionsSheetState extends ConsumerState<_BotSessionsSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final sessions = _filtered;
+    final pinnedIds = ref.watch(pinnedSessionsProvider).value ?? const [];
+    final sessions = orderSessionsWithPins(_filtered, pinnedIds);
+    final pinnedSet = pinnedIds.toSet();
     return SafeArea(
       child: SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.82,
@@ -260,6 +266,7 @@ class _BotSessionsSheetState extends ConsumerState<_BotSessionsSheet> {
                               itemBuilder: (context, index) {
                                 final session = sessions[index];
                                 final sticky = session.id == _stickySessionId;
+                                final pinned = pinnedSet.contains(session.id);
                                 return ListTile(
                                   enabled: !_busy,
                                   onTap: () => _select(session),
@@ -280,6 +287,21 @@ class _BotSessionsSheetState extends ConsumerState<_BotSessionsSheet> {
                                         ),
                                       ),
                                       if (sticky)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 8,
+                                          ),
+                                          child: Text(
+                                            'Current',
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                                  color:
+                                                      theme.colorScheme.primary,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                          ),
+                                        ),
+                                      if (pinned)
                                         Padding(
                                           padding: const EdgeInsets.only(
                                             left: 8,
@@ -315,7 +337,30 @@ class _BotSessionsSheetState extends ConsumerState<_BotSessionsSheet> {
                                       ),
                                     ],
                                   ),
-                                  trailing: const Icon(Icons.chevron_right),
+                                  trailing: PopupMenuButton<String>(
+                                    tooltip: 'Session actions',
+                                    onSelected: (action) {
+                                      if (action == 'pin') {
+                                        unawaited(_togglePin(session));
+                                      }
+                                    },
+                                    itemBuilder: (_) => [
+                                      PopupMenuItem(
+                                        value: 'pin',
+                                        child: ListTile(
+                                          leading: Icon(
+                                            pinned
+                                                ? Icons.push_pin
+                                                : Icons.push_pin_outlined,
+                                          ),
+                                          title: Text(
+                                            pinned ? 'Unpin' : 'Pin to top',
+                                          ),
+                                          contentPadding: EdgeInsets.zero,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 );
                               },
                             ),

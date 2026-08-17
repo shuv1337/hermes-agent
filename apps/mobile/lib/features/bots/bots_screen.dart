@@ -326,15 +326,30 @@ class _BotTile extends ConsumerWidget {
             tooltip: 'Bot actions',
             onSelected: (action) {
               switch (action) {
+                case 'pin':
+                  unawaited(_toggleBotPin(context, ref, bot));
                 case 'cronjobs':
                   unawaited(showBotCronjobsSheet(context, bot: bot));
                 case 'edit':
                   unawaited(_editBot(context, ref, bot));
                 case 'group':
                   unawaited(showBotGroupSheet(context, bot: bot));
+                case 'delete':
+                  unawaited(_confirmDeleteBot(context, ref, bot));
               }
             },
             itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'pin',
+                child: ListTile(
+                  leading: Icon(
+                    bot.pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                  ),
+                  title: Text(bot.pinned ? 'Unpin' : 'Pin to top'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'cronjobs',
                 child: ListTile(
@@ -363,12 +378,91 @@ class _BotTile extends ConsumerWidget {
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
+              if (!bot.isDefault && bot.name.toLowerCase() != 'default') ...[
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.delete_outline,
+                      color: theme.colorScheme.error,
+                    ),
+                    title: Text(
+                      'Delete',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
             ],
           ),
           const Icon(Icons.chevron_right),
         ],
       ),
     );
+  }
+}
+
+Future<void> _toggleBotPin(
+  BuildContext context,
+  WidgetRef ref,
+  HermesBotProfile bot,
+) async {
+  try {
+    final sync = ref.read(sessionSyncProvider);
+    if (sync == null) throw StateError('Gateway is not connected');
+    await sync.updateBotPinned(bot, !bot.pinned);
+    await ref.read(botsProvider.notifier).refresh();
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$error')));
+  }
+}
+
+Future<void> _confirmDeleteBot(
+  BuildContext context,
+  WidgetRef ref,
+  HermesBotProfile bot,
+) async {
+  final confirmed =
+      await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Delete bot and profile?'),
+          content: Text(
+            'This will permanently delete “${bot.displayName}”, its Hermes profile @${bot.handle}, sessions, memory, and skills. This cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+  if (!confirmed || !context.mounted) return;
+  try {
+    final sync = ref.read(sessionSyncProvider);
+    if (sync == null) throw StateError('Gateway is not connected');
+    await sync.deleteBot(bot);
+    await ref.read(botsProvider.notifier).refresh();
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$error')));
   }
 }
 

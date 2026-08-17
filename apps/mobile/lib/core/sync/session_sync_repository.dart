@@ -1549,6 +1549,45 @@ class SessionSyncRepository {
     }
   }
 
+  /// Pin or unpin a Bot Mode profile in the shared server roster metadata.
+  Future<void> updateBotPinned(HermesBotProfile bot, bool pinned) async {
+    final profile = bot.name.trim();
+    if (profile.isEmpty) throw StateError('Bot profile name is missing');
+    final rawUi = bot.raw['ui_meta'];
+    final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;
+    final metadata = rawMeta is Map
+        ? rawMeta.map((key, value) => MapEntry('$key', value))
+        : <String, dynamic>{};
+    if (pinned) {
+      metadata['pinned'] = true;
+    } else {
+      metadata.remove('pinned');
+    }
+    final result = await gatewayRequest('profiles.configure', {
+      'name': profile,
+      'ui_meta': {'hermes-bots': metadata},
+    });
+    final applied = result['applied'];
+    if (applied is Map && applied['ui_meta'] != true) {
+      throw StateError('Server could not save the bot pin');
+    }
+  }
+
+  /// Permanently delete the real Hermes profile backing a custom bot.
+  Future<void> deleteBot(HermesBotProfile bot) async {
+    final profile = bot.name.trim();
+    if (profile.isEmpty) throw StateError('Bot profile name is missing');
+    if (bot.isDefault || profile.toLowerCase() == 'default') {
+      throw StateError('The default profile cannot be deleted.');
+    }
+    final dashboard = _dashboard;
+    if (dashboard == null) {
+      throw StateError('Dashboard connection is unavailable');
+    }
+    await dashboard.deleteProfile(profile);
+    _profileBySession.removeWhere((_, value) => value == profile);
+  }
+
   Future<void> _pinBotChat(HermesBotProfile bot, String sessionId) async {
     final rawUi = bot.raw['ui_meta'];
     final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;
