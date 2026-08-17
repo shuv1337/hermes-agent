@@ -292,6 +292,34 @@ void main() {
     expect(configure.params['enabled_mcp_servers'], ['notion']);
   });
 
+  test('new bot avatar is stored as the shared profile asset', () async {
+    final realtime = _BotRealtime(repo);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+
+    final bot = await repo.createBot(
+      name: 'pixel',
+      title: 'Pixel',
+      description: 'Pet bot',
+      shape: 'circle',
+      color: '#f97316',
+      avatarBytes: Uint8List.fromList([1, 2, 3, 4]),
+    );
+
+    final asset = realtime.calls.singleWhere(
+      (call) => call.method == 'profiles.set_asset',
+    );
+    expect(asset.params['name'], 'pixel');
+    expect(asset.params['asset'], 'avatar');
+    expect(asset.params['data'], 'AQIDBA==');
+    final configure = realtime.calls.singleWhere(
+      (call) => call.method == 'profiles.configure',
+    );
+    final metadata = (configure.params['ui_meta'] as Map)['hermes-bots'] as Map;
+    expect(metadata['imageKind'], 'photo');
+    expect(bot.hasAvatar, isTrue);
+  });
+
   test('bot profile description parses server-owned capabilities', () async {
     final realtime = _BotRealtime(repo);
     repo.bindRealtime(realtime);

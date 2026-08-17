@@ -198,7 +198,7 @@ class AppleHealthSync {
         'schema_version': 1,
         'device_id': _health.deviceId,
         'batch_id': const Uuid().v4(),
-        'app_version': '30',
+        'app_version': '31',
         'samples': payload,
       });
       accepted += (response['accepted'] as num?)?.toInt() ?? 0;

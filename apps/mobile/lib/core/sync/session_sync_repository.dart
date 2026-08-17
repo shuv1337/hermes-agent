@@ -1248,6 +1248,7 @@ class SessionSyncRepository {
     required String description,
     required String shape,
     required String color,
+    Uint8List? avatarBytes,
     bool healthCoach = false,
     String? cloneFrom = 'default',
     bool shareAuth = true,
@@ -1290,11 +1291,24 @@ class SessionSyncRepository {
       },
     });
 
+    if (avatarBytes != null) {
+      final asset = await gatewayRequest('profiles.set_asset', {
+        'name': slug,
+        'asset': 'avatar',
+        'data': base64Encode(avatarBytes),
+      });
+      if (asset['ok'] == false) {
+        throw StateError(
+          'The profile was created, but its avatar was not saved',
+        );
+      }
+    }
+
     final createdAt = DateTime.now().millisecondsSinceEpoch;
     final metadata = <String, dynamic>{
       'shape': shape,
       'color': color,
-      'imageKind': 'shape',
+      'imageKind': avatarBytes == null ? 'shape' : 'photo',
       'title': cleanTitle,
       'created': createdAt,
       'custom': true,
@@ -1341,6 +1355,7 @@ class SessionSyncRepository {
       'description': descriptionText,
       if (cleanModel.isNotEmpty) 'model': cleanModel,
       if (cleanProvider.isNotEmpty) 'provider': cleanProvider,
+      'has_avatar': avatarBytes != null,
       'ui_meta': {'hermes-bots': metadata},
     });
   }

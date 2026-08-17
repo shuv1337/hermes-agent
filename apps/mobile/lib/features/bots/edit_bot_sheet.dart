@@ -2,14 +2,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
 import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/health/apple_health_sync.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/bots/bot_advanced_editor.dart';
-import 'package:hermes_mobile/features/bots/bot_avatar.dart';
-import 'package:hermes_mobile/features/bots/create_bot_sheet.dart';
+import 'package:hermes_mobile/features/bots/bot_avatar_picker.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
 
 Future<bool> showEditBotSheet(
@@ -46,7 +44,6 @@ class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
   bool _avatarChanged = false;
   bool _busy = false;
   String? _error;
-  final _picker = ImagePicker();
 
   @override
   void initState() {
@@ -67,59 +64,6 @@ class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
     _description.dispose();
     _advanced.dispose();
     super.dispose();
-  }
-
-  HermesBotProfile _previewBot(String shape, String color) {
-    return HermesBotProfile.fromJson({
-      'name': widget.bot.name,
-      'ui_meta': {
-        'hermes-bots': {
-          'title': _title.text.trim(),
-          'shape': shape,
-          'color': color,
-          'imageKind': 'shape',
-        },
-      },
-    });
-  }
-
-  Future<void> _pickAvatar(ImageSource source) async {
-    try {
-      final file = await _picker.pickImage(
-        source: source,
-        imageQuality: 82,
-        maxWidth: 1200,
-        maxHeight: 1200,
-      );
-      if (file == null) return;
-      final bytes = await file.readAsBytes();
-      if (bytes.length > 2000000) {
-        throw StateError('Image is larger than the server’s 2 MB limit');
-      }
-      final supported = _isPng(bytes) || _isJpeg(bytes) || _isWebp(bytes);
-      if (!supported) {
-        throw StateError('Choose a PNG, JPEG, or WebP image');
-      }
-      if (!mounted) return;
-      setState(() {
-        _pickedAvatar = bytes;
-        _usePhoto = true;
-        _avatarChanged = true;
-        _error = null;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = context.l10n.couldNotPickImage('$error'));
-    }
-  }
-
-  void _selectShape(String shape) {
-    setState(() {
-      _shape = shape;
-      _usePhoto = false;
-      _pickedAvatar = null;
-      _avatarChanged = widget.bot.hasAvatar;
-    });
   }
 
   Future<void> _submit() async {
@@ -204,29 +148,6 @@ class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
                 ),
               ),
               const SizedBox(height: 18),
-              Center(child: _avatarPreview()),
-              const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => _pickAvatar(ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: Text(l10n.photoLibrary),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => _pickAvatar(ImageSource.camera),
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: Text(l10n.camera),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
               TextField(
                 controller: _title,
                 enabled: !_busy,
@@ -271,75 +192,22 @@ class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
               const SizedBox(height: 10),
               Text(l10n.botAppearanceLabel, style: theme.textTheme.titleSmall),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final shape in botShapes)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: _busy ? null : () => _selectShape(shape),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        width: 52,
-                        height: 52,
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: !_usePhoto && _shape == shape
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.outline.withValues(
-                                    alpha: 0.3,
-                                  ),
-                            width: !_usePhoto && _shape == shape ? 2 : 1,
-                          ),
-                        ),
-                        child: BotAvatar(
-                          bot: _previewBot(shape, _color),
-                          size: 40,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final color in botColors)
-                    InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: _busy
-                          ? null
-                          : () => setState(() {
-                              _color = color;
-                              _usePhoto = false;
-                              _pickedAvatar = null;
-                              _avatarChanged = widget.bot.hasAvatar;
-                            }),
-                      child: Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(
-                            int.parse(color.substring(1), radix: 16) |
-                                0xFF000000,
-                          ),
-                          border: Border.all(
-                            color: !_usePhoto && _color == color
-                                ? theme.colorScheme.onSurface
-                                : theme.colorScheme.outline.withValues(
-                                    alpha: 0.35,
-                                  ),
-                            width: !_usePhoto && _color == color ? 3 : 1,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+              BotAvatarPicker(
+                bot: widget.bot.name,
+                title: _title.text,
+                description: _description.text,
+                shape: _shape,
+                color: _color,
+                useImage: _usePhoto,
+                imageBytes: _pickedAvatar,
+                enabled: !_busy,
+                onShape: (value) => setState(() => _shape = value),
+                onColor: (value) => setState(() => _color = value),
+                onImage: (bytes) => setState(() {
+                  _pickedAvatar = bytes;
+                  _usePhoto = bytes != null;
+                  _avatarChanged = bytes != null || widget.bot.hasAvatar;
+                }),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),
@@ -377,38 +245,4 @@ class _EditBotSheetState extends ConsumerState<_EditBotSheet> {
       ),
     );
   }
-
-  Widget _avatarPreview() {
-    if (_usePhoto && _pickedAvatar != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Image.memory(
-          _pickedAvatar!,
-          width: 72,
-          height: 72,
-          fit: BoxFit.cover,
-        ),
-      );
-    }
-    if (_usePhoto) return BotAvatar(bot: widget.bot, size: 72);
-    return BotAvatar(bot: _previewBot(_shape, _color), size: 72);
-  }
 }
-
-bool _isPng(Uint8List bytes) =>
-    bytes.length >= 8 &&
-    bytes[0] == 0x89 &&
-    bytes[1] == 0x50 &&
-    bytes[2] == 0x4e &&
-    bytes[3] == 0x47;
-
-bool _isJpeg(Uint8List bytes) =>
-    bytes.length >= 3 &&
-    bytes[0] == 0xff &&
-    bytes[1] == 0xd8 &&
-    bytes[2] == 0xff;
-
-bool _isWebp(Uint8List bytes) =>
-    bytes.length >= 12 &&
-    String.fromCharCodes(bytes.sublist(0, 4)) == 'RIFF' &&
-    String.fromCharCodes(bytes.sublist(8, 12)) == 'WEBP';

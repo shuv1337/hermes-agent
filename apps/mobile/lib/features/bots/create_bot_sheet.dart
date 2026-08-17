@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,31 +7,8 @@ import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/health/apple_health_sync.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/bots/bot_advanced_editor.dart';
-import 'package:hermes_mobile/features/bots/bot_avatar.dart';
+import 'package:hermes_mobile/features/bots/bot_avatar_picker.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
-
-const botShapes = [
-  'circle',
-  'squircle',
-  'pill',
-  'triangle',
-  'hexagon',
-  'cloud',
-  'drop',
-];
-
-const botColors = [
-  '#f5f5f4',
-  '#8d6748',
-  '#ef4444',
-  '#f97316',
-  '#14b8a6',
-  '#38bdf8',
-  '#3b40c8',
-  '#8b5cf6',
-  '#ec4899',
-  '#9ca3af',
-];
 
 String botSlugify(String value) {
   final slug = value
@@ -67,6 +46,8 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
   final _description = TextEditingController();
   var _shape = 'circle';
   var _color = '#f97316';
+  Uint8List? _avatarBytes;
+  var _useImage = false;
   var _busy = false;
   var _healthCoach = false;
   final _advanced = BotAdvancedController.create();
@@ -84,20 +65,6 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
     _description.dispose();
     _advanced.dispose();
     super.dispose();
-  }
-
-  HermesBotProfile _previewBot(String shape, String color) {
-    return HermesBotProfile.fromJson({
-      'name': _slug.isEmpty ? 'agent' : _slug,
-      'ui_meta': {
-        'hermes-bots': {
-          'title': _title.text.trim(),
-          'shape': shape,
-          'color': color,
-          'imageKind': 'shape',
-        },
-      },
-    });
   }
 
   Future<void> _submit() async {
@@ -132,6 +99,7 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
         description: _description.text,
         shape: _shape,
         color: _color,
+        avatarBytes: _useImage ? _avatarBytes : null,
         healthCoach: _healthCoach,
         cloneFrom: _advanced.cloneFrom,
         shareAuth: _advanced.shareAuth,
@@ -179,10 +147,6 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
                 ),
-              ),
-              const SizedBox(height: 18),
-              Center(
-                child: BotAvatar(bot: _previewBot(_shape, _color), size: 72),
               ),
               const SizedBox(height: 18),
               TextField(
@@ -244,72 +208,21 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
               const SizedBox(height: 10),
               Text(l10n.botAppearanceLabel, style: theme.textTheme.titleSmall),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final shape in botShapes)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: _busy
-                          ? null
-                          : () => setState(() => _shape = shape),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        width: 52,
-                        height: 52,
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: _shape == shape
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.outline.withValues(
-                                    alpha: 0.3,
-                                  ),
-                            width: _shape == shape ? 2 : 1,
-                          ),
-                        ),
-                        child: BotAvatar(
-                          bot: _previewBot(shape, _color),
-                          size: 40,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final color in botColors)
-                    InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: _busy
-                          ? null
-                          : () => setState(() => _color = color),
-                      child: Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(
-                            int.parse(color.substring(1), radix: 16) |
-                                0xFF000000,
-                          ),
-                          border: Border.all(
-                            color: _color == color
-                                ? theme.colorScheme.onSurface
-                                : theme.colorScheme.outline.withValues(
-                                    alpha: 0.35,
-                                  ),
-                            width: _color == color ? 3 : 1,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+              BotAvatarPicker(
+                bot: _slug.isEmpty ? 'agent' : _slug,
+                title: _title.text,
+                description: _description.text,
+                shape: _shape,
+                color: _color,
+                useImage: _useImage,
+                imageBytes: _avatarBytes,
+                enabled: !_busy,
+                onShape: (value) => setState(() => _shape = value),
+                onColor: (value) => setState(() => _color = value),
+                onImage: (bytes) => setState(() {
+                  _avatarBytes = bytes;
+                  _useImage = bytes != null;
+                }),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),

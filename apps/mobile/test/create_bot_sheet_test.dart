@@ -57,6 +57,10 @@ void main() {
     expect(find.text('Title'), findsOneWidget);
     expect(find.text('Description'), findsOneWidget);
     expect(find.textContaining('Advanced · model'), findsOneWidget);
+    expect(find.text('Bot'), findsOneWidget);
+    expect(find.text('Generate'), findsOneWidget);
+    expect(find.text('Upload'), findsOneWidget);
+    expect(find.text('Pet'), findsOneWidget);
     expect(find.text('Create Bot'), findsOneWidget);
   });
 
@@ -112,6 +116,14 @@ void main() {
       findsOneWidget,
     );
     expect(find.widgetWithText(TextField, 'Caturday jokes'), findsOneWidget);
+    expect(find.text('Bot'), findsOneWidget);
+    expect(find.text('Generate'), findsOneWidget);
+    expect(find.text('Upload'), findsOneWidget);
+    expect(find.text('Pet'), findsOneWidget);
+    await tester.ensureVisible(find.text('Upload'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Upload'));
+    await tester.pump();
     expect(find.text('Photo library'), findsOneWidget);
     expect(find.text('Camera'), findsOneWidget);
     expect(find.textContaining('Advanced · model'), findsOneWidget);
