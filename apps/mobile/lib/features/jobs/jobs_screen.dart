@@ -18,17 +18,7 @@ class JobsScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.jobsTitle),
-        actions: [
-          IconButton(
-            tooltip: context.l10n.sync,
-            onPressed: () =>
-                ref.read(jobsProvider.notifier).refresh(bypassTtl: true),
-            icon: const Icon(Icons.sync),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: Text(context.l10n.jobsTitle)),
       body: jobsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -89,46 +79,53 @@ class JobsScreen extends ConsumerWidget {
                   ),
                 ),
               Expanded(
-                child: list.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                view.syncError != null
-                                    ? context.l10n.noCachedJobs
-                                    : context.l10n.noCronJobs,
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(
-                                    alpha: 0.65,
+                child: RefreshIndicator(
+                  onRefresh: () =>
+                      ref.read(jobsProvider.notifier).refresh(bypassTtl: true),
+                  child: list.isEmpty
+                      ? CustomScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
+                            SliverFillRemaining(
+                              hasScrollBody: false,
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(32),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        view.syncError != null
+                                            ? context.l10n.noCachedJobs
+                                            : context.l10n.noCronJobs,
+                                        textAlign: TextAlign.center,
+                                        style: theme.textTheme.bodyLarge
+                                            ?.copyWith(
+                                              color: theme.colorScheme.onSurface
+                                                  .withValues(alpha: 0.65),
+                                            ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      FilledButton(
+                                        onPressed: () => ref
+                                            .read(jobsProvider.notifier)
+                                            .refresh(bypassTtl: true),
+                                        child: Text(context.l10n.retry),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              FilledButton(
-                                onPressed: () => ref
-                                    .read(jobsProvider.notifier)
-                                    .refresh(bypassTtl: true),
-                                child: Text(context.l10n.retry),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () => ref
-                            .read(jobsProvider.notifier)
-                            .refresh(bypassTtl: true),
-                        child: ListView.separated(
+                            ),
+                          ],
+                        )
+                      : ListView.separated(
                           itemCount: list.length,
                           separatorBuilder: (_, _) =>
                               const Divider(height: 1, indent: 16),
                           itemBuilder: (context, i) => _JobTile(job: list[i]),
                         ),
-                      ),
+                ),
               ),
             ],
           );

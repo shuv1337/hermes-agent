@@ -53,11 +53,6 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
             onPressed: _createBot,
             icon: const Icon(Icons.add),
           ),
-          IconButton(
-            tooltip: context.l10n.sync,
-            onPressed: () => ref.read(botsProvider.notifier).refresh(),
-            icon: const Icon(Icons.sync),
-          ),
         ],
       ),
       body: bots.when(
@@ -97,25 +92,31 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
                   ),
                 ),
               Expanded(
-                child: view.profiles.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Text(
-                            context.l10n.botsEmpty,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: theme.colorScheme.onSurface.withValues(
-                                alpha: 0.65,
+                child: RefreshIndicator(
+                  onRefresh: () => ref.read(botsProvider.notifier).refresh(),
+                  child: view.profiles.isEmpty
+                      ? CustomScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
+                            SliverFillRemaining(
+                              hasScrollBody: false,
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(32),
+                                  child: Text(
+                                    context.l10n.botsEmpty,
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      color: theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.65),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () =>
-                            ref.read(botsProvider.notifier).refresh(),
-                        child: ListView.separated(
+                          ],
+                        )
+                      : ListView.separated(
                           physics: const AlwaysScrollableScrollPhysics(),
                           itemCount: view.profiles.length,
                           separatorBuilder: (_, _) =>
@@ -123,7 +124,7 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
                           itemBuilder: (context, index) =>
                               _BotTile(bot: view.profiles[index]),
                         ),
-                      ),
+                ),
               ),
             ],
           );
