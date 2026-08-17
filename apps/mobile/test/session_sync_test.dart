@@ -199,6 +199,49 @@ void main() {
   );
 
   test(
+    'changing Health Coach access pins a fresh tool-schema session',
+    () async {
+      final realtime = _BotRealtime(repo);
+      repo.bindRealtime(realtime);
+      addTearDown(realtime.dispose);
+      final bot = HermesBotProfile.fromJson({
+        'name': 'coach',
+        'model': 'gpt-5.6-terra',
+        'provider': 'openai-codex',
+        'ui_meta': {
+          'hermes-bots': {
+            'title': 'Coach',
+            'chat': 'old-chat',
+            'healthCoach': false,
+          },
+        },
+      });
+
+      await repo.updateBot(
+        bot: bot,
+        title: 'Coach',
+        description: 'Health trends',
+        shape: 'circle',
+        color: '#f97316',
+        usePhoto: false,
+        healthCoach: true,
+      );
+
+      final create = realtime.calls.singleWhere(
+        (call) => call.method == 'session.create',
+      );
+      expect(create.params['profile'], 'coach');
+      expect(create.params['hidden'], isTrue);
+      final repin = realtime.calls.lastWhere(
+        (call) => call.method == 'profiles.configure',
+      );
+      final metadata = (repin.params['ui_meta'] as Map)['hermes-bots'] as Map;
+      expect(metadata['chat'], 'fresh-health-chat');
+      expect(metadata['healthCoach'], isTrue);
+    },
+  );
+
+  test(
     'runtime hydration resumes once and keeps the session-specific model',
     () async {
       final realtime = _RuntimeRealtime(repo);
@@ -515,6 +558,10 @@ class _BotRealtime extends GatewayRealtime {
         'messages': [
           {'row_id': 7, 'role': 'assistant', 'text': 'Profile-specific answer'},
         ],
+      },
+      'session.create' => {
+        'session_id': 'fresh-health-live',
+        'stored_session_id': 'fresh-health-chat',
       },
       'profiles.configure' => {
         'applied': {'ui_meta': true, 'description': true},

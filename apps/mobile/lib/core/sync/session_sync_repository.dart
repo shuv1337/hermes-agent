@@ -1116,6 +1116,7 @@ class SessionSyncRepository {
 
     final rawUi = bot.raw['ui_meta'];
     final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;
+    final wasHealthCoach = rawMeta is Map && rawMeta['healthCoach'] == true;
     final metadata = rawMeta is Map
         ? rawMeta.map((key, value) => MapEntry('$key', value))
         : <String, dynamic>{};
@@ -1154,6 +1155,30 @@ class SessionSyncRepository {
     if (applied is Map &&
         (applied['ui_meta'] != true || applied['description'] != true)) {
       throw StateError('Server could not save all bot profile changes');
+    }
+
+    // Tool schemas are fixed for a session to preserve prompt caching. When
+    // health access changes, pin a fresh Bot Chat so the next open receives
+    // the new toolset rather than silently reusing an incompatible session.
+    if (wasHealthCoach != healthCoach) {
+      final fresh = await _createSessionOnGateway(
+        title: 'Bot Chat',
+        model: bot.model,
+        provider: bot.provider,
+        profile: profile,
+        hidden: true,
+      );
+      metadata['chat'] = fresh.id;
+      final repinned = await gatewayRequest('profiles.configure', {
+        'name': profile,
+        'ui_meta': {'hermes-bots': metadata},
+      });
+      final repinnedApplied = repinned['applied'];
+      if (repinnedApplied is Map && repinnedApplied['ui_meta'] != true) {
+        throw StateError(
+          'Health access changed, but the fresh bot chat could not be pinned',
+        );
+      }
     }
 
     return HermesBotProfile.fromJson({
