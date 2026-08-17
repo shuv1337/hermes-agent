@@ -112,6 +112,34 @@ void main() {
     );
   });
 
+  test('a hidden pinned bot chat resumes instead of being recreated', () async {
+    final realtime = _BotRealtime(repo, hidePinnedFromList: true);
+    repo.bindRealtime(realtime);
+    addTearDown(realtime.dispose);
+    final bot = HermesBotProfile.fromJson({
+      'name': 'coach',
+      'model': 'gpt-5.6-terra',
+      'provider': 'openai-codex',
+      'ui_meta': {
+        'hermes-bots': {'chat': 'bot-session', 'title': 'Fitness Coach'},
+      },
+    });
+
+    final target = await repo.openBotChat(bot);
+
+    expect(target.created, isFalse);
+    expect(target.session.id, 'bot-session');
+    expect(
+      realtime.calls.where((call) => call.method == 'session.create'),
+      isEmpty,
+    );
+    final resume = realtime.calls.singleWhere(
+      (call) => call.method == 'session.resume',
+    );
+    expect(resume.params['profile'], 'coach');
+    expect(resume.params['session_id'], 'bot-session');
+  });
+
   test('bot creation writes profile and desktop-compatible metadata', () async {
     final realtime = _BotRealtime(repo);
     repo.bindRealtime(realtime);
@@ -566,17 +594,21 @@ class _RuntimeRealtime extends GatewayRealtime {
 }
 
 class _BotRealtime extends GatewayRealtime {
-  _BotRealtime(SessionSyncRepository repository, {this.soul = ''})
-    : super(
-        profile: const ConnectionProfile(
-          id: 'bot-test',
-          baseUrl: 'https://gateway.test',
-        ),
-        sessionSync: repository,
-      );
+  _BotRealtime(
+    SessionSyncRepository repository, {
+    this.soul = '',
+    this.hidePinnedFromList = false,
+  }) : super(
+         profile: const ConnectionProfile(
+           id: 'bot-test',
+           baseUrl: 'https://gateway.test',
+         ),
+         sessionSync: repository,
+       );
 
   final calls = <({String method, Map<String, dynamic> params})>[];
   final String soul;
+  final bool hidePinnedFromList;
 
   @override
   bool get isLive => true;
@@ -596,9 +628,11 @@ class _BotRealtime extends GatewayRealtime {
     calls.add((method: method, params: {...?params}));
     return switch (method) {
       'session.list' => {
-        'sessions': [
-          {'id': 'bot-session', 'title': 'Bot Chat', 'message_count': 1},
-        ],
+        'sessions': hidePinnedFromList
+            ? const []
+            : [
+                {'id': 'bot-session', 'title': 'Bot Chat', 'message_count': 1},
+              ],
       },
       'session.resume' => {'session_id': 'bot-live', 'messages': const []},
       'session.history' => {

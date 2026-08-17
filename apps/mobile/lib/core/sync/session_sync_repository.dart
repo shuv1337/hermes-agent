@@ -1027,6 +1027,40 @@ class SessionSyncRepository {
       selected = rows
           .where((row) => '${row['id'] ?? ''}' == pinned)
           .firstOrNull;
+      if (selected == null) {
+        // Bot chats are intentionally hidden from ordinary session lists.
+        // A missing list row therefore does not mean the profile-owned pin is
+        // stale: validate it by resuming directly before recovery creates a
+        // replacement (and re-sends the first-run greeting).
+        try {
+          final resumed = await gatewayRequest('session.resume', {
+            'session_id': pinned,
+            'profile': profile,
+          });
+          final liveId = '${resumed['session_id'] ?? ''}'.trim();
+          if (liveId.isNotEmpty) {
+            _registerLiveMapping(storedId: pinned, liveId: liveId);
+            registerSessionProfile(pinned, profile);
+            final last = bot.lastSession;
+            final now = DateTime.now().toUtc().toIso8601String();
+            return (
+              session: HermesSession(
+                id: pinned,
+                source: last?.source ?? 'mobile',
+                model: bot.model ?? last?.model,
+                title: last?.title ?? 'Bot Chat',
+                startedAt: last?.startedAt ?? now,
+                lastActive: last?.lastActive ?? now,
+                messageCount: last?.messageCount ?? 0,
+                preview: last?.preview,
+              ),
+              created: false,
+            );
+          }
+        } catch (error) {
+          debugPrint('Bot pin $pinned is not resumable: $error');
+        }
+      }
     }
     selected ??= rows.firstOrNull;
     if (selected != null) {
