@@ -11,8 +11,7 @@
       }
     }
   },
-  "navChat": "محادثة",
-  "navChatLive": "محادثة · مباشر",
+  "navSessions": "الجلسات",
   "navBots": "الروبوتات",
   "navJobs": "مهام",
   "navSettings": "الإعدادات",

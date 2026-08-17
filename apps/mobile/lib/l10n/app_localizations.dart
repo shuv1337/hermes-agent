@@ -136,17 +136,11 @@ abstract class AppLocalizations {
   /// **'Failed to load connection: {error}'**
   String failedToLoadConnection(String error);
 
-  /// No description provided for @navChat.
+  /// No description provided for @navSessions.
   ///
   /// In en, this message translates to:
-  /// **'Chat'**
-  String get navChat;
-
-  /// No description provided for @navChatLive.
-  ///
-  /// In en, this message translates to:
-  /// **'Chat · live'**
-  String get navChatLive;
+  /// **'Sessions'**
+  String get navSessions;
 
   /// No description provided for @navBots.
   ///

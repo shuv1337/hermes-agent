@@ -24,10 +24,7 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get navChat => 'Chat';
-
-  @override
-  String get navChatLive => 'Chat · live';
+  String get navSessions => 'Sitzungen';
 
   @override
   String get navBots => 'Bots';

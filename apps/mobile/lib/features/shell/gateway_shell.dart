@@ -179,7 +179,7 @@ class _GatewayShellState extends ConsumerState<GatewayShell>
                     _live ? Icons.chat_bubble : Icons.chat_bubble_outline,
                   ),
                   selectedIcon: const Icon(Icons.chat_bubble),
-                  label: _live ? l10n.navChatLive : l10n.navChat,
+                  label: l10n.navSessions,
                 ),
                 GatewayTab.bots => NavigationDestination(
                   icon: const Icon(Icons.smart_toy_outlined),

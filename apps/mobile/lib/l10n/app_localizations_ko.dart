@@ -24,10 +24,7 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get navChat => '채팅';
-
-  @override
-  String get navChatLive => '채팅 · 실시간';
+  String get navSessions => '세션';
 
   @override
   String get navBots => '봇';

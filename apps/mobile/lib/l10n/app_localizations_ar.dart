@@ -24,10 +24,7 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
-  String get navChat => 'محادثة';
-
-  @override
-  String get navChatLive => 'محادثة · مباشر';
+  String get navSessions => 'الجلسات';
 
   @override
   String get navBots => 'الروبوتات';

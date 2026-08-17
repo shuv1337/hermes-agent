@@ -10,8 +10,7 @@
     }
   },
 
-  "navChat": "Chat",
-  "navChatLive": "Chat · live",
+  "navSessions": "Sessions",
   "navBots": "Bots",
   "navJobs": "Jobs",
   "navSettings": "Settings",

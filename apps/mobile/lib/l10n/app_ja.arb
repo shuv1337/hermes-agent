@@ -11,8 +11,7 @@
       }
     }
   },
-  "navChat": "チャット",
-  "navChatLive": "チャット · ライブ",
+  "navSessions": "セッション",
   "navBots": "ボット",
   "navJobs": "ジョブ",
   "navSettings": "設定",

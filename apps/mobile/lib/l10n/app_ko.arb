@@ -11,8 +11,7 @@
       }
     }
   },
-  "navChat": "채팅",
-  "navChatLive": "채팅 · 실시간",
+  "navSessions": "세션",
   "navBots": "봇",
   "navJobs": "작업",
   "navSettings": "설정",

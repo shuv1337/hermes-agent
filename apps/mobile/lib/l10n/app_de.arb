@@ -11,8 +11,7 @@
       }
     }
   },
-  "navChat": "Chat",
-  "navChatLive": "Chat · live",
+  "navSessions": "Sitzungen",
   "navBots": "Bots",
   "navJobs": "Jobs",
   "navSettings": "Einstellungen",

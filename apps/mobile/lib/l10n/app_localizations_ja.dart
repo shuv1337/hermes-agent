@@ -24,10 +24,7 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
-  String get navChat => 'チャット';
-
-  @override
-  String get navChatLive => 'チャット · ライブ';
+  String get navSessions => 'セッション';
 
   @override
   String get navBots => 'ボット';

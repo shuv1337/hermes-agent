@@ -24,10 +24,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get navChat => '聊天';
-
-  @override
-  String get navChatLive => '聊天 · 实时';
+  String get navSessions => '会话';
 
   @override
   String get navBots => '机器人';
