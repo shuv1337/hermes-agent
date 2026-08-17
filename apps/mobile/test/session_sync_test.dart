@@ -320,6 +320,36 @@ void main() {
     expect(bot.hasAvatar, isTrue);
   });
 
+  test(
+    'bot groups update server-owned metadata without losing fields',
+    () async {
+      final realtime = _BotRealtime(repo);
+      repo.bindRealtime(realtime);
+      addTearDown(realtime.dispose);
+      final bot = HermesBotProfile.fromJson({
+        'name': 'techno',
+        'ui_meta': {
+          'hermes-bots': {
+            'title': 'Senior cat wrangler',
+            'shape': 'hexagon',
+            'group': 'Old group',
+          },
+        },
+      });
+
+      await repo.updateBotGroup(bot, 'Health and Fitness');
+
+      final configure = realtime.calls.singleWhere(
+        (call) => call.method == 'profiles.configure',
+      );
+      final metadata =
+          (configure.params['ui_meta'] as Map)['hermes-bots'] as Map;
+      expect(metadata['group'], 'Health and Fitness');
+      expect(metadata['title'], 'Senior cat wrangler');
+      expect(metadata['shape'], 'hexagon');
+    },
+  );
+
   test('bot profile description parses server-owned capabilities', () async {
     final realtime = _BotRealtime(repo);
     repo.bindRealtime(realtime);

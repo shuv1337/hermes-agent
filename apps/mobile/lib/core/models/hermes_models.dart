@@ -805,6 +805,7 @@ class HermesBotProfile {
     this.color,
     this.shape,
     this.imageKind,
+    this.group,
     this.chatSessionId,
     this.createdAt,
     this.pinned = false,
@@ -822,6 +823,7 @@ class HermesBotProfile {
   final String? color;
   final String? shape;
   final String? imageKind;
+  final String? group;
   final String? chatSessionId;
   final int? createdAt;
   final bool pinned;
@@ -890,6 +892,7 @@ class HermesBotProfile {
       color: text(meta['color']),
       shape: text(meta['shape']),
       imageKind: text(meta['imageKind']),
+      group: text(meta['group']),
       chatSessionId: text(meta['chat']),
       createdAt: integer(meta['created']),
       pinned: meta['pinned'] == true,

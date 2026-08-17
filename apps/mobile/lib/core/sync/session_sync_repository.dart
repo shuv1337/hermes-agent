@@ -1522,6 +1522,33 @@ class SessionSyncRepository {
     });
   }
 
+  /// Move a bot into a server-owned Bot Mode group, or clear its group.
+  /// Group names are intentionally implicit: a group exists while at least
+  /// one bot references it, matching Desktop's roster behavior.
+  Future<void> updateBotGroup(HermesBotProfile bot, String? group) async {
+    final profile = bot.name.trim();
+    if (profile.isEmpty) throw StateError('Bot profile name is missing');
+    final rawUi = bot.raw['ui_meta'];
+    final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;
+    final metadata = rawMeta is Map
+        ? rawMeta.map((key, value) => MapEntry('$key', value))
+        : <String, dynamic>{};
+    final cleanGroup = group?.trim() ?? '';
+    if (cleanGroup.isEmpty) {
+      metadata.remove('group');
+    } else {
+      metadata['group'] = cleanGroup;
+    }
+    final result = await gatewayRequest('profiles.configure', {
+      'name': profile,
+      'ui_meta': {'hermes-bots': metadata},
+    });
+    final applied = result['applied'];
+    if (applied is Map && applied['ui_meta'] != true) {
+      throw StateError('Server could not save the bot group');
+    }
+  }
+
   Future<void> _pinBotChat(HermesBotProfile bot, String sessionId) async {
     final rawUi = bot.raw['ui_meta'];
     final rawMeta = rawUi is Map ? rawUi['hermes-bots'] : null;

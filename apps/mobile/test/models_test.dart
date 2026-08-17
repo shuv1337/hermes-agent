@@ -109,6 +109,7 @@ void main() {
                 'chat': 'session-1',
                 'created': 1786800000000,
                 'pinned': true,
+                'group': 'Research',
               },
             },
           },
@@ -127,6 +128,7 @@ void main() {
       expect(researcher.usesImageAvatar, isFalse);
       expect(researcher.lastSession?.preview, 'Latest findings');
       expect(researcher.pinned, isTrue);
+      expect(researcher.group, 'Research');
     },
   );
 

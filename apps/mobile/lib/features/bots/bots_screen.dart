@@ -7,6 +7,7 @@ import 'package:hermes_mobile/core/models/hermes_models.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/bots/bot_avatar.dart';
 import 'package:hermes_mobile/features/bots/bot_cronjobs_sheet.dart';
+import 'package:hermes_mobile/features/bots/bot_group_sheet.dart';
 import 'package:hermes_mobile/features/bots/bot_sessions_sheet.dart';
 import 'package:hermes_mobile/features/bots/create_bot_sheet.dart';
 import 'package:hermes_mobile/features/bots/edit_bot_sheet.dart';
@@ -123,14 +124,7 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
                             ),
                           ],
                         )
-                      : ListView.separated(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount: view.profiles.length,
-                          separatorBuilder: (_, _) =>
-                              const Divider(height: 1, indent: 76),
-                          itemBuilder: (context, index) =>
-                              _BotTile(bot: view.profiles[index]),
-                        ),
+                      : _BotRosterList(profiles: view.profiles),
                 ),
               ),
             ],
@@ -150,6 +144,82 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
     await ref.read(botsProvider.notifier).refresh();
     if (!mounted) return;
     await _openBotChat(context, ref, created);
+  }
+}
+
+class BotRosterSection {
+  const BotRosterSection({required this.group, required this.bots});
+
+  final String? group;
+  final List<HermesBotProfile> bots;
+}
+
+List<BotRosterSection> botRosterSections(List<HermesBotProfile> bots) {
+  final ungrouped = <HermesBotProfile>[];
+  final grouped = <String, List<HermesBotProfile>>{};
+  for (final bot in bots) {
+    final group = bot.group?.trim() ?? '';
+    if (group.isEmpty) {
+      ungrouped.add(bot);
+    } else {
+      grouped.putIfAbsent(group, () => []).add(bot);
+    }
+  }
+  final names = grouped.keys.toList()
+    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  return [
+    if (ungrouped.isNotEmpty) BotRosterSection(group: null, bots: ungrouped),
+    for (final name in names)
+      BotRosterSection(group: name, bots: grouped[name]!),
+  ];
+}
+
+class _BotRosterList extends StatelessWidget {
+  const _BotRosterList({required this.profiles});
+
+  final List<HermesBotProfile> profiles;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final children = <Widget>[];
+    for (final section in botRosterSections(profiles)) {
+      if (section.group != null) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
+            child: Row(
+              children: [
+                Text(
+                  section.group!.toUpperCase(),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Divider(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.35),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      for (var index = 0; index < section.bots.length; index++) {
+        children.add(_BotTile(bot: section.bots[index]));
+        if (index < section.bots.length - 1) {
+          children.add(const Divider(height: 1, indent: 76));
+        }
+      }
+    }
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: children,
+    );
   }
 }
 
@@ -260,6 +330,8 @@ class _BotTile extends ConsumerWidget {
                   unawaited(showBotCronjobsSheet(context, bot: bot));
                 case 'edit':
                   unawaited(_editBot(context, ref, bot));
+                case 'group':
+                  unawaited(showBotGroupSheet(context, bot: bot));
               }
             },
             itemBuilder: (_) => [
@@ -268,6 +340,18 @@ class _BotTile extends ConsumerWidget {
                 child: ListTile(
                   leading: Icon(Icons.event_repeat_outlined),
                   title: Text('Cronjobs'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'group',
+                child: ListTile(
+                  leading: const Icon(Icons.folder_outlined),
+                  title: Text(
+                    bot.group?.trim().isNotEmpty == true
+                        ? 'Group: ${bot.group}'
+                        : 'Move to group',
+                  ),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
