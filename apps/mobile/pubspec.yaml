@@ -1,7 +1,7 @@
 name: hermes_mobile
 description: "Hermes Go — Go further. Stay connected. Mobile gateway connector."
 publish_to: "none"
-version: 0.1.0+20
+version: 0.1.0+21
 
 environment:
   sdk: ^3.12.2
@@ -38,6 +38,7 @@ dependencies:
   url_launcher: ^6.3.2
   webview_flutter: ^4.14.1
   scrollview_observer: ^1.27.0
+  health: 13.3.1
 
 dev_dependencies:
   flutter_test:

@@ -1007,6 +1007,7 @@ class SessionSyncRepository {
     required String description,
     required String shape,
     required String color,
+    bool healthCoach = false,
   }) async {
     final slug = name.trim();
     final cleanTitle = title.trim();
@@ -1042,10 +1043,25 @@ class SessionSyncRepository {
       'title': cleanTitle,
       'created': createdAt,
       'custom': true,
+      'healthCoach': healthCoach,
     };
+    final described = await gatewayRequest('profiles.describe', {'name': slug});
+    final rawToolsets = described['toolsets'];
+    final enabledToolsets = rawToolsets is List
+        ? rawToolsets
+              .whereType<Map>()
+              .where((toolset) => toolset['enabled'] == true)
+              .map((toolset) => '${toolset['name'] ?? ''}')
+              .where(
+                (toolset) => toolset.isNotEmpty && toolset != 'apple_health',
+              )
+              .toList()
+        : <String>[];
+    if (healthCoach) enabledToolsets.add('apple_health');
     final configured = await gatewayRequest('profiles.configure', {
       'name': slug,
       'ui_meta': {'hermes-bots': metadata},
+      if (enabledToolsets.isNotEmpty) 'enabled_toolsets': enabledToolsets,
     });
     final applied = configured['applied'];
     if (applied is Map && applied['ui_meta'] != true) {
@@ -1076,6 +1092,7 @@ class SessionSyncRepository {
     required bool usePhoto,
     Uint8List? avatarBytes,
     bool avatarChanged = false,
+    bool healthCoach = false,
   }) async {
     final profile = bot.name.trim();
     if (profile.isEmpty) throw StateError('Bot profile name is missing');
@@ -1107,13 +1124,31 @@ class SessionSyncRepository {
       ..['color'] = color
       ..['imageKind'] = usePhoto ? 'photo' : 'shape'
       ..['title'] = title.trim()
-      ..['custom'] = true;
+      ..['custom'] = true
+      ..['healthCoach'] = healthCoach;
+
+    final described = await gatewayRequest('profiles.describe', {
+      'name': profile,
+    });
+    final rawToolsets = described['toolsets'];
+    final enabledToolsets = rawToolsets is List
+        ? rawToolsets
+              .whereType<Map>()
+              .where((toolset) => toolset['enabled'] == true)
+              .map((toolset) => '${toolset['name'] ?? ''}')
+              .where(
+                (toolset) => toolset.isNotEmpty && toolset != 'apple_health',
+              )
+              .toList()
+        : <String>[];
+    if (healthCoach) enabledToolsets.add('apple_health');
 
     final cleanDescription = description.trim();
     final configured = await gatewayRequest('profiles.configure', {
       'name': profile,
       'description': cleanDescription,
       'ui_meta': {'hermes-bots': metadata},
+      if (enabledToolsets.isNotEmpty) 'enabled_toolsets': enabledToolsets,
     });
     final applied = configured['applied'];
     if (applied is Map &&

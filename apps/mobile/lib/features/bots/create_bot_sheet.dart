@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:hermes_mobile/core/models/hermes_models.dart';
+import 'package:hermes_mobile/core/health/apple_health_sync.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/features/bots/bot_avatar.dart';
 import 'package:hermes_mobile/l10n/l10n.dart';
@@ -66,6 +67,7 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
   var _shape = 'circle';
   var _color = '#f97316';
   var _busy = false;
+  var _healthCoach = false;
   String? _error;
 
   String get _slug => botSlugify(_name.text);
@@ -105,12 +107,29 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
       _error = null;
     });
     try {
+      if (_healthCoach) {
+        final profile = ref.read(connectionProfileProvider).value;
+        final dashboard = ref.read(dashboardClientProvider);
+        if (profile == null || dashboard == null) {
+          throw StateError('Connect to your Hermes gateway first');
+        }
+        final health = AppleHealthSync(
+          gatewayId: profile.id,
+          dashboard: dashboard,
+        );
+        final granted = await health.requestReadAuthorization();
+        if (!granted) {
+          throw StateError('Apple Health read access was not granted');
+        }
+        await health.sync(initial: true);
+      }
       final bot = await sync.createBot(
         name: _slug,
         title: _title.text,
         description: _description.text,
         shape: _shape,
         color: _color,
+        healthCoach: _healthCoach,
       );
       if (mounted) Navigator.of(context).pop(bot);
     } catch (error) {
@@ -192,6 +211,19 @@ class _CreateBotSheetState extends ConsumerState<_CreateBotSheet> {
                     FocusManager.instance.primaryFocus?.unfocus(),
               ),
               const SizedBox(height: 20),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _healthCoach,
+                onChanged: _busy
+                    ? null
+                    : (value) => setState(() => _healthCoach = value),
+                secondary: const Icon(Icons.favorite_outline),
+                title: const Text('Health Coach'),
+                subtitle: const Text(
+                  'Read your selected Apple Health data from this bot. Data syncs privately to your Hermes gateway.',
+                ),
+              ),
+              const SizedBox(height: 10),
               Text(l10n.botAppearanceLabel, style: theme.textTheme.titleSmall),
               const SizedBox(height: 10),
               Wrap(

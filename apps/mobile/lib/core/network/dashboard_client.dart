@@ -499,6 +499,48 @@ class DashboardClient {
     return res.data ?? const {};
   }
 
+  /// Apple Health user-plugin capability/status. A 404 means the gateway has
+  /// not installed the optional bridge; it is not treated as an auth failure.
+  Future<Map<String, dynamic>?> appleHealthStatus() async {
+    final dio = await _ensureDio();
+    final res = await dio.get<Map<String, dynamic>>(
+      '/api/plugins/apple-health/status',
+    );
+    _throwIfAuth(res);
+    if (res.statusCode == 404) return null;
+    if (res.statusCode != 200) {
+      throw DioException(requestOptions: res.requestOptions, response: res);
+    }
+    return res.data ?? const {};
+  }
+
+  Future<Map<String, dynamic>> syncAppleHealth(
+    Map<String, dynamic> payload,
+  ) async {
+    final dio = await _ensureDio();
+    final res = await dio.post<Map<String, dynamic>>(
+      '/api/plugins/apple-health/sync',
+      data: payload,
+    );
+    _throwIfAuth(res);
+    if (res.statusCode != 200) {
+      throw DioException(requestOptions: res.requestOptions, response: res);
+    }
+    return res.data ?? const {};
+  }
+
+  Future<int> clearAppleHealth() async {
+    final dio = await _ensureDio();
+    final res = await dio.delete<Map<String, dynamic>>(
+      '/api/plugins/apple-health/data',
+    );
+    _throwIfAuth(res);
+    if (res.statusCode != 200) {
+      throw DioException(requestOptions: res.requestOptions, response: res);
+    }
+    return (res.data?['deleted'] as num?)?.toInt() ?? 0;
+  }
+
   /// Desktop `getGlobalModelOptions` — hermes.ts L872-895.
   Future<ModelOptionsResult> listModelOptions({
     bool explicitOnly = true,

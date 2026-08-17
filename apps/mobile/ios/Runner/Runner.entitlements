@@ -8,5 +8,7 @@
 	<array>
 		<string>$(AppIdentifierPrefix)ai.hermes.go</string>
 	</array>
+	<key>com.apple.developer.healthkit</key>
+	<true/>
 </dict>
 </plist>

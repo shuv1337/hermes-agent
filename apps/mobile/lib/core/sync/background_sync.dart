@@ -11,6 +11,7 @@ import 'package:hermes_mobile/core/network/connection_store.dart';
 import 'package:hermes_mobile/core/network/dashboard_client.dart';
 import 'package:hermes_mobile/core/network/hermes_api.dart';
 import 'package:hermes_mobile/core/services/result_notifier.dart';
+import 'package:hermes_mobile/core/health/apple_health_sync.dart';
 import 'package:hermes_mobile/core/sync/gateway_realtime.dart';
 import 'package:hermes_mobile/core/sync/session_sync_repository.dart';
 import 'package:hermes_mobile/core/sync/watch_store.dart';
@@ -191,6 +192,17 @@ class BackgroundSync {
       flushedOps = (pendingBefore.length - pendingAfter.length).clamp(0, 9999);
 
       await sync.syncSessions();
+
+      // HealthKit remains authoritative; this is an opportunistic incremental
+      // upload when the user has explicitly enabled a Health Coach bot.
+      try {
+        await AppleHealthSync(
+          gatewayId: profile.id,
+          dashboard: dashboard,
+        ).sync();
+      } catch (e) {
+        debugPrint('BackgroundSync: Apple Health sync skipped: $e');
+      }
 
       final activeWatches = await watchStore.forGateway(profile.id);
       for (final watch in activeWatches) {

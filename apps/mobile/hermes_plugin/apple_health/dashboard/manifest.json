@@ -1,0 +1,9 @@
+{
+  "name": "apple-health",
+  "label": "Apple Health",
+  "description": "Private HealthKit sync for Hermes Go health-coach bots.",
+  "icon": "HeartPulse",
+  "version": "0.1.0",
+  "api": "plugin_api.py"
+}
+

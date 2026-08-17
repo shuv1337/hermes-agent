@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:hermes_mobile/core/demo/demo_mode.dart';
+import 'package:hermes_mobile/core/health/apple_health_sync.dart';
 import 'package:hermes_mobile/core/network/gateway_auth.dart';
 import 'package:hermes_mobile/core/providers.dart';
 import 'package:hermes_mobile/core/services/feedback.dart';
@@ -262,6 +264,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               setState(() {});
             },
           ),
+          if (Platform.isIOS && profile != null && !isDemoProfileId(profile.id))
+            ListTile(
+              leading: const Icon(Icons.favorite_outline),
+              title: const Text('Apple Health'),
+              subtitle: const Text('Private sync and Health Coach access'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showAppleHealthSettings(profile.id),
+            ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.sync),
@@ -348,6 +358,156 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _mask(String key) {
     if (key.length <= 8) return '••••••••';
     return '${key.substring(0, 4)}…${key.substring(key.length - 4)}';
+  }
+
+  Future<void> _showAppleHealthSettings(String gatewayId) async {
+    final dashboard = ref.read(dashboardClientProvider);
+    if (dashboard == null) return;
+    final health = AppleHealthSync(gatewayId: gatewayId, dashboard: dashboard);
+    var enabled = await health.isEnabled;
+    var busy = false;
+    String? message;
+    Map<String, dynamic>? serverStatus;
+    try {
+      serverStatus = await dashboard.appleHealthStatus();
+    } catch (e) {
+      message = '$e';
+    }
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setLocal) {
+          Future<void> run(Future<void> Function() action) async {
+            setLocal(() {
+              busy = true;
+              message = null;
+            });
+            try {
+              await action();
+              serverStatus = await dashboard.appleHealthStatus();
+            } catch (e) {
+              message = '$e';
+            } finally {
+              if (sheetContext.mounted) setLocal(() => busy = false);
+            }
+          }
+
+          final count = (serverStatus?['sample_count'] as num?)?.toInt() ?? 0;
+          final last = serverStatus?['last_sync_at'];
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Apple Health',
+                    style: Theme.of(sheetContext).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Hermes Go reads HealthKit only after your permission and sends samples to this authenticated Hermes gateway. Health Coach bots can query bounded summaries; health data is never added to every chat prompt.',
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: enabled,
+                    onChanged: busy || serverStatus == null
+                        ? null
+                        : (value) => run(() async {
+                            if (value) {
+                              final granted = await health
+                                  .requestReadAuthorization();
+                              if (!granted) {
+                                throw StateError(
+                                  'Apple Health read access was not granted',
+                                );
+                              }
+                              await health.sync(initial: true);
+                            } else {
+                              await health.setEnabled(false);
+                            }
+                            enabled = value;
+                          }),
+                    title: Text(enabled ? 'Sync enabled' : 'Sync off'),
+                    subtitle: Text(
+                      serverStatus == null
+                          ? 'Apple Health plugin not installed on this gateway'
+                          : '$count samples on gateway${last == null ? '' : ' · last sync $last'}',
+                    ),
+                  ),
+                  if (message != null)
+                    Text(
+                      message!,
+                      style: TextStyle(
+                        color: Theme.of(sheetContext).colorScheme.error,
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: !enabled || busy
+                        ? null
+                        : () => run(() async {
+                            final result = await health.sync();
+                            message =
+                                'Synced ${result.accepted} new or updated samples';
+                          }),
+                    icon: busy
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.sync),
+                    label: const Text('Sync now'),
+                  ),
+                  TextButton.icon(
+                    onPressed: busy || serverStatus == null || count == 0
+                        ? null
+                        : () async {
+                            final confirmed = await showDialog<bool>(
+                              context: sheetContext,
+                              builder: (dialogContext) => AlertDialog(
+                                title: const Text('Delete synced health data?'),
+                                content: const Text(
+                                  'This permanently deletes Apple Health samples stored by the plugin on this Hermes gateway. It does not change Apple Health on your iPhone.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext, true),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed != true) return;
+                            await run(() async {
+                              final deleted = await dashboard
+                                  .clearAppleHealth();
+                              await health.forgetLocalState();
+                              enabled = false;
+                              message = 'Deleted $deleted samples';
+                            });
+                          },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Delete gateway health data'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   /// Tears down the sample workspace and returns to the connect screen
