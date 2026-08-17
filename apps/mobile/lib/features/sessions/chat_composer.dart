@@ -883,6 +883,15 @@ class _ChatComposerBarState extends State<ChatComposerBar> {
                                 vertical: 10,
                               ),
                             ),
+                            // iOS intentionally does not unfocus a TextField
+                            // for touch pointers by default. Bot chats expose
+                            // this especially clearly because the composer can
+                            // fill the only easy dismissal area. Treat any tap
+                            // outside the field as an explicit keyboard close;
+                            // TapRegion preserves buttons, links, selection,
+                            // and message gestures while doing so.
+                            onTapOutside: (_) =>
+                                FocusManager.instance.primaryFocus?.unfocus(),
                             onChanged: (_) => setState(() {}),
                             onSubmitted: canSend
                                 ? (_) {

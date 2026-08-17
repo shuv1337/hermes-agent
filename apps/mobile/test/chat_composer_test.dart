@@ -120,4 +120,29 @@ void main() {
     );
     expect(sendButton.onPressed, isNotNull);
   });
+
+  testWidgets('a tap outside the composer dismisses the keyboard', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+
+    await _pump(tester, controller: controller, sending: false);
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isTrue,
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.onTapOutside, isNotNull);
+    field.onTapOutside!(const PointerDownEvent());
+    await tester.pump();
+
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isFalse,
+    );
+  });
 }
