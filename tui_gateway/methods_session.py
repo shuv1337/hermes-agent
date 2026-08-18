@@ -447,7 +447,7 @@ def _(rid, params: dict) -> dict:
 
         # Fast path: if the session is already live, reuse it under the lock.
         with _session_resume_lock:
-            live = _find_live_session_by_key(target)
+            live = _find_live_session_by_key(target, profile_home=profile_home)
             if live is not None:
                 return _ok(rid, _reuse_live_payload(*live))
 
@@ -755,7 +755,7 @@ def _(rid, params: dict) -> dict:
         # live session while we were building. Re-check under the lock; if it won,
         # discard our just-built agent and reuse theirs (no worker/poller wired yet).
         with _session_resume_lock:
-            live = _find_live_session_by_key(target)
+            live = _find_live_session_by_key(target, profile_home=profile_home)
             if live is not None:
                 try:
                     if hasattr(agent, "close"):

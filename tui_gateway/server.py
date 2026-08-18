@@ -8439,7 +8439,10 @@ def _claim_or_reuse_live(
     resume lock, or — if a concurrent resume already won — release ``lease`` and
     return the winner for the caller to reuse."""
     with _session_resume_lock:
-        live = _find_live_session_by_key(session_key)
+        live = _find_live_session_by_key(
+            session_key,
+            profile_home=record.get("profile_home"),
+        )
         if live is not None:
             if lease is not None:
                 lease.release()
@@ -8613,9 +8616,36 @@ def _session_lookup_key(session: dict, *, fallback: str = "") -> str:
     )
 
 
-def _find_live_session_by_key(session_key: str) -> tuple[str, dict] | None:
+_LIVE_SESSION_ANY_PROFILE = object()
+
+
+def _find_live_session_by_key(
+    session_key: str,
+    *,
+    profile_home: str | Path | None | object = _LIVE_SESSION_ANY_PROFILE,
+) -> tuple[str, dict] | None:
+    """Return the live runtime for one durable session in one profile.
+
+    Session ids are only unique inside a profile's ``state.db``.  More
+    importantly, a profile-scoped resume must never adopt a live runtime that
+    was registered earlier without its ``profile_home``: that agent was built
+    from the gateway's launch config and cannot see profile-local plugins.
+    Treat a requested profile as part of the lookup identity so the caller can
+    register a correctly scoped runtime alongside any stale/default one.
+
+    Omitting ``profile_home`` preserves the historical unscoped lookup used
+    by internal child-session paths whose owner profile is already implicit.
+    Passing ``None`` explicitly selects only the launch/default profile.
+    """
+    filter_profile = profile_home is not _LIVE_SESSION_ANY_PROFILE
+    wanted_home = str(profile_home) if profile_home is not None else ""
     for sid, session in list(_sessions.items()):
         if session.get("_finalized"):
+            continue
+        if (
+            filter_profile
+            and str(session.get("profile_home") or "") != wanted_home
+        ):
             continue
         if _session_lookup_key(session, fallback=sid) == session_key:
             return sid, session

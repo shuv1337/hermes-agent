@@ -13214,6 +13214,52 @@ def test_session_delete_success_returns_deleted_id(monkeypatch):
 # --------------------------------------------------------------------------
 
 
+def test_live_session_lookup_does_not_reuse_default_runtime_for_profile(tmp_path):
+    """A bot resume must not inherit a default-profile agent with the same id.
+
+    Profile-local plugins are resolved from ``session['profile_home']``.  A
+    stale live record without that field therefore has a different capability
+    boundary even when its durable session id happens to match.
+    """
+    profile_home = tmp_path / "profiles" / "coach"
+    stale = {
+        "agent": None,
+        "session_key": "bot-chat-1",
+        "profile_home": None,
+    }
+    scoped = {
+        "agent": None,
+        "session_key": "bot-chat-1",
+        "profile_home": str(profile_home),
+    }
+    server._sessions.clear()
+    try:
+        server._sessions["default-live"] = stale
+        assert (
+            server._find_live_session_by_key(
+                "bot-chat-1", profile_home=profile_home
+            )
+            is None
+        )
+
+        server._sessions["profile-live"] = scoped
+        found = server._find_live_session_by_key(
+            "bot-chat-1", profile_home=profile_home
+        )
+        assert found == ("profile-live", scoped)
+        # Existing internal callers that do not supply a profile retain the
+        # historical first-match behavior.
+        assert server._find_live_session_by_key("bot-chat-1") == (
+            "default-live",
+            stale,
+        )
+        assert server._find_live_session_by_key(
+            "bot-chat-1", profile_home=None
+        ) == ("default-live", stale)
+    finally:
+        server._sessions.clear()
+
+
 def test_session_list_honors_params_profile_opens_profile_db(monkeypatch, tmp_path):
     """Issue #62503: session.list must read the profile's state.db, not launch."""
     profile_home = tmp_path / "profiles" / "mlperf"

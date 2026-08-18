@@ -177,9 +177,23 @@ class SessionSyncRepository {
     final id = sessionId.trim();
     final name = profile.trim();
     if (id.isEmpty || name.isEmpty) return;
-    _profileBySession[id] = name;
     final live = _liveByStored[id];
-    if (live != null && live.isNotEmpty) _profileBySession[live] = name;
+    final mappingWasProfileScoped =
+        _profileBySession[id] == name ||
+        (live != null && _profileBySession[live] == name);
+    _profileBySession[id] = name;
+    if (live != null && live.isNotEmpty) {
+      _profileBySession[live] = name;
+      if (!mappingWasProfileScoped) {
+        // A runtime id obtained before we learned this was a Bot profile may
+        // already be bound to the gateway's default HERMES_HOME.  Force the
+        // next operation through profile-scoped session.resume instead of
+        // trusting that ambiguous cached runtime.
+        _liveByStored.remove(id);
+        _liveByStored.remove(live);
+        _storedByLive.remove(live);
+      }
+    }
   }
 
   String? _profileForSession(String sessionId) {
@@ -1025,10 +1039,10 @@ class SessionSyncRepository {
     final storedId = (storedRaw == null || '$storedRaw'.trim().isEmpty)
         ? liveId
         : '$storedRaw'.trim();
-    _registerLiveMapping(storedId: storedId, liveId: liveId);
     if (profile != null && profile.isNotEmpty) {
       registerSessionProfile(storedId, profile);
     }
+    _registerLiveMapping(storedId: storedId, liveId: liveId);
 
     final info = result['info'];
     String? infoModel;
@@ -1129,8 +1143,8 @@ class SessionSyncRepository {
           });
           final liveId = '${resumed['session_id'] ?? ''}'.trim();
           if (liveId.isNotEmpty) {
-            _registerLiveMapping(storedId: pinned, liveId: liveId);
             registerSessionProfile(pinned, profile);
+            _registerLiveMapping(storedId: pinned, liveId: liveId);
             final last = bot.lastSession;
             final now = DateTime.now().toUtc().toIso8601String();
             return (
