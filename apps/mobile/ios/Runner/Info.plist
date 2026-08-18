@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Hermes Go</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Hermes Go</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ar</string>
+		<string>de</string>
+		<string>es</string>
+		<string>fr</string>
+		<string>ja</string>
+		<string>ko</string>
+		<string>pt</string>
+		<string>zh</string>
+	</array>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<!-- Background sync: flush outbox, pull agent/job results, notify. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<!-- Must match WorkmanagerPlugin.register* in AppDelegate + Dart uniqueNames -->
+		<string>hermes.mobile.periodicSync</string>
+		<string>hermes.mobile.oneOffSync</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Hermes Go connects to your Hermes agent gateway on the local network or VPN.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Hermes uses the camera to attach photos to your agent chat.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Hermes uses your photo library to attach images to your agent chat.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hermes uses the microphone for voice dictation into the chat composer.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Hermes converts your speech to text for the chat composer.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Hermes Go reads health and activity data you choose so your Health Coach bot can summarize trends on your private Hermes gateway.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Hermes Go does not save or change any data in Apple Health. It only reads the health data you choose to share, so your Health Coach bot can summarize trends on your private Hermes gateway.</string>
+	<!-- Plain HTTP is allowed to private/VPN gateways (Dart validator in
+	     GatewayAuthClient.validateBaseUrl is the actual policy gate: LAN,
+	     Tailscale/WireGuard, mDNS, CGNAT; public HTTP is still rejected
+	     there). ATS itself can't distinguish those hosts, so arbitrary
+	     loads are allowed here and enforcement stays in the app layer. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

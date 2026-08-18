@@ -12,6 +12,10 @@ import os
 
 logger = logging.getLogger(__name__)
 
+# Populated by live Codex discovery so downstream picker payloads can preserve
+# the model-specific reasoning levels instead of reducing the catalog to ids.
+_LIVE_MODEL_METADATA: dict[str, dict] = {}
+
 DEFAULT_CODEX_MODELS: List[str] = [
     # GPT-5.6 series (Sol/Terra/Luna + -pro high-effort modes) — GA 2026-07-09
     # (previewed 2026-06-26).
@@ -160,6 +164,7 @@ def _fetch_models_from_api(access_token: str) -> List[str]:
         visibility = item.get("visibility", "")
         if isinstance(visibility, str) and visibility.strip().lower() in {"hide", "hidden"}:
             continue
+        _LIVE_MODEL_METADATA[slug.lower()] = dict(item)
         priority = item.get("priority")
         rank = int(priority) if isinstance(priority, (int, float)) else 10_000
         sortable.append((rank, slug))
@@ -211,6 +216,7 @@ def _read_cache_models(codex_home: Path) -> List[str]:
             visibility = item.get("visibility")
             if isinstance(visibility, str) and visibility.strip().lower() in {"hide", "hidden"}:
                 continue
+            _LIVE_MODEL_METADATA[slug.lower()] = dict(item)
             priority = item.get("priority")
             rank = int(priority) if isinstance(priority, (int, float)) else 10_000
             sortable.append((rank, slug))
@@ -222,6 +228,77 @@ def _read_cache_models(codex_home: Path) -> List[str]:
             deduped.append(slug)
     return deduped
 
+
+
+def get_codex_model_options(model_id: str) -> Optional[dict]:
+    """Return picker controls published for one Codex model.
+
+    The Codex catalog exposes ``supported_reasoning_levels`` as ordered rows
+    with an effort id and user-facing description. Keep those rows intact so
+    clients render exactly what the server advertises. Live discovery wins;
+    the Codex CLI cache is the offline fallback.
+    """
+    raw = str(model_id or "").strip()
+    if not raw:
+        return None
+    candidates = [raw.lower()]
+    if "/" in raw:
+        candidates.append(raw.rsplit("/", 1)[-1].lower())
+
+    item = next(
+        (_LIVE_MODEL_METADATA.get(key) for key in candidates if key in _LIVE_MODEL_METADATA),
+        None,
+    )
+    if item is None:
+        codex_home = Path(
+            os.getenv("CODEX_HOME", "").strip() or str(Path.home() / ".codex")
+        ).expanduser()
+        _read_cache_models(codex_home)
+        item = next(
+            (_LIVE_MODEL_METADATA.get(key) for key in candidates if key in _LIVE_MODEL_METADATA),
+            None,
+        )
+    if item is None:
+        return None
+
+    efforts: list[dict[str, str]] = []
+    seen: set[str] = set()
+    levels = item.get("supported_reasoning_levels")
+    if isinstance(levels, list):
+        for level in levels:
+            if isinstance(level, dict):
+                effort = str(level.get("effort") or "").strip().lower()
+                description = str(level.get("description") or "").strip()
+            else:
+                effort = str(level or "").strip().lower()
+                description = ""
+            if not effort or effort in seen:
+                continue
+            seen.add(effort)
+            row = {"effort": effort}
+            if description:
+                row["description"] = description
+            efforts.append(row)
+
+    default_effort = str(item.get("default_reasoning_level") or "").strip().lower()
+    speed_tiers = {
+        str(tier).strip().lower()
+        for tier in (item.get("additional_speed_tiers") or [])
+        if str(tier).strip()
+    }
+    for tier in item.get("service_tiers") or []:
+        if isinstance(tier, dict):
+            tier_id = str(tier.get("id") or "").strip().lower()
+            if tier_id:
+                speed_tiers.add(tier_id)
+
+    return {
+        "reasoning_efforts": efforts,
+        "default_reasoning_effort": default_effort,
+        # Codex exposes an effort selector, not a true thinking-off switch.
+        "thinking": False,
+        "fast": bool(speed_tiers.intersection({"fast", "priority"})),
+    }
 
 def get_codex_model_ids(access_token: Optional[str] = None) -> List[str]:
     """Return available Codex model IDs, trying API first, then local sources.

@@ -1529,6 +1529,70 @@ def _profile_home(profile: str | None) -> Path | None:
     return home if (home / "state.db").exists() or home.exists() else None
 
 
+def _infer_profile_for_session_id(session_id: str) -> tuple[str, Path] | None:
+    """Find the sole non-launch profile that owns an exact durable session id.
+
+    Mobile clients can restore an already-open Bot Chat before their in-memory
+    ``session -> profile`` map has been rebuilt.  An unscoped resume would then
+    either fail or, worse, reuse a stale launch-profile runtime whose tool
+    catalog cannot include profile-local plugins.  Session ids are exact DB
+    keys, so when the launch DB does not own one we can safely recover a unique
+    profile owner from the host's profile state DBs.
+
+    Ambiguous matches fail closed: the caller keeps normal launch-profile
+    behavior instead of guessing between profiles.
+    """
+    target = str(session_id or "").strip()
+    if not target:
+        return None
+    try:
+        launch_db = _get_db()
+        if launch_db is not None and launch_db.get_session(target):
+            return None
+    except Exception:
+        # A transient launch DB read must not prevent checking isolated profile
+        # stores; each candidate below is opened independently.
+        pass
+
+    try:
+        from hermes_constants import get_default_hermes_root
+        from hermes_state import SessionDB
+
+        profiles_dir = get_default_hermes_root() / "profiles"
+        candidates = [p for p in profiles_dir.iterdir() if p.is_dir()]
+    except Exception:
+        return None
+
+    matches: list[tuple[str, Path]] = []
+    for home in candidates:
+        db_path = home / "state.db"
+        if not db_path.exists():
+            continue
+        db = None
+        try:
+            db = SessionDB(db_path=db_path)
+            if db.get_session(target):
+                matches.append((home.name, home))
+                if len(matches) > 1:
+                    logger.warning(
+                        "session profile inference ambiguous: session=%s profiles=%s",
+                        target,
+                        [name for name, _home in matches],
+                    )
+                    return None
+        except Exception:
+            logger.debug(
+                "session profile inference could not inspect %s",
+                db_path,
+                exc_info=True,
+            )
+        finally:
+            if db is not None:
+                with contextlib.suppress(Exception):
+                    db.close()
+    return matches[0] if len(matches) == 1 else None
+
+
 def _profile_scoped(handler):
     """Bind ``params['profile']``'s HERMES_HOME around a pet RPC handler.
 
@@ -4490,6 +4554,45 @@ def _load_enabled_toolsets(platform: str | None = None) -> list[str] | None:
     ]
     cfg = None
     fallback_notice = None
+
+    # Bot/profile capability editors persist an explicit per-profile pin at
+    # ``tools.enabled_toolsets``.  Resolve that before coding-context posture:
+    # a Bot Chat may happen to start in a repository, but that must not replace
+    # the profile's selected capabilities with the generic coding set.  The
+    # profile API already treats this field as authoritative when displaying
+    # its capability checkboxes, so the runtime must consume the same field.
+    # HERMES_TUI_TOOLSETS remains the operator-level override and wins above
+    # this block when present.
+    if not explicit:
+        try:
+            from hermes_cli.config import load_config
+            from hermes_cli.tools_config import enabled_mcp_server_names
+
+            cfg = load_config()
+            tools_cfg = cfg.get("tools") if isinstance(cfg, dict) else None
+            pinned = (
+                tools_cfg.get("enabled_toolsets")
+                if isinstance(tools_cfg, dict)
+                else None
+            )
+            if isinstance(pinned, list) and pinned:
+                # Plugin toolsets are registry-backed. Ensure the active
+                # profile overlay is loaded before AIAgent snapshots schemas.
+                from hermes_cli.plugins import discover_plugins
+
+                discover_plugins()
+                selected = {
+                    str(name).strip() for name in pinned if str(name).strip()
+                }
+                # MCP enablement is configured separately from the profile's
+                # native/plugin capability pin and must continue to ride along.
+                selected.update(enabled_mcp_server_names(cfg))
+                selected.update(_gui_surface_toolsets(session_platform))
+                return sorted(selected)
+        except Exception:
+            # Preserve the established posture/config fallback when a partial
+            # or older profile cannot resolve its capability pin.
+            cfg = None
 
     # Coding posture (base Hermes): with no explicit pin, collapse to the
     # coding toolset (+ enabled MCP servers) when sitting in a code workspace.
@@ -8439,7 +8542,10 @@ def _claim_or_reuse_live(
     resume lock, or — if a concurrent resume already won — release ``lease`` and
     return the winner for the caller to reuse."""
     with _session_resume_lock:
-        live = _find_live_session_by_key(session_key)
+        live = _find_live_session_by_key(
+            session_key,
+            profile_home=record.get("profile_home"),
+        )
         if live is not None:
             if lease is not None:
                 lease.release()
@@ -8613,9 +8719,36 @@ def _session_lookup_key(session: dict, *, fallback: str = "") -> str:
     )
 
 
-def _find_live_session_by_key(session_key: str) -> tuple[str, dict] | None:
+_LIVE_SESSION_ANY_PROFILE = object()
+
+
+def _find_live_session_by_key(
+    session_key: str,
+    *,
+    profile_home: str | Path | None | object = _LIVE_SESSION_ANY_PROFILE,
+) -> tuple[str, dict] | None:
+    """Return the live runtime for one durable session in one profile.
+
+    Session ids are only unique inside a profile's ``state.db``.  More
+    importantly, a profile-scoped resume must never adopt a live runtime that
+    was registered earlier without its ``profile_home``: that agent was built
+    from the gateway's launch config and cannot see profile-local plugins.
+    Treat a requested profile as part of the lookup identity so the caller can
+    register a correctly scoped runtime alongside any stale/default one.
+
+    Omitting ``profile_home`` preserves the historical unscoped lookup used
+    by internal child-session paths whose owner profile is already implicit.
+    Passing ``None`` explicitly selects only the launch/default profile.
+    """
+    filter_profile = profile_home is not _LIVE_SESSION_ANY_PROFILE
+    wanted_home = str(profile_home) if profile_home is not None else ""
     for sid, session in list(_sessions.items()):
         if session.get("_finalized"):
+            continue
+        if (
+            filter_profile
+            and str(session.get("profile_home") or "") != wanted_home
+        ):
             continue
         if _session_lookup_key(session, fallback=sid) == session_key:
             return sid, session

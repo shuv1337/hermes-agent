@@ -189,6 +189,12 @@ def _(rid, params: dict) -> dict:
                     limit=fetch_limit,
                     order_by_last_active=True,
                     compact_rows=True,
+                    # Bot/profile workspaces own sessions that may be hidden
+                    # from the global recents list. Their scoped inventory
+                    # must still be able to browse and resume those sessions.
+                    include_hidden=is_truthy_value(
+                        params.get("include_hidden", False)
+                    ),
                 )
                 if (s.get("source") or "").strip().lower() not in deny
             ][:limit]
@@ -317,6 +323,15 @@ def _(rid, params: dict) -> dict:
     # local profile's state.db. None/own profile → the launch profile (unchanged).
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
+    if profile is None:
+        inferred = _infer_profile_for_session_id(target)
+        if inferred is not None:
+            profile, profile_home = inferred
+            logger.info(
+                "session.resume recovered profile scope: session=%s profile=%s",
+                target,
+                profile,
+            )
     defer_history = is_truthy_value(params.get("defer_history", False))
     # Desktop hydrates persisted transcripts through the authenticated REST
     # route in parallel. Suppress the duplicate WebSocket transcript only when
@@ -441,7 +456,7 @@ def _(rid, params: dict) -> dict:
 
         # Fast path: if the session is already live, reuse it under the lock.
         with _session_resume_lock:
-            live = _find_live_session_by_key(target)
+            live = _find_live_session_by_key(target, profile_home=profile_home)
             if live is not None:
                 return _ok(rid, _reuse_live_payload(*live))
 
@@ -749,7 +764,7 @@ def _(rid, params: dict) -> dict:
         # live session while we were building. Re-check under the lock; if it won,
         # discard our just-built agent and reuse theirs (no worker/poller wired yet).
         with _session_resume_lock:
-            live = _find_live_session_by_key(target)
+            live = _find_live_session_by_key(target, profile_home=profile_home)
             if live is not None:
                 try:
                     if hasattr(agent, "close"):

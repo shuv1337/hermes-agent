@@ -1,0 +1,9 @@
+name: apple-health
+version: 0.1.0
+description: "Read-only Apple Health bridge for Hermes Go. Stores device-synced samples locally and exposes bounded health summaries to explicitly enabled profiles."
+author: Hermes Go
+kind: standalone
+provides_tools:
+  - apple_health_status
+  - apple_health_summary
+

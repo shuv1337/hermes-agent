@@ -93,6 +93,12 @@ from utils import atomic_replace, atomic_yaml_write, env_float, is_truthy_value
 
 logger = logging.getLogger(__name__)
 
+# Populated by ``fetch_nous_models`` from the same authoritative /models
+# response used to build the Nous picker row.  Keep the full rows in memory so
+# inventory clients can render each model's real reasoning controls instead of
+# reducing the catalog to model ids and then guessing globally.
+_NOUS_MODEL_METADATA: Dict[str, Dict[str, Any]] = {}
+
 try:
     import fcntl
 except Exception:
@@ -5910,6 +5916,7 @@ def fetch_nous_models(
         return []
 
     model_ids: List[str] = []
+    metadata: Dict[str, Dict[str, Any]] = {}
     for item in data:
         if not isinstance(item, dict):
             continue
@@ -5920,6 +5927,15 @@ def fetch_nous_models(
             if "hermes" in mid.lower():
                 continue
             model_ids.append(mid)
+            metadata[mid.lower()] = dict(item)
+            for alias in item.get("aliases") or []:
+                if isinstance(alias, str) and alias.strip():
+                    metadata[alias.strip().lower()] = dict(item)
+
+    # Replace rather than merge so models removed by Portal do not retain stale
+    # controls for the lifetime of this gateway process.
+    _NOUS_MODEL_METADATA.clear()
+    _NOUS_MODEL_METADATA.update(metadata)
 
     # Sort: prefer opus > pro > haiku/flash > sonnet (sonnet is cheap/fast,
     # users who want the best model should see opus first).
@@ -5935,6 +5951,64 @@ def fetch_nous_models(
 
     model_ids.sort(key=_model_priority)
     return list(dict.fromkeys(model_ids))
+
+
+def get_nous_model_options(model_id: str) -> Optional[Dict[str, Any]]:
+    """Return the reasoning controls advertised by Nous Portal for a model.
+
+    ``fetch_nous_models`` deliberately returns ids for its long-standing public
+    contract, but the live response also carries a ``reasoning`` object with an
+    ordered ``supported_efforts`` list, default effort, and ``mandatory`` gate.
+    This helper exposes that metadata without a second network request.
+    """
+    item = _NOUS_MODEL_METADATA.get(str(model_id or "").strip().lower())
+    if item is None:
+        return None
+    reasoning = item.get("reasoning")
+    if not isinstance(reasoning, dict):
+        return None
+
+    efforts: List[Dict[str, str]] = []
+    seen: set[str] = set()
+    supports_off = False
+    for raw in reasoning.get("supported_efforts") or []:
+        effort = str(raw or "").strip().lower()
+        if not effort or effort in seen:
+            continue
+        seen.add(effort)
+        if effort in {"none", "off", "disabled"}:
+            supports_off = True
+            continue
+        efforts.append({"effort": effort})
+
+    default_effort = str(reasoning.get("default_effort") or "").strip().lower()
+    if default_effort in {"none", "off", "disabled"}:
+        default_effort = ""
+    mandatory = reasoning.get("mandatory")
+    return {
+        "reasoning_efforts": efforts,
+        "default_reasoning_effort": default_effort,
+        # Non-mandatory reasoning can be disabled even when Portal expresses
+        # that via the reasoning object rather than including a literal
+        # ``none`` effort (current Claude rows do this).
+        "thinking": bool(efforts) and (mandatory is False or supports_off),
+    }
+
+
+def refresh_nous_model_metadata() -> bool:
+    """Refresh the in-memory Nous model metadata from Portal's live catalog."""
+    try:
+        creds = resolve_nous_runtime_credentials()
+        if not creds:
+            return False
+        fetch_nous_models(
+            api_key=str(creds.get("api_key") or ""),
+            inference_base_url=str(creds.get("base_url") or ""),
+        )
+    except Exception:
+        logger.debug("Nous model metadata refresh failed", exc_info=True)
+        return False
+    return bool(_NOUS_MODEL_METADATA)
 
 
 def _agent_key_is_usable(state: Dict[str, Any], min_ttl_seconds: int) -> bool:

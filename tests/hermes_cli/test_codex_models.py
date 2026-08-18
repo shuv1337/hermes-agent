@@ -1,10 +1,88 @@
 import json
 from unittest.mock import patch
 
-from hermes_cli.codex_models import DEFAULT_CODEX_MODELS, get_codex_model_ids
+from hermes_cli.codex_models import (
+    DEFAULT_CODEX_MODELS,
+    get_codex_model_ids,
+    get_codex_model_options,
+)
 
 
 
+
+
+def test_get_codex_model_options_preserves_server_reasoning_levels(
+    tmp_path, monkeypatch
+):
+    from hermes_cli import codex_models
+
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir(parents=True, exist_ok=True)
+    (codex_home / "models_cache.json").write_text(
+        json.dumps({
+            "models": [
+                {
+                    "slug": "gpt-5.6-sol",
+                    "supported_reasoning_levels": [
+                        {"effort": "low", "description": "Fast"},
+                        {"effort": "medium", "description": "Balanced"},
+                        {"effort": "high", "description": "Deep"},
+                        {"effort": "xhigh", "description": "Extra deep"},
+                        {"effort": "max", "description": "Maximum"},
+                        {"effort": "ultra", "description": "Delegates"},
+                    ],
+                    "default_reasoning_level": "low",
+                    "additional_speed_tiers": ["fast"],
+                },
+                {
+                    "slug": "gpt-5.6-terra",
+                    "supported_reasoning_levels": [
+                        {"effort": effort}
+                        for effort in ["low", "medium", "high", "xhigh", "max", "ultra"]
+                    ],
+                    "default_reasoning_level": "medium",
+                    "service_tiers": [{"id": "priority"}],
+                },
+                {
+                    "slug": "gpt-5.6-luna",
+                    "supported_reasoning_levels": [
+                        {"effort": effort}
+                        for effort in ["low", "medium", "high", "xhigh", "max"]
+                    ],
+                    "default_reasoning_level": "medium",
+                    "additional_speed_tiers": ["fast"],
+                },
+            ]
+        })
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    codex_models._LIVE_MODEL_METADATA.clear()
+
+    options = get_codex_model_options("openai/gpt-5.6-sol")
+
+    assert options == {
+        "reasoning_efforts": [
+            {"effort": "low", "description": "Fast"},
+            {"effort": "medium", "description": "Balanced"},
+            {"effort": "high", "description": "Deep"},
+            {"effort": "xhigh", "description": "Extra deep"},
+            {"effort": "max", "description": "Maximum"},
+            {"effort": "ultra", "description": "Delegates"},
+        ],
+        "default_reasoning_effort": "low",
+        "thinking": False,
+        "fast": True,
+    }
+    for model, efforts, default in (
+        ("gpt-5.6-terra", ["low", "medium", "high", "xhigh", "max", "ultra"], "medium"),
+        ("gpt-5.6-luna", ["low", "medium", "high", "xhigh", "max"], "medium"),
+    ):
+        assert get_codex_model_options(model) == {
+            "reasoning_efforts": [{"effort": effort} for effort in efforts],
+            "default_reasoning_effort": default,
+            "thinking": False,
+            "fast": True,
+        }
 
 def test_setup_wizard_codex_import_resolves():
     """Regression test for #712: setup.py must import the correct function name."""

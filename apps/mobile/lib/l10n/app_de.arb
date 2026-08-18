@@ -1,0 +1,456 @@
+{
+  "@@locale": "de",
+  "appTitle": "Hermes Go",
+  "tagline": "Geh weiter. Bleib verbunden.",
+  "aboutBody": "Hermes Go v0.1\nGo further. Stay connected.\nGateway connector — sessions, chat, models, jobs.",
+  "failedToLoadConnection": "Failed to load connection: {error}",
+  "@failedToLoadConnection": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "navSessions": "Sitzungen",
+  "navBots": "Bots",
+  "navJobs": "Jobs",
+  "navSettings": "Einstellungen",
+  "botsTitle": "Bots",
+  "botsEmpty": "Noch keine Bots. Tippe auf +, um einen zu erstellen.",
+  "newBotTitle": "Neuer Bot",
+  "newBotSubtitle": "Ein benannter Teamkollege mit eigenem Gedächtnis, Fähigkeiten und Chat.",
+  "botNameLabel": "Name",
+  "botNameHelper": "Wird als @Handle verwendet",
+  "botNameTaken": "Dieses Handle existiert bereits",
+  "botDescriptionLabel": "Beschreibung",
+  "botAppearanceLabel": "Erscheinungsbild",
+  "createBotAction": "Bot erstellen",
+  "creatingBot": "Wird erstellt…",
+  "editBotAction": "Profil bearbeiten",
+  "editBotTitle": "Bot bearbeiten",
+  "savingBot": "Wird gespeichert…",
+  "botHandleImmutable": "@{handle} ist das permanente Bot-Handle für Sitzungen und Erinnerungen.",
+  "botsNoConversation": "Noch keine Unterhaltungen",
+  "botsCachedRoster": "Die letzte Liste wird angezeigt, während der Server neu verbindet.",
+  "modelLabel": "Modell",
+  "lastActivity": "Letzte Aktivität",
+  "messagesLabel": "Nachrichten",
+  "settingsTitle": "Einstellungen",
+  "checkConnection": "Check connection",
+  "liveChatReady": "Live — chat ready",
+  "notLiveSeeStatus": "Not live — see Connection status",
+  "wsConnectedChatReady": "WebSocket connected — chat ready",
+  "stillOffline": "Still offline",
+  "apiToken": "API token",
+  "refreshSignIn": "Refresh sign-in",
+  "refreshSignInSubtitle": "Re-enter password (e.g. after a host kick). Not automatic.",
+  "disconnect": "Trennen",
+  "disconnectSubtitle": "Remove this gateway from the phone",
+  "disconnectConfirmTitle": "Disconnect?",
+  "disconnectConfirmBody": "Removes the saved gateway from this phone. Host agents are not affected.",
+  "exitSampleWorkspace": "Beispielarbeitsbereich verlassen",
+  "exitSampleWorkspaceSubtitle": "Sandbox stoppen und vom Telefon entfernen",
+  "exitSampleWorkspaceConfirmTitle": "Beispielarbeitsbereich verlassen?",
+  "exitSampleWorkspaceConfirmBody": "Stoppt das integrierte Beispiel-Gateway und löscht dessen Sitzungen von diesem Telefon. Es verlässt nichts das Gerät.",
+  "sampleWorkspaceAboutLine": "Beispielarbeitsbereich — verbinde dich mit demo.hermes.go (Benutzer demo, Passwort demo), um Hermes Go ohne Gateway-Einrichtung auszuprobieren.",
+  "sampleWorkspaceBadge": "Beispiel",
+  "cancel": "Abbrechen",
+  "theme": "Theme",
+  "appearance": "Appearance",
+  "appearanceSubtitle": "Same built-in skins as Desktop (Nous, Midnight, Ember, …).",
+  "hapticsSounds": "Haptics & sounds",
+  "hapticsOff": "Off — no taps, no completion chime",
+  "hapticsOn": "On — taps, send/stop feedback, reply chime",
+  "previewHaptics": "Preview haptics & chime",
+  "syncNow": "Sync now",
+  "syncNowSubtitle": "Sessions, jobs, models, skills",
+  "syncedWithSummary": "Synced ({summary})",
+  "@syncedWithSummary": {
+    "placeholders": {
+      "summary": {
+        "type": "String"
+      }
+    }
+  },
+  "about": "Info",
+  "couldNotOpenBrowser": "Could not open browser — link copied",
+  "language": "Sprache",
+  "languageSystem": "Systemstandard",
+  "languageSubtitle": "App UI language. Chat content follows your agent.",
+  "connectedChatReady": "Connected · chat ready",
+  "connectedChatReadyBody": "Live WebSocket to the gateway. Messages and slash commands work.",
+  "signedInChatOffline": "Signed in · chat offline",
+  "signedInReconnecting": "Signed in · reconnecting",
+  "autoReconnectGaveUp": "Auto-reconnect gave up. Tap Reconnect (or check VPN / host).",
+  "signedInChatOfflineBody": "HTTPS/cookies may work for lists, but the live WebSocket is down. Auto-retry runs with backoff; or tap Reconnect.",
+  "sessionExpired": "Sitzung abgelaufen",
+  "sessionExpiredBody": "Sign in again. Expiry may be intentional (signed out on host).",
+  "gaveUpReconnecting": "Gave up reconnecting",
+  "connectionProblem": "Connection problem",
+  "cannotReachGateway": "Cannot reach the gateway. Check VPN/Tailscale and host power.",
+  "notConnected": "Nicht verbunden",
+  "noGatewaySaved": "No gateway saved on this phone. Sign in from Connect.",
+  "webSocket": "WebSocket",
+  "live": "Live",
+  "httpsRest": "HTTPS / REST",
+  "checking": "Checking…",
+  "ok": "OK",
+  "fail": "Fail",
+  "unknown": "Unknown",
+  "host": "Host",
+  "user": "User",
+  "reconnect": "Erneut verbinden",
+  "reconnectNow": "Reconnect now",
+  "checkNow": "Check now",
+  "signIn": "Anmelden",
+  "signInAndReconnect": "Sign in & reconnect",
+  "gaveUpTapReconnect": "Gave up — tap Reconnect",
+  "connecting": "Connecting…",
+  "error": "Error",
+  "closed": "Closed",
+  "idle": "Idle",
+  "offline": "Offline",
+  "themeLight": "Hell",
+  "themeDark": "Dunkel",
+  "themeSystem": "System",
+  "skinSectionDesktop": "Desktop",
+  "skinSectionMobile": "Mobile",
+  "required": "Erforderlich",
+  "signedInWsLive": "Signed in — WebSocket live",
+  "signedInWsOffline": "Signed in; WebSocket: {status}",
+  "@signedInWsOffline": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reenterPasswordFor": "Re-enter the password for {user} on {host}.\nWe never auto-reconnect after expiry (kicks stay kicked).",
+  "@reenterPasswordFor": {
+    "placeholders": {
+      "user": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "connectTitle": "Hermes Go",
+  "signInAgain": "Sign in again",
+  "sessionExpiredBanner": "Deine Gateway-Sitzung ist abgelaufen oder wurde abgemeldet.\nGib dein Passwort erneut ein — nach Ablauf wird nicht automatisch neu verbunden.",
+  "connectIntro": "Mit deinem Hermes-Gateway verbinden — wie Desktop: Basis-URL, dann Benutzername und Passwort. Kein API-Schlüssel.",
+  "gatewayBaseUrl": "Gateway-Basis-URL",
+  "httpPrivateNetworkHint": "Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.",
+  "urlRequired": "URL required",
+  "provider": "Provider",
+  "username": "Benutzername",
+  "password": "Passwort",
+  "continueAction": "Weiter",
+  "changeUrl": "Change URL",
+  "gatewayOpenHint": "Gateway is open (no password gate). You can connect without credentials.",
+  "signInPasswordHint": "Sign in with username and password (same as Desktop remote gateway).",
+  "oauthOnlyError": "This gateway uses OAuth sign-in only. Password login is not enabled. Enable a supports_password provider on the host, or use Desktop for OAuth.",
+  "connectedOpenGateway": "Connected (open gateway).",
+  "noPasswordProvider": "No password provider selected.",
+  "usernamePasswordRequired": "Benutzername und Passwort erforderlich.",
+  "signedInAs": "Angemeldet als {username}",
+  "@signedInAs": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewayNotReachable": "Gateway not reachable.",
+  "chats": "Chats",
+  "newChat": "Neuer Chat",
+  "noChatsYet": "No chats yet",
+  "startNewChatHint": "Start a new chat, or open one from the menu.",
+  "pinned": "Pinned",
+  "recents": "Recents",
+  "renameChat": "Rename chat",
+  "title": "Title",
+  "save": "Speichern",
+  "renameFailed": "Rename failed: {error}",
+  "@renameFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteChatTitle": "Delete chat?",
+  "delete": "Löschen",
+  "sessionIdCopied": "Session ID copied",
+  "sessionActions": "Session actions",
+  "pin": "Anheften",
+  "unpin": "Lösen",
+  "copyId": "Copy ID",
+  "export": "Exportieren",
+  "rename": "Umbenennen",
+  "archive": "Archive",
+  "exportFailed": "Export failed: {error}",
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "couldNotStartChat": "Could not start chat: {error}",
+  "@couldNotStartChat": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionNotFound": "Session not found: {id}",
+  "@sessionNotFound": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "selectModel": "Select model",
+  "imageChat": "Image chat",
+  "greetingMorning": "Guten Morgen",
+  "greetingAfternoon": "Guten Tag",
+  "greetingEvening": "Guten Abend",
+  "messageHint": "Nachricht an Hermes Go…",
+  "messageHintShort": "Message…",
+  "sendAMessageToContinue": "Send a message to continue.",
+  "sync": "Sync",
+  "stop": "Stopp",
+  "dictate": "Diktieren",
+  "stopDictation": "Stop dictation",
+  "listening": "Hört zu…",
+  "readAloudOn": "Read aloud: on",
+  "readAloudOff": "Read aloud: off",
+  "readAloud": "Read aloud",
+  "addContext": "Add context",
+  "photoLibrary": "Mediathek",
+  "camera": "Kamera",
+  "pasteImageFromClipboard": "Paste image from clipboard",
+  "noImageOnClipboard": "No image on clipboard — use Photo library or Camera",
+  "couldNotPickImage": "Could not pick image: {error}",
+  "@couldNotPickImage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pasteFailed": "Paste failed: {error}",
+  "@pasteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "speechUnavailable": "Speech recognition unavailable on this device",
+  "micPermissionDenied": "Microphone / speech permission denied — enable in Settings",
+  "couldNotStartDictation": "Could not start dictation — check mic & speech permissions",
+  "dictationFailed": "Dictation failed: {error}",
+  "@dictationFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "uploadingImage": "Uploading image…",
+  "thinking": "Denke nach…",
+  "writing": "Schreibe…",
+  "runningTool": "Running {name}…",
+  "@runningTool": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "imageAttachFailed": "Image attach failed: {error}",
+  "@imageAttachFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "savedWaitingWs": "Saved on phone — waiting for live WebSocket (Settings may show HTTPS only).",
+  "queuedForSync": "Queued for sync to gateway…",
+  "stopFailed": "Stop failed: {error}",
+  "@stopFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "editMessage": "Edit message",
+  "saveAndResend": "Save & resend",
+  "editAndResend": "Edit & resend",
+  "rewindAndRun": "Rewind to this prompt and run again",
+  "regenerate": "Regenerate",
+  "resend": "Resend",
+  "noResponseYet": "No reply yet — resend or edit this message",
+  "messageActions": "Message actions",
+  "deleteMessageTitle": "Nachricht löschen?",
+  "deleteMessageBody": "Dies kann nicht rückgängig gemacht werden. Hermes kann einzelne Nachrichten auf dem Gateway noch nicht löschen, daher wird sie nur auf diesem Gerät entfernt — das Gateway behält seine eigene Kopie, und die Nachricht kann anderswo weiterhin erscheinen.",
+  "messageDeleted": "Nachricht gelöscht (nur auf diesem Gerät)",
+  "resubmitMessage": "Resubmit this message",
+  "retryFromPrevious": "Retry from the previous user message",
+  "copied": "Copied",
+  "copy": "Copy",
+  "codeCopied": "Code copied",
+  "copiedLink": "Copied link: {href}",
+  "@copiedLink": {
+    "placeholders": {
+      "href": {
+        "type": "String"
+      }
+    }
+  },
+  "stopRequested": "Stop requested.",
+  "slashFailed": "Slash failed: {error}",
+  "@slashFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "modelSavedLocal": "Model saved on phone; gateway: {error}",
+  "@modelSavedLocal": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pleaseLookAtImage": "Please look at the attached image.",
+  "pleaseLookAtImages": "Please look at the attached images.",
+  "nImages": "{count} image(s)",
+  "@nImages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "jobsTitle": "Jobs",
+  "retry": "Retry",
+  "runNow": "Run now",
+  "pause": "Pause",
+  "resume": "Resume",
+  "modelPickerTitle": "Model",
+  "modelPickerSubtitle": "Same catalog as Desktop",
+  "reasoningOptions": "Options",
+  "thinking": "Thinking",
+  "thinkingOnHint": "Model may use reasoning tokens",
+  "thinkingOffHint": "Reasoning disabled for this session",
+  "effort": "Effort",
+  "applyEffort": "Apply effort to session",
+  "confirmModel": "Use this model",
+  "modelPickerConfirmHint": "Select a model, set its options, then confirm.",
+  "modelNoOptions": "This model has no Thinking or Fast options.",
+  "modelCapsLoading": "Loading per-model options…",
+  "fastMode": "Fast",
+  "fastModeHint": "Priority / lower-latency when the model supports it",
+
+  "contextUsageTitle": "Context Usage",
+  "contextUsageTokenSummary": "~{used} / {max} Tokens",
+  "@contextUsageTokenSummary": {
+    "placeholders": {
+      "used": {"type": "String"},
+      "max": {"type": "String"}
+    }
+  },
+  "contextUsagePercentFull": "{percent}% Full",
+  "@contextUsagePercentFull": {
+    "placeholders": {
+      "percent": {"type": "int"}
+    }
+  },
+  "contextUsageLoading": "Loading breakdown…",
+  "contextUsageEmpty": "No context data yet — send a message first.",
+  "contextUsageOpen": "Context usage",
+  "contextCatSystemPrompt": "System prompt",
+  "contextCatToolDefinitions": "Tool definitions",
+  "contextCatRules": "Rules",
+  "contextCatSkills": "Skills",
+  "contextCatMcp": "MCP",
+  "contextCatSubagents": "Subagent definitions",
+  "contextCatMemory": "Memory",
+  "contextCatConversation": "Conversation",
+
+  "refreshModels": "Refresh models",
+  "skillsTitle": "Installed skills on your gateway",
+  "filterSkills": "Filter skills…",
+  "reloadSkills": "Reload skills on gateway",
+  "reloadFailed": "Reload failed: {error}",
+  "@reloadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "skillsSection": "Skills",
+  "commandsSection": "Commands",
+  "optionsSection": "Options",
+  "privacyAndData": "Datenschutz & Daten",
+  "privacyAndDataSubtitle": "Umgang mit Gateway-Inhalten und Gerätedaten",
+  "privacyDataFlow": "Hermes Go sendet Unterhaltungen und Anhänge direkt an das von dir gewählte Gateway. Dieses Gateway kann sie an die vom Betreiber konfigurierten Modellanbieter und Dienste weiterleiten.",
+  "privacyOnDevice": "Die App speichert Verbindungsmetadaten, verschlüsselte Sitzungscookies, Einstellungen und einen lokalen Unterhaltungs-Cache auf diesem Gerät. Beim Trennen werden gespeicherte Verbindungen und Authentifizierungsdaten entfernt.",
+  "privacyNoAnalytics": "Diese Version enthält keine Werbe- oder Analyse-SDKs.",
+  "privacyPolicyMissing": "Aktion des Herausgebers erforderlich: Vor der Store-Einreichung muss eine öffentliche HTTPS-Datenschutz-URL konfiguriert werden.",
+  "openPrivacyPolicy": "Datenschutzerklärung öffnen",
+  "couldNotOpenLink": "Der Link konnte nicht geöffnet werden.",
+  "unofficialDisclaimer": "Inoffiziell · Von der Community entwickelt · Nicht mit Nous Research verbunden",
+  "noCachedJobs": "Noch keine zwischengespeicherten Aufgaben.\nBehebe die Verbindung und versuche es erneut.",
+  "noCronJobs": "Keine Cron-Aufgaben auf diesem Gateway.\nErstelle sie auf dem Host (`hermes cron` oder Desktop).\nNach Abschluss wird dieser Tab synchronisiert und kann dich benachrichtigen.",
+  "skillsPickerSubtitle": "Auf deinem Gateway installiert (Hub, enthaltene und eigene Skills).\nBei Netzproblemen auf diesem Telefon zwischengespeichert.\nTippe, um sie als Slash-Befehl aufzurufen.",
+  "noSkillsCached": "Noch keine Skills im Cache.\nLade neu, wenn das Gateway erreichbar ist, oder gib /skills-name ein, sobald die Autovervollständigung funktioniert.",
+  "noSkillsMatch": "Keine Skills passen zu „{query}“.",
+  "@noSkillsMatch": {"placeholders": {"query": {"type": "String"}}},
+  "commandCheatSheetTitle": "Slash commands",
+  "commandCheatSheetSubtitle": "Browse every /command Hermes supports",
+  "filterCommands": "Filter commands…",
+  "noCommandsMatch": "No commands match \u201c{query}\u201d.",
+  "@noCommandsMatch": {"placeholders": {"query": {"type": "String"}}},
+  "commandBadgeCli": "CLI",
+  "commandBadgeConfigGated": "config",
+  "commandsLoadError": "Couldn't load commands. Check your connection and try again.",
+  "modelPickerDetails": "Derselbe Katalog wie in Desktop (/api/model/options · model.options).\nWird auf die offene Sitzung am Gateway angewendet.",
+  "couldNotLoadModels": "Modelle konnten nicht geladen werden:\n{detail}",
+  "@couldNotLoadModels": {"placeholders": {"detail": {"type": "String"}}},
+  "noModelsFromGateway": "Keine Modelle von diesem Gateway.\nDesktop verwendet GET /api/model/options (Sitzungscookies). Konfiguriere Anbieter auf dem Host, wenn die Liste wirklich leer ist.",
+  "notificationsTitle": "Benachrichtigungen",
+
+  "artifactOpenTooltip": "{name} öffnen",
+  "@artifactOpenTooltip": {"placeholders": {"name": {"type": "String"}}},
+  "artifactKindMarkdown": "Markdown",
+  "artifactKindHtml": "HTML",
+  "artifactReload": "Neu laden",
+  "artifactNotFound": "Datei nicht gefunden. Sie wurde möglicherweise auf dem Gateway verschoben oder gelöscht.",
+  "artifactAccessDenied": "Der Zugriff auf diese Datei ist nicht erlaubt.",
+  "artifactTooLarge": "Diese Datei ist zu groß für eine Vorschau.",
+  "artifactLoadFailed": "Datei konnte nicht geladen werden.",
+  "artifactEnableJs": "JavaScript aktivieren",
+  "artifactEnableJsWarning": "Standardmäßig aus und wird nie gespeichert — aktiviere dies nur für Dokumente, denen du vertraust.",
+  "artifactOpenLinkTitle": "Link öffnen?",
+  "artifactOpenLinkBody": "Dies öffnet {url} in deinem Browser und verlässt Hermes Go.",
+  "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
+  "artifactOpenLinkAction": "Im Browser öffnen",
+  "imageTapToLoad": "Zum Laden des Bildes von {host} tippen",
+  "@imageTapToLoad": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedPrivateNetwork": "Bild blockiert — privates Netzwerk ({host})",
+  "@imageBlockedPrivateNetwork": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedSource": "Bild blockiert — nicht unterstützte Quelle",
+  "imageLoadFailed": "Bild konnte nicht geladen werden"
+}

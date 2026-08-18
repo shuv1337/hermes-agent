@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hermes Go: black field + white wing (matches app icon). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/black" />
+    <item>
+        <item
+            android:gravity="center"
+            android:drawable="@drawable/ic_launcher_monochrome" />
+    </item>
+</layer-list>

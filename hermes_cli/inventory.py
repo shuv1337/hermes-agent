@@ -269,7 +269,7 @@ def build_models_payload(
     if pricing:
         _apply_pricing(rows, force_fresh_nous_tier=force_fresh_nous_tier)
     if capabilities:
-        _apply_capabilities(rows)
+        _apply_capabilities(rows, refresh=refresh)
     if featured:
         _apply_featured(rows)
     _apply_custom_aliases(rows)
@@ -402,14 +402,14 @@ def format_aux_picker_entries(
     return entries
 
 
-def _apply_capabilities(rows: list[dict]) -> None:
-    """Attach a ``{model: {fast, reasoning}}`` map to each provider row.
+def _apply_capabilities(rows: list[dict], *, refresh: bool = False) -> None:
+    """Attach model-specific picker controls to each provider row.
 
     `fast` mirrors ``model_supports_fast_mode`` (the same gate the runtime
     enforces). `reasoning` comes from the models.dev catalog when known and
-    defaults to True otherwise — the effort dial is broadly accepted and a
-    no-op on models that ignore it, whereas hiding it from a capable-but-
-    uncatalogued model is the worse failure.
+    defaults to True otherwise. Providers with richer catalogs additionally
+    publish their ordered ``reasoning_efforts``, default effort, and whether
+    Thinking can actually be toggled off.
     """
     from hermes_cli.models import model_supports_fast_mode
 
@@ -418,9 +418,22 @@ def _apply_capabilities(rows: list[dict]) -> None:
     except Exception:
         get_model_capabilities = None  # type: ignore[assignment]
 
+    # The curated Nous picker intentionally does not use the full live model-id
+    # list, so refreshing that row would otherwise never retain the reasoning
+    # metadata bundled with Portal's /models response. Fetch it explicitly for
+    # a user-triggered catalog refresh, then enrich only the curated rows below.
+    if refresh and any(str(row.get("slug") or "").lower() == "nous" for row in rows):
+        try:
+            from hermes_cli.auth import refresh_nous_model_metadata
+
+            refresh_nous_model_metadata()
+        except Exception:
+            pass
+
     for row in rows:
         slug = row.get("slug") or ""
-        caps: dict[str, dict[str, bool]] = {}
+        normalized_slug = str(slug).strip().lower()
+        caps: dict[str, dict] = {}
 
         for model in row.get("models") or []:
             reasoning = True
@@ -432,10 +445,84 @@ def _apply_capabilities(rows: list[dict]) -> None:
                 except Exception:
                     reasoning = True
 
-            caps[model] = {
+            capability: dict = {
                 "fast": bool(model_supports_fast_mode(model)),
                 "reasoning": reasoning,
+                # A model being capable of reasoning does not mean its
+                # thinking mode can be toggled. Only richer provider metadata
+                # may opt this control in below.
+                "thinking": False,
             }
+
+            if normalized_slug == "nous":
+                try:
+                    from hermes_cli.auth import get_nous_model_options
+
+                    nous = get_nous_model_options(model)
+                except Exception:
+                    nous = None
+                if nous is not None:
+                    efforts = nous.get("reasoning_efforts") or []
+                    capability.update({
+                        "reasoning": bool(efforts),
+                        "thinking": bool(nous.get("thinking")),
+                        "reasoning_efforts": efforts,
+                        "default_reasoning_effort": str(
+                            nous.get("default_reasoning_effort") or ""
+                        ),
+                    })
+            elif normalized_slug == "openai-codex":
+                try:
+                    from hermes_cli.codex_models import get_codex_model_options
+
+                    codex = get_codex_model_options(model)
+                except Exception:
+                    codex = None
+                if codex is not None:
+                    efforts = codex.get("reasoning_efforts") or []
+                    capability.update({
+                        "fast": bool(codex.get("fast")),
+                        "reasoning": bool(efforts),
+                        "thinking": bool(codex.get("thinking")),
+                        "reasoning_efforts": efforts,
+                        "default_reasoning_effort": str(
+                            codex.get("default_reasoning_effort") or ""
+                        ),
+                    })
+            elif normalized_slug in {"copilot", "copilot-acp"}:
+                try:
+                    from hermes_cli.models import github_model_reasoning_efforts
+
+                    efforts = github_model_reasoning_efforts(model)
+                except Exception:
+                    efforts = []
+                capability.update({
+                    "reasoning": bool(efforts),
+                    "thinking": False,
+                    "reasoning_efforts": [{"effort": effort} for effort in efforts],
+                })
+            elif normalized_slug in {"xai", "xai-oauth"}:
+                try:
+                    from agent.model_metadata import grok_supports_reasoning_effort
+
+                    steerable = grok_supports_reasoning_effort(model)
+                except Exception:
+                    steerable = False
+                capability.update({
+                    "reasoning": steerable,
+                    "thinking": False,
+                    "reasoning_efforts": (
+                        [
+                            {"effort": "low"},
+                            {"effort": "medium"},
+                            {"effort": "high"},
+                        ]
+                        if steerable
+                        else []
+                    ),
+                })
+
+            caps[model] = capability
 
         row["capabilities"] = caps
 

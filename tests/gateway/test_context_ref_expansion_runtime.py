@@ -142,6 +142,53 @@ async def test_at_reference_reaches_preprocessor_with_real_context_length(
 
 
 @pytest.mark.asyncio
+async def test_at_reference_resolves_model_via_session_runtime(monkeypatch):
+    """The block must source model/provider/base_url from
+    self._resolve_session_agent_runtime (session-aware), not from
+    nonexistent self._model/self._base_url attributes."""
+    runner = _make_runner()
+    source = _source()
+    _patch_runtime_resolution(monkeypatch)
+
+    captured_runtime_call = {}
+
+    async def _fake_get_ctx_len(model, base_url="", api_key="", config_context_length=None, provider="", custom_providers=None):
+        captured_runtime_call["model"] = model
+        captured_runtime_call["base_url"] = base_url
+        captured_runtime_call["provider"] = provider
+        captured_runtime_call["config_context_length"] = config_context_length
+        return config_context_length or 128000
+
+    import agent.model_metadata as model_meta_mod
+
+    monkeypatch.setattr(
+        model_meta_mod, "get_model_context_length_async", _fake_get_ctx_len
+    )
+
+    import agent.context_references as ctx_mod
+
+    async def _passthrough_preprocess(message, *, cwd, context_length, url_fetcher=None, allowed_root=None):
+        return ContextReferenceResult(message=message, original_message=message)
+
+    monkeypatch.setattr(
+        ctx_mod, "preprocess_context_references_async", _passthrough_preprocess
+    )
+
+    event = MessageEvent(text="hi @diff", source=source)
+
+    result = await runner._prepare_inbound_message_text(
+        event=event,
+        source=source,
+        history=[],
+    )
+
+    assert result is not None
+    assert captured_runtime_call.get("model") == "openai/gpt-4.1-mini"
+    assert captured_runtime_call.get("base_url") == "https://api.openai.com/v1"
+    assert captured_runtime_call.get("provider") == "openai"
+
+
+@pytest.mark.asyncio
 async def test_at_reference_ignores_global_context_for_runtime_route_override(monkeypatch):
     """Context expansion must not inherit a global pin from another route."""
     runner = _make_runner()

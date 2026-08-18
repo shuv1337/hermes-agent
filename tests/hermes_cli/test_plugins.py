@@ -120,6 +120,44 @@ def _make_plugin_dir(base: Path, name: str, *, register_body: str = "pass",
 class TestPluginDiscovery:
     """Tests for plugin discovery from directories and entry points."""
 
+    def test_profile_process_inherits_root_plugins_with_local_precedence(
+        self, tmp_path, monkeypatch
+    ):
+        """A bot profile uses root installs unless it deliberately overrides one."""
+        from hermes_cli import plugins as plugins_mod
+
+        root = tmp_path / "hermes-root"
+        profile_home = root / "profiles" / "coach"
+        root_copy = _make_plugin_dir(
+            root / "plugins",
+            "apple-health",
+            manifest_extra={"description": "Root copy"},
+            auto_enable=False,
+        )
+        local_copy = _make_plugin_dir(
+            profile_home / "plugins",
+            "apple-health",
+            manifest_extra={"description": "Profile copy"},
+            auto_enable=False,
+        )
+        _make_plugin_dir(
+            root / "plugins",
+            "root-only",
+            auto_enable=False,
+        )
+        empty_bundled = tmp_path / "bundled"
+        empty_bundled.mkdir()
+        monkeypatch.setenv("HERMES_HOME", str(profile_home))
+        monkeypatch.setattr(
+            plugins_mod, "get_bundled_plugins_dir", lambda: empty_bundled
+        )
+
+        manifests = PluginManager()._collect_directory_manifests()
+
+        assert any(item.name == "root-only" for item in manifests)
+        copies = [item for item in manifests if item.name == "apple-health"]
+        assert [Path(item.path) for item in copies] == [root_copy, local_copy]
+
     def test_enabled_portable_plugin_registers_components(
         self, tmp_path, monkeypatch
     ):

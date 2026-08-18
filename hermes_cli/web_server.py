@@ -14738,6 +14738,25 @@ from hermes_cli.web_routers.skills import (  # noqa: E402,F401 — legacy re-exp
 )
 
 
+@app.get("/api/commands")
+def get_commands():
+    """Return the canonical slash-command registry for client-side cheat sheets."""
+    from hermes_cli.commands import COMMAND_REGISTRY
+
+    commands = [
+        {
+            "name": c.name,
+            "description": c.description,
+            "category": c.category,
+            "aliases": list(c.aliases),
+            "args_hint": c.args_hint,
+            "cli_only": c.cli_only,
+            "gateway_only": c.gateway_only,
+            "config_gated": c.gateway_config_gate is not None,
+        }
+        for c in COMMAND_REGISTRY
+    ]
+    return {"commands": commands, "total": len(COMMAND_REGISTRY)}
 
 
 def _clear_skills_prompt_cache() -> None:

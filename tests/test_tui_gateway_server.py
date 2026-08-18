@@ -2373,6 +2373,37 @@ def test_load_enabled_toolsets_prefers_tui_env(monkeypatch):
     assert server._load_enabled_toolsets() == ["web", "terminal", "memory"]
 
 
+def test_load_enabled_toolsets_honors_profile_capability_pin_before_posture(
+    monkeypatch,
+):
+    monkeypatch.delenv("HERMES_TUI_TOOLSETS", raising=False)
+
+    import agent.coding_context as cc
+    import hermes_cli.config as config_mod
+    import hermes_cli.plugins as plugins_mod
+    import hermes_cli.tools_config as tools_config_mod
+
+    monkeypatch.setattr(cc, "coding_selection", lambda **_: ["coding"])
+    monkeypatch.setattr(
+        config_mod,
+        "load_config",
+        lambda: {"tools": {"enabled_toolsets": ["web", "apple_health"]}},
+    )
+    discovered = []
+    monkeypatch.setattr(plugins_mod, "discover_plugins", lambda: discovered.append(True))
+    monkeypatch.setattr(
+        tools_config_mod, "enabled_mcp_server_names", lambda _cfg: {"github"}
+    )
+
+    assert server._load_enabled_toolsets("mobile") == [
+        "apple_health",
+        "github",
+        "project",
+        "web",
+    ]
+    assert discovered == [True]
+
+
 def test_load_enabled_toolsets_filters_invalid_tui_env(monkeypatch, capsys):
     monkeypatch.setenv("HERMES_TUI_TOOLSETS", "web, nope")
     monkeypatch.setitem(
@@ -13212,6 +13243,92 @@ def test_session_delete_success_returns_deleted_id(monkeypatch):
 # --------------------------------------------------------------------------
 # session.* profile scoping (app-global remote mode) — #62503
 # --------------------------------------------------------------------------
+
+
+def test_live_session_lookup_does_not_reuse_default_runtime_for_profile(tmp_path):
+    """A bot resume must not inherit a default-profile agent with the same id.
+
+    Profile-local plugins are resolved from ``session['profile_home']``.  A
+    stale live record without that field therefore has a different capability
+    boundary even when its durable session id happens to match.
+    """
+    profile_home = tmp_path / "profiles" / "coach"
+    stale = {
+        "agent": None,
+        "session_key": "bot-chat-1",
+        "profile_home": None,
+    }
+    scoped = {
+        "agent": None,
+        "session_key": "bot-chat-1",
+        "profile_home": str(profile_home),
+    }
+    server._sessions.clear()
+    try:
+        server._sessions["default-live"] = stale
+        assert (
+            server._find_live_session_by_key(
+                "bot-chat-1", profile_home=profile_home
+            )
+            is None
+        )
+
+        server._sessions["profile-live"] = scoped
+        found = server._find_live_session_by_key(
+            "bot-chat-1", profile_home=profile_home
+        )
+        assert found == ("profile-live", scoped)
+        # Existing internal callers that do not supply a profile retain the
+        # historical first-match behavior.
+        assert server._find_live_session_by_key("bot-chat-1") == (
+            "default-live",
+            stale,
+        )
+        assert server._find_live_session_by_key(
+            "bot-chat-1", profile_home=None
+        ) == ("default-live", stale)
+    finally:
+        server._sessions.clear()
+
+
+def test_infer_profile_for_session_id_recovers_unique_profile(monkeypatch, tmp_path):
+    root = tmp_path / ".hermes"
+    coach_home = root / "profiles" / "coach"
+    other_home = root / "profiles" / "other"
+    coach_home.mkdir(parents=True)
+    other_home.mkdir(parents=True)
+    (coach_home / "state.db").write_bytes(b"")
+    (other_home / "state.db").write_bytes(b"")
+    closed: list[Path] = []
+
+    class LaunchDB:
+        def get_session(self, _target):
+            return None
+
+    class ProfileDB:
+        def __init__(self, db_path=None):
+            self.db_path = Path(db_path)
+
+        def get_session(self, target):
+            if self.db_path.parent.name == "coach" and target == "bot-chat-1":
+                return {"id": target}
+            return None
+
+        def close(self):
+            closed.append(self.db_path)
+
+    import hermes_constants
+    import hermes_state
+
+    monkeypatch.setattr(server, "_get_db", lambda: LaunchDB())
+    monkeypatch.setattr(hermes_constants, "get_default_hermes_root", lambda: root)
+    monkeypatch.setattr(hermes_state, "SessionDB", ProfileDB)
+
+    assert server._infer_profile_for_session_id("bot-chat-1") == (
+        "coach",
+        coach_home,
+    )
+    assert set(closed) == {coach_home / "state.db", other_home / "state.db"}
 
 
 def test_session_list_honors_params_profile_opens_profile_db(monkeypatch, tmp_path):

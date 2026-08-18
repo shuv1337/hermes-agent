@@ -543,5 +543,111 @@ def _apply_featured_with_dates(rows, dates: dict[str, str]):
         inventory._apply_featured(rows)
 
 
+# ─── _apply_capabilities (per-model picker controls) ────────────────────
 
 
+def test_codex_capabilities_preserve_model_specific_picker_options():
+    rows = [
+        {
+            "slug": "openai-codex",
+            "name": "OpenAI Codex",
+            "models": ["gpt-5.6-sol"],
+            "total_models": 1,
+            "is_current": True,
+            "is_user_defined": False,
+            "source": "built-in",
+        }
+    ]
+    codex_options = {
+        "reasoning_efforts": [
+            {"effort": "low", "description": "Fast"},
+            {"effort": "high", "description": "Deep"},
+            {"effort": "ultra", "description": "Delegates"},
+        ],
+        "default_reasoning_effort": "low",
+        "thinking": False,
+        "fast": True,
+    }
+
+    with _list_auth_returning(rows), patch(
+        "hermes_cli.codex_models.get_codex_model_options",
+        return_value=codex_options,
+    ):
+        payload = build_models_payload(_empty_ctx(), capabilities=True)
+
+    codex = next(
+        provider
+        for provider in payload["providers"]
+        if provider["slug"] == "openai-codex"
+    )
+    caps = codex["capabilities"]["gpt-5.6-sol"]
+    assert caps == {
+        "fast": True,
+        "reasoning": True,
+        "thinking": False,
+        "reasoning_efforts": codex_options["reasoning_efforts"],
+        "default_reasoning_effort": "low",
+    }
+
+
+def test_reasoning_capability_does_not_invent_thinking_toggle():
+    rows = [
+        {
+            "slug": "openrouter",
+            "name": "OpenRouter",
+            "models": ["vendor/reasoner"],
+            "total_models": 1,
+            "is_current": True,
+            "is_user_defined": False,
+            "source": "built-in",
+        }
+    ]
+
+    with _list_auth_returning(rows), patch(
+        "agent.models_dev.get_model_capabilities",
+        return_value=type("Caps", (), {"supports_reasoning": True})(),
+    ):
+        payload = build_models_payload(_empty_ctx(), capabilities=True)
+
+    provider = next(row for row in payload["providers"] if row["slug"] == "openrouter")
+    caps = provider["capabilities"]["vendor/reasoner"]
+    assert caps["reasoning"] is True
+    assert caps["thinking"] is False
+
+
+def test_nous_capabilities_use_portal_reasoning_metadata():
+    rows = [
+        {
+            "slug": "nous",
+            "name": "Nous Portal",
+            "models": ["anthropic/claude-fable-5"],
+            "total_models": 1,
+            "is_current": True,
+            "is_user_defined": False,
+            "source": "built-in",
+        }
+    ]
+    portal_options = {
+        "reasoning_efforts": [
+            {"effort": "max"},
+            {"effort": "xhigh"},
+            {"effort": "high"},
+            {"effort": "medium"},
+            {"effort": "low"},
+        ],
+        "default_reasoning_effort": "medium",
+        "thinking": False,
+    }
+
+    with _list_auth_returning(rows), patch(
+        "hermes_cli.auth.get_nous_model_options",
+        return_value=portal_options,
+    ):
+        payload = build_models_payload(_empty_ctx(), capabilities=True)
+
+    nous = next(row for row in payload["providers"] if row["slug"] == "nous")
+    caps = nous["capabilities"]["anthropic/claude-fable-5"]
+    assert caps["reasoning_efforts"] == portal_options["reasoning_efforts"]
+    assert caps["default_reasoning_effort"] == "medium"
+    assert caps["thinking"] is False
+    assert caps["reasoning"] is True
