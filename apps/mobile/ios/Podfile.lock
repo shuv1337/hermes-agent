@@ -20,6 +20,8 @@ PODS:
     - Flutter
   - image_picker_ios (0.0.1):
     - Flutter
+  - package_info_plus (0.4.5):
+    - Flutter
   - share_plus (0.0.1):
     - Flutter
   - speech_to_text (7.2.0):
@@ -44,6 +46,7 @@ DEPENDENCIES:
   - flutter_tts (from `.symlinks/plugins/flutter_tts/ios`)
   - health (from `.symlinks/plugins/health/ios`)
   - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
+  - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - speech_to_text (from `.symlinks/plugins/speech_to_text/darwin`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
@@ -74,6 +77,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/health/ios"
   image_picker_ios:
     :path: ".symlinks/plugins/image_picker_ios/ios"
+  package_info_plus:
+    :path: ".symlinks/plugins/package_info_plus/ios"
   share_plus:
     :path: ".symlinks/plugins/share_plus/ios"
   speech_to_text:
@@ -97,6 +102,7 @@ SPEC CHECKSUMS:
   flutter_tts: 35ac3c7d42412733e795ea96ad2d7e05d0a75113
   health: 4decf5d74e8f54c58a8c07a385fc72f629a831d9
   image_picker_ios: e0ece4aa2a75771a7de3fa735d26d90817041326
+  package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   speech_to_text: 3b313d98516d3d0406cea424782ec25470c59d19
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b

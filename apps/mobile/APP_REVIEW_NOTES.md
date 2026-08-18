@@ -54,6 +54,16 @@ Microphone and speech recognition are used only for voice dictation into the
 message box. Local network access is used to reach the user's own gateway.
 All are optional and requested only when the feature is used.
 
+Apple Health access is also optional and requested only when a user explicitly
+enables Apple Health for one of their own bots. The HealthKit consent sheet lets
+the user choose which read categories to share. Authorized samples can include
+activity, workouts, heart and respiratory measurements, sleep, body
+measurements, nutrition, medication-related insulin delivery, mindfulness, and
+symptom records. The app sends those samples only to the authenticated Hermes
+gateway selected by the user so that the user's private bot can answer health
+questions. The app does not write HealthKit data, use it for advertising, or
+send it to the app publisher or any analytics service.
+
 EXTERNAL SERVICES
 
 The app talks to one address: the gateway the user enters. We integrate no
@@ -71,8 +81,11 @@ French, Japanese, Korean, Portuguese and Chinese.
 
 REGULATED INDUSTRY
 
-Not applicable. The app is a network client for software the user runs. It
-provides no regulated service and includes no protected third-party material.
+The app is a network client for software the user runs. Its optional Apple
+Health integration provides user-directed summaries through that private
+gateway; it is not a medical device, does not diagnose or treat conditions, and
+does not provide emergency guidance. It includes no protected third-party
+material.
 
 NO VPN FUNCTIONALITY
 

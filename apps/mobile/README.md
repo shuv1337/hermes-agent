@@ -30,14 +30,15 @@ setup or the full Desktop administration experience.
 | Area | Mobile app | Hermes host |
 | --- | --- | --- |
 | Connect | URL, username/password login, secure session storage | Dashboard auth and gateway |
-| Projects | Browse host projects and their sessions | Project discovery and persistence |
 | Sessions | Local-first list and transcript cache | Source-of-truth session data |
 | Chat | Send turns, stream responses, show tool activity | Agent execution and tools |
+| Bots | Create and manage Bot Mode profiles and their sessions | Profile configuration and execution |
 | Models | Pick from the gateway's available options | Provider configuration and routing |
 | Jobs | View cron jobs and completion state | Scheduling and execution |
+| Apple Health | Optional, user-authorized read sync to the selected private gateway | Private plugin storage and query tools |
 | Notifications | Local completion notifications after permission is granted | Produces job/background results |
 
-Provider onboarding, skill authoring, terminal/workspace administration, and
+Project browsing, provider onboarding, skill authoring, terminal/workspace administration, and
 running the agent on the phone are intentionally out of scope.
 
 ## Host setup

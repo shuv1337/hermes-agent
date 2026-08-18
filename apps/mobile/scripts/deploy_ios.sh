@@ -9,7 +9,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-FLUTTER_DEVICE_ID="${1:-}"
+REQUESTED_DEVICE_ID="${1:-}"
+FLUTTER_DEVICE_ID="$REQUESTED_DEVICE_ID"
+IOS_TEAM_ID="${HERMES_IOS_TEAM_ID:-}"
+IOS_BUNDLE_ID="${HERMES_IOS_BUNDLE_ID:-}"
 if [[ -z "$FLUTTER_DEVICE_ID" ]]; then
   FLUTTER_DEVICE_ID="$(
     flutter devices 2>/dev/null \
@@ -25,10 +28,41 @@ if [[ -z "$FLUTTER_DEVICE_ID" ]]; then
   exit 1
 fi
 
-echo "==> Building release for $FLUTTER_DEVICE_ID"
-flutter build ios --release -d "$FLUTTER_DEVICE_ID"
+if [[ -n "$IOS_TEAM_ID" ]]; then
+  echo "==> Configuring release for $FLUTTER_DEVICE_ID"
+  flutter build ios --release --config-only -d "$FLUTTER_DEVICE_ID"
 
-APP_PATH="$ROOT/build/ios/iphoneos/Runner.app"
+  DERIVED_DATA="$ROOT/build/ios-device"
+  XCODE_BUILD_SETTINGS=(
+    "DEVELOPMENT_TEAM=$IOS_TEAM_ID"
+    "CODE_SIGN_STYLE=Automatic"
+  )
+  if [[ -n "$IOS_BUNDLE_ID" ]]; then
+    XCODE_BUILD_SETTINGS+=("HERMES_IOS_BUNDLE_ID=$IOS_BUNDLE_ID")
+  fi
+
+  echo "==> Building signed release with team $IOS_TEAM_ID"
+  env -i \
+    PATH="$PATH" \
+    HOME="$HOME" \
+    TMPDIR="${TMPDIR:-/tmp}" \
+    USER="${USER:-}" \
+    DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}" \
+    xcodebuild \
+    -workspace ios/Runner.xcworkspace \
+    -scheme Runner \
+    -configuration Release \
+    -destination "id=$FLUTTER_DEVICE_ID" \
+    -derivedDataPath "$DERIVED_DATA" \
+    -allowProvisioningUpdates \
+    "${XCODE_BUILD_SETTINGS[@]}" \
+    build
+  APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/Runner.app"
+else
+  echo "==> Building release for $FLUTTER_DEVICE_ID"
+  flutter build ios --release -d "$FLUTTER_DEVICE_ID"
+  APP_PATH="$ROOT/build/ios/iphoneos/Runner.app"
+fi
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Missing $APP_PATH" >&2
   exit 1
@@ -38,11 +72,13 @@ JSON_OUT="$(mktemp -t hermes-devices)"
 xcrun devicectl list devices --json-output "$JSON_OUT" >/dev/null
 
 CORE_DEVICE_ID="$(
-  FLUTTER_DEVICE_ID="$FLUTTER_DEVICE_ID" python3 - "$JSON_OUT" <<'PY'
+  FLUTTER_DEVICE_ID="$FLUTTER_DEVICE_ID" \
+  REQUESTED_DEVICE_ID="$REQUESTED_DEVICE_ID" python3 - "$JSON_OUT" <<'PY'
 import json, os, sys
 from pathlib import Path
 
 want = os.environ.get("FLUTTER_DEVICE_ID", "").strip()
+requested = os.environ.get("REQUESTED_DEVICE_ID", "").strip()
 data = json.loads(Path(sys.argv[1]).read_text())
 devices = data.get("result", {}).get("devices") or data.get("devices") or []
 
@@ -63,6 +99,11 @@ for d in devices:
     if udid_of(d) == want and ident_of(d):
         print(ident_of(d))
         raise SystemExit(0)
+
+# Auto-discovery may fall back to the first physical device. An explicit
+# request must fail closed rather than installing on another paired phone.
+if requested:
+    raise SystemExit(1)
 
 # Any physical device
 for d in devices:

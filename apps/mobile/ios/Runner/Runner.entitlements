@@ -6,7 +6,7 @@
 	     upgrades / reinstalls under the same team + bundle id. -->
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)ai.hermes.go</string>
+		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	</array>
 	<key>com.apple.developer.healthkit</key>
 	<true/>

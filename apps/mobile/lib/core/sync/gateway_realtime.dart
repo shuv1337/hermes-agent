@@ -188,10 +188,10 @@ class GatewayRealtime {
   static const foregroundPollInterval = Duration(minutes: 1);
 
   /// App-level zombie probe while "open" (protocol ping alone can lie).
-  /// Keep this gentle — a single slow session.list must not thrash the UI.
-  static const livenessInterval = Duration(seconds: 45);
+  /// A miss means the foreground socket is no longer trustworthy.
+  static const livenessInterval = Duration(seconds: 24);
   static const livenessRpcTimeout = Duration(seconds: 12);
-  static const livenessFailThreshold = 2;
+  static const livenessFailThreshold = 1;
 
   /// Desktop secondary backoff: 1s, 2s, 4s … capped at 15s.
   static const reconnectBase = Duration(milliseconds: 1000);
@@ -292,8 +292,8 @@ class GatewayRealtime {
 
   /// App returned to foreground — iOS often parks the TCP socket as a zombie.
   ///
-  /// Do **not** hard-probe on every Control Center / app-switch flicker; that
-  /// was killing a live socket and leaving Settings on "reconnecting".
+  /// Probe an apparently-open socket before reuse; a failed probe remints the
+  /// single-use ticket and reconnects.
   Future<bool> onAppResumed() async {
     _foregrounded = true;
     if (!_wantConnected || _disposed) return false;
@@ -312,19 +312,15 @@ class GatewayRealtime {
     _lastResumeProbeAt = now;
 
     if (_client.isOpen) {
-      // Soft probe only — never disconnect on a single timeout here.
+      // Resume must not reuse a zombie socket.
       final alive = await probeLiveness(disconnectOnFail: false);
       if (alive) {
         markHealthy();
         unawaited(refreshCaches(reason: 'resume'));
         return true;
       }
-      if (_livenessFailCount >= livenessFailThreshold) {
-        debugPrint('GatewayRealtime: zombie on resume — force reconnect');
-        return ensureLive(force: true);
-      }
-      // One failure: leave socket up, report live grace via isLive if healthy.
-      return _client.isOpen;
+      debugPrint('GatewayRealtime: zombie on resume — force reconnect');
+      return ensureLive(force: true);
     }
 
     // Not open: reset give-up and reconnect without redundant force if possible.
@@ -362,24 +358,17 @@ class GatewayRealtime {
     }
 
     final wasOffline = _isOffline(prev);
-    // Still online, just a different interface set — soft check, don't kill socket.
+    // A live path change invalidates the old TCP route. Debounce noisy updates,
+    // then remint and reconnect instead of trusting an apparently-open socket.
     if (!wasOffline && _client.isOpen) {
       debugPrint(
-        'GatewayRealtime: path change $prev → $normalized (still online, soft probe)',
+        'GatewayRealtime: path change $prev → $normalized — force reconnect',
       );
       _pathChangeDebounce?.cancel();
       _pathChangeDebounce = Timer(const Duration(seconds: 2), () {
         unawaited(() async {
           if (_disposed || !_wantConnected) return;
-          if (!_client.isOpen) {
-            await ensureLive(force: true);
-            return;
-          }
-          final ok = await probeLiveness(disconnectOnFail: false);
-          if (!ok) {
-            debugPrint('GatewayRealtime: soft probe failed after path change');
-            await ensureLive(force: true);
-          }
+          await ensureLive(force: true);
         }());
       });
       return;

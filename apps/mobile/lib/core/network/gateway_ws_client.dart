@@ -97,11 +97,11 @@ class GatewayWsClient {
       await _hardCloseChannel();
 
       // IOWebSocketChannel: real dart:io errors on iOS (CF tunnel / Tailscale).
-      // Avoid aggressive protocol pings — some reverse proxies / long tool
-      // turns drop the socket if pong is delayed, thrashing "reconnecting".
+      // Stay comfortably below common reverse-proxy idle windows. This is a
+      // protocol-level ping, independent of agent/tool turn duration.
       final channel = IOWebSocketChannel.connect(
         Uri.parse(wsUrl),
-        pingInterval: const Duration(seconds: 45),
+        pingInterval: const Duration(seconds: 20),
         connectTimeout: const Duration(seconds: 12),
       );
       _channel = channel;

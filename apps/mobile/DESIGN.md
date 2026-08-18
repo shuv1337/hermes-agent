@@ -13,8 +13,9 @@ server. Not the whole product — just the slice a gateway user needs on a phone
    never invents sessions the server doesn't know about.
 2. **Chat-first.** Sessions list → thread → composer. Settings and jobs are
    secondary tabs, not the home screen.
-3. **Thin client.** No skill editors, no provider onboarding, no container
-   backends. If it belongs in Desktop's settings tree, it stays there.
+3. **Host-backed client.** No skill authoring, provider onboarding, or container
+   backends. Bot Mode profile administration is the narrow exception: the phone
+   edits host profiles through the gateway's existing structured APIs.
 4. **Safe by default.** Dashboard cookies and legacy gateway tokens in
    platform secure storage only — never in the plaintext Application Support
    mirror. Remote connections require TLS.
@@ -30,14 +31,13 @@ server. Not the whole product — just the slice a gateway user needs on a phone
 
 ```
 [Connect]  ──once──►  [Shell]
-                        ├─ Projects  → project overview (projects.tree)
-                        │               └─ Project detail (project_sessions)
                         ├─ Sessions  → flat recents + SessionChat
+                        ├─ Bots      → profiles, groups, sessions, cron jobs
                         ├─ Jobs      → cron list / last run
                         └─ Settings  → connection, notifications, disconnect, about
 ```
 
-### Projects (Desktop sidebar parity)
+### Projects (planned, not in v1)
 
 Desktop groups work by **project** (projects.db + auto repo roots), not a flat
 session dump. Mobile calls the same JSON-RPC surface over `/api/ws`:
@@ -48,8 +48,8 @@ session dump. Mobile calls the same JSON-RPC surface over `/api/ws`:
 | `projects.project_sessions` | Drill-in: hydrated lanes → flattened session list |
 | `projects.list` | Optional light list of explicit projects.db rows |
 
-Requires live gateway WebSocket (same token/URL as Desktop). API-server-only
-hosts show an empty state pointing at Sessions.
+This surface is deferred. v1 uses the flat Sessions view while retaining the
+gateway RPC contract as the intended route to later project browsing.
 
 ### Connect (Desktop remote parity — no API_SERVER_KEY)
 
@@ -221,7 +221,7 @@ Lifecycle: `paused` schedules a catch-up task; `resumed` reconnects WS + pulls.
 | Desktop / agent feature | Why not on phone |
 | --- | --- |
 | Skills hub authoring | Editing + filesystem live on host |
-| Profile multi-admin | Advanced; one connection profile first |
+| Arbitrary profile/config editor | Mobile exposes Bot Mode's bounded fields, not general config.yaml editing |
 | Terminal / workspace browser | Wrong form factor; host runs tools |
 | Full config.yaml editor | Dangerous + huge surface |
 | OAuth portal setup | Done once on host (`hermes setup`) |

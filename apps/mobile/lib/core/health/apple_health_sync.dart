@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:health/health.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:hermes_mobile/core/network/connection_store.dart';
@@ -187,6 +188,7 @@ class AppleHealthSync {
       }
     }
     var accepted = 0;
+    final packageInfo = await PackageInfo.fromPlatform();
     const batchSize = 500;
     for (var offset = 0; offset < points.length; offset += batchSize) {
       final end = (offset + batchSize).clamp(0, points.length);
@@ -198,12 +200,17 @@ class AppleHealthSync {
         'schema_version': 1,
         'device_id': _health.deviceId,
         'batch_id': const Uuid().v4(),
-        'app_version': '37',
+        'app_version': packageInfo.buildNumber,
         'samples': payload,
       });
       accepted += (response['accepted'] as num?)?.toInt() ?? 0;
     }
-    await _storage.write(key: _cursorKey, value: now.toIso8601String());
+    // Keep the prior cursor when any type failed. The next run will retry the
+    // same bounded window; server UUID upserts make successful-type duplicates
+    // harmless, while advancing here could permanently skip failed samples.
+    if (errors.isEmpty) {
+      await _storage.write(key: _cursorKey, value: now.toIso8601String());
+    }
     await _storage.write(key: _diagnosticsKey, value: jsonEncode(readByType));
     debugPrint('AppleHealthSync: ${points.length} read, $accepted accepted');
     return AppleHealthSyncResult(
