@@ -4555,6 +4555,45 @@ def _load_enabled_toolsets(platform: str | None = None) -> list[str] | None:
     cfg = None
     fallback_notice = None
 
+    # Bot/profile capability editors persist an explicit per-profile pin at
+    # ``tools.enabled_toolsets``.  Resolve that before coding-context posture:
+    # a Bot Chat may happen to start in a repository, but that must not replace
+    # the profile's selected capabilities with the generic coding set.  The
+    # profile API already treats this field as authoritative when displaying
+    # its capability checkboxes, so the runtime must consume the same field.
+    # HERMES_TUI_TOOLSETS remains the operator-level override and wins above
+    # this block when present.
+    if not explicit:
+        try:
+            from hermes_cli.config import load_config
+            from hermes_cli.tools_config import enabled_mcp_server_names
+
+            cfg = load_config()
+            tools_cfg = cfg.get("tools") if isinstance(cfg, dict) else None
+            pinned = (
+                tools_cfg.get("enabled_toolsets")
+                if isinstance(tools_cfg, dict)
+                else None
+            )
+            if isinstance(pinned, list) and pinned:
+                # Plugin toolsets are registry-backed. Ensure the active
+                # profile overlay is loaded before AIAgent snapshots schemas.
+                from hermes_cli.plugins import discover_plugins
+
+                discover_plugins()
+                selected = {
+                    str(name).strip() for name in pinned if str(name).strip()
+                }
+                # MCP enablement is configured separately from the profile's
+                # native/plugin capability pin and must continue to ride along.
+                selected.update(enabled_mcp_server_names(cfg))
+                selected.update(_gui_surface_toolsets(session_platform))
+                return sorted(selected)
+        except Exception:
+            # Preserve the established posture/config fallback when a partial
+            # or older profile cannot resolve its capability pin.
+            cfg = None
+
     # Coding posture (base Hermes): with no explicit pin, collapse to the
     # coding toolset (+ enabled MCP servers) when sitting in a code workspace.
     # The desktop app and `hermes --tui` both land here. See

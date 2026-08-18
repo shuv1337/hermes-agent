@@ -2373,6 +2373,37 @@ def test_load_enabled_toolsets_prefers_tui_env(monkeypatch):
     assert server._load_enabled_toolsets() == ["web", "terminal", "memory"]
 
 
+def test_load_enabled_toolsets_honors_profile_capability_pin_before_posture(
+    monkeypatch,
+):
+    monkeypatch.delenv("HERMES_TUI_TOOLSETS", raising=False)
+
+    import agent.coding_context as cc
+    import hermes_cli.config as config_mod
+    import hermes_cli.plugins as plugins_mod
+    import hermes_cli.tools_config as tools_config_mod
+
+    monkeypatch.setattr(cc, "coding_selection", lambda **_: ["coding"])
+    monkeypatch.setattr(
+        config_mod,
+        "load_config",
+        lambda: {"tools": {"enabled_toolsets": ["web", "apple_health"]}},
+    )
+    discovered = []
+    monkeypatch.setattr(plugins_mod, "discover_plugins", lambda: discovered.append(True))
+    monkeypatch.setattr(
+        tools_config_mod, "enabled_mcp_server_names", lambda _cfg: {"github"}
+    )
+
+    assert server._load_enabled_toolsets("mobile") == [
+        "apple_health",
+        "github",
+        "project",
+        "web",
+    ]
+    assert discovered == [True]
+
+
 def test_load_enabled_toolsets_filters_invalid_tui_env(monkeypatch, capsys):
     monkeypatch.setenv("HERMES_TUI_TOOLSETS", "web, nope")
     monkeypatch.setitem(
