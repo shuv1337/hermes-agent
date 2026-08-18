@@ -1529,6 +1529,70 @@ def _profile_home(profile: str | None) -> Path | None:
     return home if (home / "state.db").exists() or home.exists() else None
 
 
+def _infer_profile_for_session_id(session_id: str) -> tuple[str, Path] | None:
+    """Find the sole non-launch profile that owns an exact durable session id.
+
+    Mobile clients can restore an already-open Bot Chat before their in-memory
+    ``session -> profile`` map has been rebuilt.  An unscoped resume would then
+    either fail or, worse, reuse a stale launch-profile runtime whose tool
+    catalog cannot include profile-local plugins.  Session ids are exact DB
+    keys, so when the launch DB does not own one we can safely recover a unique
+    profile owner from the host's profile state DBs.
+
+    Ambiguous matches fail closed: the caller keeps normal launch-profile
+    behavior instead of guessing between profiles.
+    """
+    target = str(session_id or "").strip()
+    if not target:
+        return None
+    try:
+        launch_db = _get_db()
+        if launch_db is not None and launch_db.get_session(target):
+            return None
+    except Exception:
+        # A transient launch DB read must not prevent checking isolated profile
+        # stores; each candidate below is opened independently.
+        pass
+
+    try:
+        from hermes_constants import get_default_hermes_root
+        from hermes_state import SessionDB
+
+        profiles_dir = get_default_hermes_root() / "profiles"
+        candidates = [p for p in profiles_dir.iterdir() if p.is_dir()]
+    except Exception:
+        return None
+
+    matches: list[tuple[str, Path]] = []
+    for home in candidates:
+        db_path = home / "state.db"
+        if not db_path.exists():
+            continue
+        db = None
+        try:
+            db = SessionDB(db_path=db_path)
+            if db.get_session(target):
+                matches.append((home.name, home))
+                if len(matches) > 1:
+                    logger.warning(
+                        "session profile inference ambiguous: session=%s profiles=%s",
+                        target,
+                        [name for name, _home in matches],
+                    )
+                    return None
+        except Exception:
+            logger.debug(
+                "session profile inference could not inspect %s",
+                db_path,
+                exc_info=True,
+            )
+        finally:
+            if db is not None:
+                with contextlib.suppress(Exception):
+                    db.close()
+    return matches[0] if len(matches) == 1 else None
+
+
 def _profile_scoped(handler):
     """Bind ``params['profile']``'s HERMES_HOME around a pet RPC handler.
 

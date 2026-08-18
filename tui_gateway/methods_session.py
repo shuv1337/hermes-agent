@@ -323,6 +323,15 @@ def _(rid, params: dict) -> dict:
     # local profile's state.db. None/own profile → the launch profile (unchanged).
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
+    if profile is None:
+        inferred = _infer_profile_for_session_id(target)
+        if inferred is not None:
+            profile, profile_home = inferred
+            logger.info(
+                "session.resume recovered profile scope: session=%s profile=%s",
+                target,
+                profile,
+            )
     defer_history = is_truthy_value(params.get("defer_history", False))
     # Desktop hydrates persisted transcripts through the authenticated REST
     # route in parallel. Suppress the duplicate WebSocket transcript only when

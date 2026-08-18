@@ -13260,6 +13260,46 @@ def test_live_session_lookup_does_not_reuse_default_runtime_for_profile(tmp_path
         server._sessions.clear()
 
 
+def test_infer_profile_for_session_id_recovers_unique_profile(monkeypatch, tmp_path):
+    root = tmp_path / ".hermes"
+    coach_home = root / "profiles" / "coach"
+    other_home = root / "profiles" / "other"
+    coach_home.mkdir(parents=True)
+    other_home.mkdir(parents=True)
+    (coach_home / "state.db").write_bytes(b"")
+    (other_home / "state.db").write_bytes(b"")
+    closed: list[Path] = []
+
+    class LaunchDB:
+        def get_session(self, _target):
+            return None
+
+    class ProfileDB:
+        def __init__(self, db_path=None):
+            self.db_path = Path(db_path)
+
+        def get_session(self, target):
+            if self.db_path.parent.name == "coach" and target == "bot-chat-1":
+                return {"id": target}
+            return None
+
+        def close(self):
+            closed.append(self.db_path)
+
+    import hermes_constants
+    import hermes_state
+
+    monkeypatch.setattr(server, "_get_db", lambda: LaunchDB())
+    monkeypatch.setattr(hermes_constants, "get_default_hermes_root", lambda: root)
+    monkeypatch.setattr(hermes_state, "SessionDB", ProfileDB)
+
+    assert server._infer_profile_for_session_id("bot-chat-1") == (
+        "coach",
+        coach_home,
+    )
+    assert set(closed) == {coach_home / "state.db", other_home / "state.db"}
+
+
 def test_session_list_honors_params_profile_opens_profile_db(monkeypatch, tmp_path):
     """Issue #62503: session.list must read the profile's state.db, not launch."""
     profile_home = tmp_path / "profiles" / "mlperf"
