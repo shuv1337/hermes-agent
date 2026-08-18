@@ -9,13 +9,16 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hermes_mobile/core/demo/demo_gateway_server.dart';
 import 'package:hermes_mobile/core/models/hermes_models.dart';
+import 'package:hermes_mobile/core/network/connection_store.dart';
 import 'package:hermes_mobile/core/network/dashboard_client.dart';
 import 'package:hermes_mobile/core/network/gateway_auth.dart';
 import 'package:hermes_mobile/core/network/gateway_ws_client.dart';
+import 'package:hermes_mobile/core/providers.dart';
 
 /// `flutter_test`'s `TestWidgetsFlutterBinding` fakes every `HttpClient`
 /// (including the one `WebSocket.connect` builds under the hood) with one
@@ -161,6 +164,43 @@ void main() {
       );
       final ticket = await auth.mintWsTicket();
       expect(ticket, isNotEmpty);
+    }),
+  );
+
+  test(
+    'successful sign-in replaces a REST client created before login',
+    () => _withRealHttp(() async {
+      final profile = ConnectionProfile(
+        id: 'sign-in-transition-${DateTime.now().microsecondsSinceEpoch}',
+        baseUrl: baseUrl.toString(),
+        authMode: 'session',
+        provider: 'demo',
+      );
+      final store = ConnectionStore.memory();
+      await store.saveAsPrimary(profile);
+      final container = ProviderContainer(
+        overrides: [connectionStoreProvider.overrideWithValue(store)],
+      );
+      addTearDown(container.dispose);
+      await container.read(gatewayBookProvider.future);
+
+      // The saved profile exists before authentication, so startup can build
+      // a DashboardClient whose persistent jar is still empty.
+      final beforeLogin = container.read(dashboardClientProvider)!;
+      await expectLater(
+        beforeLogin.listSessions(),
+        throwsA(isA<DashboardAuthException>()),
+      );
+
+      // Interactive login writes valid cookies through a separate jar, just
+      // like ConnectScreen. Completing the public save transition must evict
+      // the pre-login client so connected-shell requests reload those cookies.
+      await loginAs(profile.id);
+      await container.read(connectionActionsProvider).save(profile);
+
+      final afterLogin = container.read(dashboardClientProvider)!;
+      expect(afterLogin, isNot(same(beforeLogin)));
+      expect(await afterLogin.listSessions(), isNotEmpty);
     }),
   );
 

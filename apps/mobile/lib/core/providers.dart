@@ -153,8 +153,21 @@ class ConnectionActions {
   ConnectionActions(this._ref);
   final Ref _ref;
 
-  Future<void> save(ConnectionProfile profile) =>
-      _ref.read(gatewayBookProvider.notifier).saveAsPrimary(profile);
+  Future<void> save(ConnectionProfile profile) async {
+    await _ref.read(gatewayBookProvider.notifier).saveAsPrimary(profile);
+
+    // A saved session profile exists before interactive reauthentication, so
+    // startup may already have built DashboardClient with an empty in-memory
+    // cookie jar. Password login writes the new cookies through a separate
+    // jar. Recreate the REST client at the public save transition so the
+    // connected shell reloads those cookies instead of immediately turning a
+    // stale no-cookie 401 into another forced sign-in.
+    final holder = _ref.read(_dashboardClientHolderProvider);
+    holder.client = null;
+    holder.gatewayId = null;
+    holder.baseUrl = null;
+    _ref.invalidate(dashboardClientProvider);
+  }
 
   Future<void> disconnect() async {
     final book = _ref.read(gatewayBookProvider).value;
