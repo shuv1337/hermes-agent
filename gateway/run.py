@@ -906,6 +906,34 @@ def _resolve_progress_thread_id(
     return None
 
 
+def _adapter_supports_streaming_edits(adapter: Any) -> bool:
+    """Return whether adapter edits are safe for high-frequency streaming.
+
+    SUPPORTS_MESSAGE_EDITING means explicit user/operator edits are possible.
+    Streaming is a narrower capability: some platforms expose an edit API but
+    make every edit a visible high-frequency event, so they should opt out of
+    response-stream editing while keeping explicit edit_message().
+    """
+    streaming_capability = getattr(adapter, "SUPPORTS_STREAMING_EDITS", None)
+    if streaming_capability is not None:
+        return bool(streaming_capability)
+    return bool(getattr(adapter, "SUPPORTS_MESSAGE_EDITING", True))
+
+
+def _adapter_supports_progress_edits(adapter: Any) -> bool:
+    """Return whether adapter edits are safe for tool/thinking progress.
+
+    Progress bubbles are throttled and lower-frequency than token streaming,
+    but they are still automatic edits. Platforms may expose explicit
+    edit_message() for deliberate user/operator edits while choosing a separate
+    policy for automatic progress edits.
+    """
+    progress_capability = getattr(adapter, "SUPPORTS_PROGRESS_EDITS", None)
+    if progress_capability is not None:
+        return bool(progress_capability)
+    return _adapter_supports_streaming_edits(adapter)
+
+
 def _has_platform_display_override(user_config: dict, platform_key: str, setting: str) -> bool:
     """Return True when display.platforms.<platform> explicitly sets setting."""
     display = user_config.get("display") if isinstance(user_config, dict) else None
@@ -2542,6 +2570,7 @@ from gateway.platforms.base import (
     _reply_anchor_for_event,
     build_auto_tts_output_path,
     merge_pending_message_event,
+    next_edit_target_message_id,
     utf16_len,
 )
 from gateway.shutdown_watchdog import (
@@ -4612,14 +4641,18 @@ class TurnRunner:
             await self._send_native_task_card_progress(adapter)
             return
 
-        # Skip tool progress for platforms that don't support message
-        # editing (e.g. iMessage/BlueBubbles) — each progress update
-        # would become a separate message bubble, which is noisy.
+        # Skip tool/thinking progress for platforms that cannot safely edit
+        # progress bubbles. An adapter may support explicit edits while
+        # independently opting out of automatic progress cadence.
         # getattr, not attribute access: duck-typed adapters (test fakes,
         # minimal plugin adapters) may not define edit_message at all —
         # "missing" means the same thing as "base no-op": can't edit.
         _adapter_edit = getattr(type(adapter), "edit_message", None)
-        if _adapter_edit is None or _adapter_edit is BasePlatformAdapter.edit_message:
+        if (
+            not _adapter_supports_progress_edits(adapter)
+            or _adapter_edit is None
+            or _adapter_edit is BasePlatformAdapter.edit_message
+        ):
             while not ctx.progress_queue.empty():
                 try:
                     ctx.progress_queue.get_nowait()
@@ -4677,6 +4710,7 @@ class TurnRunner:
                 _edit_accepts_metadata = False
 
         async def _edit_progress_message(message_id: str, content: str):
+            nonlocal progress_msg_id
             kwargs = {
                 "chat_id": ctx.source.chat_id,
                 "message_id": message_id,
@@ -4686,7 +4720,13 @@ class TurnRunner:
                 kwargs["finalize"] = True
             if _edit_accepts_metadata:
                 kwargs["metadata"] = ctx._progress_metadata
-            return await adapter.edit_message(**kwargs)
+            result = await adapter.edit_message(**kwargs)
+            progress_msg_id = next_edit_target_message_id(
+                adapter,
+                message_id,
+                result,
+            )
+            return result
 
         def _progress_text(lines: list) -> str:
             return "\n".join(str(line) for line in lines)
@@ -4904,6 +4944,11 @@ class TurnRunner:
                         progress_msg_id = result.message_id
                         if ctx._cleanup_progress:
                             ctx._cleanup_msg_ids.append(str(result.message_id))
+                    elif result.success and can_edit:
+                        # The message was delivered but cannot be addressed for
+                        # a later edit. Degrade to one new line per update
+                        # instead of replaying the accumulated transcript.
+                        can_edit = False
 
                 _last_edit_ts = time.monotonic()
 
@@ -5299,6 +5344,7 @@ class TurnRunner:
                         on_before_finalize=_pause_typing_before_finalize,
                         initial_reply_to_id=ctx.event_message_id,
                         run_still_current=ctx._run_still_current,
+                        edit_commentary=_adapter_supports_progress_edits(_adapter),
                     )
                     if _want_stream_deltas:
                         def _stream_delta_cb(text: str) -> None:
@@ -5319,6 +5365,44 @@ class TurnRunner:
                 if ctx._run_still_current():
                     _stts_consumer_ref.on_delta(text)
 
+        _fallback_commentary_delivery = None
+        if ctx._status_adapter is not None:
+            try:
+                from gateway.stream_consumer import _InterimCommentaryDelivery
+
+                _fallback_commentary_delivery = _InterimCommentaryDelivery(
+                    ctx._status_adapter,
+                    ctx._status_chat_id,
+                    metadata=ctx._status_thread_metadata,
+                    edit_enabled=_adapter_supports_progress_edits(
+                        ctx._status_adapter
+                    ),
+                )
+            except Exception as _fallback_setup_err:
+                logger.debug(
+                    "Could not set up interim commentary fallback: %s",
+                    _fallback_setup_err,
+                )
+
+        async def _deliver_fallback_commentary(display_text: str) -> None:
+            if _fallback_commentary_delivery is None:
+                await ctx._status_adapter.send(
+                    ctx._status_chat_id,
+                    display_text,
+                    metadata=ctx._status_thread_metadata,
+                )
+                return
+
+            success, created_new_message = (
+                await _fallback_commentary_delivery.deliver(display_text)
+            )
+            if (
+                success
+                and created_new_message
+                and ctx.progress_queue is not None
+            ):
+                ctx.progress_queue.put(("__reset__",))
+
         def _interim_assistant_cb(text: str, *, already_streamed: bool = False) -> None:
             if not ctx._run_still_current():
                 return
@@ -5332,11 +5416,7 @@ class TurnRunner:
             if already_streamed or not ctx._status_adapter or not str(display_text or "").strip():
                 return
             safe_schedule_threadsafe(
-                ctx._status_adapter.send(
-                    ctx._status_chat_id,
-                    display_text,
-                    metadata=ctx._status_thread_metadata,
-                ),
+                _deliver_fallback_commentary(display_text),
                 ctx._loop_for_step,
                 logger=logger,
                 log_message="interim_assistant_callback scheduling error",
@@ -27138,9 +27218,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         """Build the shared ``StreamConsumerConfig`` and the optional
         Telegram pause-typing closure used by both agent-run paths.
 
-        ``on_missing_cursor`` controls how platforms whose adapter sets
-        ``SUPPORTS_MESSAGE_EDITING = False`` are handled — both semantics
-        are preserved verbatim from the pre-refactor call sites:
+        ``on_missing_cursor`` controls how legacy platforms whose adapter sets
+        ``SUPPORTS_MESSAGE_EDITING = False`` are handled:
 
         - ``"fallback"`` (proxy path): stream anyway with an empty cursor.
         - ``"raise"`` (in-process agent path): raise ``RuntimeError`` so
@@ -27164,8 +27243,16 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         # duplicate messages (partial + final).
         # (The proxy path instead opts into a cursorless fallback
         # via on_missing_cursor="fallback".)
-        _adapter_supports_edit = getattr(adapter, "SUPPORTS_MESSAGE_EDITING", True)
-        if not _adapter_supports_edit and on_missing_cursor == "raise":
+        _adapter_supports_edit = _adapter_supports_streaming_edits(adapter)
+        _explicit_streaming_capability = getattr(
+            adapter,
+            "SUPPORTS_STREAMING_EDITS",
+            None,
+        )
+        if not _adapter_supports_edit and (
+            on_missing_cursor == "raise"
+            or _explicit_streaming_capability is not None
+        ):
             raise RuntimeError("skip streaming for non-editable platform")
         _effective_cursor = scfg.cursor if _adapter_supports_edit else ""
         # Some Matrix clients render the streaming cursor
@@ -28485,7 +28572,13 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                         except Exception as _ee:
                             logger.debug("Heartbeat edit failed: %s", _ee)
                             _notify_res = None
-                    if not (_notify_res and getattr(_notify_res, "success", False)):
+                    if _notify_res and getattr(_notify_res, "success", False):
+                        _heartbeat_msg_id = next_edit_target_message_id(
+                            _notify_adapter,
+                            _heartbeat_msg_id,
+                            _notify_res,
+                        )
+                    else:
                         _notify_res = await _notify_adapter.send(
                             source.chat_id,
                             _heartbeat_text,

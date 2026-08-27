@@ -121,6 +121,41 @@ class TestFinalizeCapabilityGate:
         assert picky.edit_message.call_args[1]["finalize"] is True
 
 
+class TestEditResultTargetCapability:
+    """A fresh edit result id is not globally the next edit target."""
+
+    @staticmethod
+    def _adapter(*, chains_result_ids: bool):
+        adapter = MagicMock()
+        adapter.EDIT_RESULT_ID_IS_NEXT_TARGET = chains_result_ids
+        adapter.REQUIRES_EDIT_FINALIZE = False
+        adapter.MAX_MESSAGE_LENGTH = 4096
+        adapter.send = AsyncMock(
+            return_value=SimpleNamespace(success=True, message_id="original")
+        )
+        adapter.edit_message = AsyncMock(
+            side_effect=[
+                SimpleNamespace(success=True, message_id="replacement-1"),
+                SimpleNamespace(success=True, message_id="replacement-2"),
+            ]
+        )
+        return adapter
+
+    @pytest.mark.asyncio
+    async def test_replacement_event_adapter_keeps_original_edit_target(self):
+        adapter = self._adapter(chains_result_ids=False)
+        consumer = GatewayStreamConsumer(adapter, "chat_1")
+
+        await consumer._send_or_edit("first")
+        await consumer._send_or_edit("second")
+        await consumer._send_or_edit("third")
+
+        assert [
+            call.kwargs["message_id"] for call in adapter.edit_message.await_args_list
+        ] == ["original", "original"]
+        assert consumer._message_id == "original"
+
+
 class TestEditMessageFinalizeSignature:
     """Every concrete platform adapter must accept the ``finalize`` kwarg.
 
@@ -144,6 +179,7 @@ class TestEditMessageFinalizeSignature:
             ("plugins.platforms.feishu.adapter", "FeishuAdapter"),
             ("plugins.platforms.whatsapp.adapter", "WhatsAppAdapter"),
             ("plugins.platforms.dingtalk.adapter", "DingTalkAdapter"),
+            ("gateway.platforms.signal", "SignalAdapter"),
         ],
     )
     def test_edit_message_accepts_finalize(self, module_path, class_name):
@@ -806,6 +842,75 @@ class TestEditOverflowSplitAndDeliver:
 
 class TestInterimCommentaryMessages:
     @pytest.mark.asyncio
+    async def test_commentary_edits_one_timestamp_chained_message_before_final(self):
+        adapter = MagicMock()
+        adapter.SUPPORTS_MESSAGE_EDITING = True
+        adapter.SUPPORTS_STREAMING_EDITS = False
+        adapter.SUPPORTS_PROGRESS_EDITS = True
+        adapter.EDIT_RESULT_ID_IS_NEXT_TARGET = True
+        adapter.send = AsyncMock(side_effect=[
+            SimpleNamespace(success=True, message_id="ts-1"),
+            SimpleNamespace(success=True, message_id="final-1"),
+        ])
+        adapter.edit_message = AsyncMock(side_effect=[
+            SimpleNamespace(success=True, message_id="ts-2"),
+            SimpleNamespace(success=True, message_id="ts-3"),
+        ])
+        adapter.MAX_MESSAGE_LENGTH = 4096
+
+        consumer = GatewayStreamConsumer(
+            adapter,
+            "chat_123",
+            StreamConsumerConfig(edit_interval=0.01, buffer_threshold=5),
+            edit_commentary=True,
+        )
+
+        consumer.on_commentary("Step 1 done.")
+        consumer.on_commentary("Step 2 in progress.")
+        consumer.on_commentary("Step 3 done.")
+        consumer.on_delta("Final answer.")
+        consumer.finish()
+
+        await consumer.run()
+
+        assert [call.kwargs["content"] for call in adapter.send.await_args_list] == [
+            "Step 1 done.",
+            "Final answer.",
+        ]
+        assert [
+            (call.kwargs["message_id"], call.kwargs["content"])
+            for call in adapter.edit_message.await_args_list
+        ] == [
+            ("ts-1", "Step 2 in progress."),
+            ("ts-2", "Step 3 done."),
+        ]
+        assert consumer.final_response_sent is True
+
+    @pytest.mark.asyncio
+    async def test_commentary_fails_closed_without_fresh_chained_timestamp(self):
+        adapter = MagicMock()
+        adapter.EDIT_RESULT_ID_IS_NEXT_TARGET = True
+        adapter.send = AsyncMock(
+            return_value=SimpleNamespace(success=True, message_id="ts-1")
+        )
+        adapter.edit_message = AsyncMock(
+            return_value=SimpleNamespace(success=True, message_id=None)
+        )
+
+        consumer = GatewayStreamConsumer(
+            adapter,
+            "chat_123",
+            edit_commentary=True,
+        )
+
+        assert await consumer._send_commentary("Step 1 done.") is True
+        assert await consumer._send_commentary("Step 2 in progress.") is False
+        assert await consumer._send_commentary("Step 3 must not stack.") is False
+
+        adapter.send.assert_awaited_once()
+        adapter.edit_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_commentary_message_stays_separate_from_final_stream(self):
         adapter = MagicMock()
         adapter.send = AsyncMock(side_effect=[
@@ -1377,6 +1482,33 @@ class TestStripOrphanCloseTags:
         assert GatewayStreamConsumer._strip_orphan_close_tags("") == ""
 
 
+class TestEditMessageIdPropagation:
+    @pytest.mark.asyncio
+    async def test_timestamp_chain_capability_adopts_fresh_message_id(self):
+        adapter = MagicMock()
+        adapter.EDIT_RESULT_ID_IS_NEXT_TARGET = True
+        adapter.MAX_MESSAGE_LENGTH = 4096
+        adapter.REQUIRES_EDIT_FINALIZE = False
+        adapter.send = AsyncMock(return_value=SimpleNamespace(
+            success=True,
+            message_id="ts-1",
+        ))
+        adapter.edit_message = AsyncMock(side_effect=[
+            SimpleNamespace(success=True, message_id="ts-2"),
+            SimpleNamespace(success=True, message_id="ts-3"),
+        ])
+
+        consumer = GatewayStreamConsumer(adapter, "chat_123")
+
+        assert await consumer._send_or_edit("first") is True
+        assert consumer.message_id == "ts-1"
+
+        assert await consumer._send_or_edit("second") is True
+        assert consumer.message_id == "ts-2"
+
+        assert await consumer._send_or_edit("third") is True
+        assert consumer.message_id == "ts-3"
+        assert adapter.edit_message.call_args_list[1].kwargs["message_id"] == "ts-2"
 class TestHasDeliveredTextAfterSegmentBreak:
     """has_delivered_text must find a delivered segment after a segment break,
     but must not claim text from a failed delivery. (#65919 review)"""
@@ -1487,4 +1619,3 @@ class TestFlushPendingSync:
 
         consumer.finish()
         await task
-
