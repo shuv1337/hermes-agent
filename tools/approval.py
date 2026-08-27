@@ -3190,15 +3190,76 @@ def _get_approval_mode() -> str:
     return _normalize_approval_mode(mode)
 
 
+def _is_configured_signal_sender_yolo(session_key: str) -> bool:
+    """Return whether this bound Signal sender has persistent YOLO enabled.
+
+    Sender identity comes from the gateway's task-local session context, where
+    the Signal adapter publishes ``sourceUuid`` as ``user_id_alt``.  Falling
+    back to ``user_id`` covers envelopes that expose the ACI as their primary
+    sender identifier.  The bound session-key equality check prevents an
+    explicit query for some other session (for example computer-use's DB
+    session id) from borrowing the current turn's sender identity.
+
+    This deliberately does not parse UUID-looking values out of session keys:
+    the same text can be a Telegram, Slack, or CLI identifier, while Signal DMs
+    commonly key their chat by phone number even though the stable ACI is
+    already present in ``user_id_alt``.
+    """
+    if not session_key:
+        return False
+
+    try:
+        from gateway.session_context import (
+            get_session_env,
+            session_context_engaged,
+        )
+
+        # Persistent sender YOLO is a gateway-session capability, not an env
+        # convention a standalone CLI process can opt into accidentally.
+        if not session_context_engaged():
+            return False
+        if get_session_env("HERMES_SESSION_KEY", "") != session_key:
+            return False
+        if get_session_env("HERMES_SESSION_PLATFORM", "").strip().lower() != "signal":
+            return False
+
+        sender_id = (
+            get_session_env("HERMES_SESSION_USER_ID_ALT", "")
+            or get_session_env("HERMES_SESSION_USER_ID", "")
+        ).strip().lower()
+        if not sender_id:
+            return False
+    except Exception:
+        return False
+
+    platforms = _get_approval_config().get("platforms")
+    if not isinstance(platforms, dict):
+        return False
+    signal_config = platforms.get("signal")
+    if not isinstance(signal_config, dict):
+        return False
+    configured_senders = signal_config.get("yolo_senders")
+    if not isinstance(configured_senders, list):
+        return False
+
+    return any(
+        isinstance(configured, str)
+        and configured.strip().lower() == sender_id
+        for configured in configured_senders
+    )
+
+
 def is_approval_bypass_active_for_session(session_key: str) -> bool:
     """Return whether one exact session bypasses Hermes approval prompts.
 
-    Collapses the canonical three-source bypass check used across the codebase
+    Collapses the canonical four-source bypass check used across the codebase
     into one place:
       - process-scoped ``--yolo`` / ``HERMES_YOLO_MODE`` (frozen at import time
         so a mid-process skill can't flip it — a prompt-injection escalation
         path; see ``_YOLO_MODE_FROZEN`` above),
       - the session-scoped gateway ``/yolo`` toggle,
+      - persistent Signal sender YOLO from
+        ``approvals.platforms.signal.yolo_senders``,
       - ``approvals.mode: off`` in config.
 
     This is the pure-bypass sub-expression only. Callers that also honor a
@@ -3207,6 +3268,7 @@ def is_approval_bypass_active_for_session(session_key: str) -> bool:
     return (
         _YOLO_MODE_FROZEN
         or is_session_yolo_enabled(session_key)
+        or _is_configured_signal_sender_yolo(session_key)
         or _get_approval_mode() == "off"
     )
 
@@ -3466,10 +3528,10 @@ def _run_approval_gate(
         ``{"approved": bool, "message": str|None, ...}`` — shape shared with
         ``check_dangerous_command`` so all callers handle it uniformly.
     """
-    # --yolo bypasses all approval prompts (session- or process-scoped).
+    # YOLO bypasses all approval prompts (sender-, session-, or process-scoped).
     # Hardline blocks are handled by the caller BEFORE this gate, so yolo
     # here only skips the recoverable approval layer.
-    if _YOLO_MODE_FROZEN or is_current_session_yolo_enabled():
+    if is_approval_bypass_active():
         return {"approved": True, "message": None}
 
     session_key = get_current_session_key()
@@ -3754,9 +3816,9 @@ def check_dangerous_command(command: str, env_type: str,
                        deny_pattern, command[:200])
         return _user_deny_block_result(deny_pattern)
 
-    # --yolo: bypass all approval prompts. Gateway /yolo is session-scoped;
-    # CLI --yolo remains process-scoped via the env var for local use.
-    if _YOLO_MODE_FROZEN or is_current_session_yolo_enabled():
+    # YOLO: bypass all approval prompts. Configured Signal senders and gateway
+    # /yolo are scoped to their session; CLI --yolo remains process-scoped.
+    if is_approval_bypass_active():
         return {"approved": True, "message": None}
 
     if _command_matches_permanent_allowlist(command):
@@ -4387,10 +4449,11 @@ def check_all_command_guards(command: str, env_type: str,
                        deny_pattern, command[:200])
         return _user_deny_block_result(deny_pattern)
 
-    # --yolo or approvals.mode=off: bypass all approval prompts.
-    # Gateway /yolo is session-scoped; CLI --yolo remains process-scoped.
+    # YOLO or approvals.mode=off: bypass all approval prompts. Configured
+    # Signal senders and gateway /yolo are scoped to their session; CLI
+    # --yolo remains process-scoped.
     approval_mode = _get_approval_mode()
-    if _YOLO_MODE_FROZEN or is_current_session_yolo_enabled() or approval_mode == "off":
+    if is_approval_bypass_active():
         return {"approved": True, "message": None}
 
     if _command_matches_permanent_allowlist(command):
@@ -5018,9 +5081,9 @@ def check_execute_code_guard(code: str, env_type: str,
     if _should_skip_container_guards(env_type, has_host_access=has_host_access):
         return {"approved": True, "message": None}
 
-    # --yolo or approvals.mode=off: bypass (session- or process-scoped).
+    # YOLO or approvals.mode=off: bypass (sender-, session-, or process-scoped).
     approval_mode = _get_approval_mode()
-    if _YOLO_MODE_FROZEN or is_current_session_yolo_enabled() or approval_mode == "off":
+    if is_approval_bypass_active():
         return {"approved": True, "message": None}
 
     is_gateway = _is_gateway_approval_context()

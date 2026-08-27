@@ -144,7 +144,7 @@ class TestRequestToolApproval:
     def test_yolo_session_bypasses_gate(self, monkeypatch):
         """A --yolo session skips the plugin approval gate (parity with the
         dangerous-command path, via the shared _run_approval_gate)."""
-        monkeypatch.setattr(approval, "is_current_session_yolo_enabled", lambda: True)
+        monkeypatch.setattr(approval, "is_approval_bypass_active", lambda: True)
         monkeypatch.setattr(
             approval, "prompt_dangerous_approval",
             lambda *a, **k: pytest.fail("yolo must not prompt"),

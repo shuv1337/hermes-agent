@@ -2346,6 +2346,18 @@ Smart mode is particularly useful for reducing approval fatigue — it lets the 
 Setting `approvals.mode: off` disables all safety checks for terminal commands. Only use this in trusted, sandboxed environments.
 :::
 
+### Signal sender-scoped YOLO
+
+`approvals.platforms.signal.yolo_senders` persistently bypasses approval prompts only for inbound Signal senders whose ACI is listed. The gateway matches Signal's stable `sourceUuid` identity; the same UUID string on Telegram, Slack, or CLI does not match. Hardline blocks and `approvals.deny` are still evaluated first.
+
+```yaml
+approvals:
+  platforms:
+    signal:
+      yolo_senders:
+        - "34003dfa-1609-4fdd-9716-9f78efce05ea"
+```
+
 ### Denial circuit breaker
 
 `approvals.denial_breaker_threshold` (default `3`) guards against the agent retrying variations of a command the smart-approval reviewer keeps denying — each retry burns another guardian LLM call. After that many consecutive denials in a session, the deny message escalates to a hard-stop instruction telling the agent to stop, report the blocked operation, and ask you to run it manually or `/approve`. Any approval resets the count; set `0` to disable:

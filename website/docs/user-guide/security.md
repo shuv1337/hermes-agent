@@ -35,6 +35,9 @@ approvals:
   timeout: 300                    # seconds to wait for user response (default: 300)
   cron_mode: deny                 # deny | approve — what cron jobs do when they hit a dangerous command
   single_query_mode: deny         # deny | approve — what single-query (-q) sessions do on a dangerous command
+  platforms:
+    signal:
+      yolo_senders: []            # Signal sender ACIs with persistent, sender-scoped YOLO
   mcp_reload_confirm: true        # /reload-mcp asks before invalidating the MCP tool cache
   destructive_slash_confirm: true # /clear, /new, /reset, /undo prompt before discarding state
 ```
@@ -47,6 +50,7 @@ The full set of keys:
 | `timeout` | `300` | Seconds Hermes waits for an approval reply before timing out. |
 | `cron_mode` | `deny` | How [cron jobs](./features/cron.md) behave headlessly when they trigger a dangerous-command prompt. `deny` blocks the command (the agent must find another path); `approve` auto-approves everything in cron context. |
 | `single_query_mode` | `deny` | How one-shot [`hermes chat -q`](./cli.md) sessions behave when they trigger a dangerous-command prompt. A `-q` session runs a single turn and exits with no user waiting to answer prompts; `deny` blocks the command (the agent must find another path), `approve` auto-approves everything in single-query context. Mirrors `cron_mode`. |
+| `platforms.signal.yolo_senders` | `[]` | Signal sender ACIs that persistently bypass approval prompts. Matching is Signal-only and sender-scoped; the hardline blocklist and `approvals.deny` still win. |
 | `mcp_reload_confirm` | `true` | When true, `/reload-mcp` asks before rebuilding the MCP tool set. Rebuilding invalidates the provider prompt cache (tool schemas live in the system prompt), so the next message re-sends full input tokens. Users who click **Always Approve** flip this key to `false`. |
 | `destructive_slash_confirm` | `true` | When true, destructive session slash commands (`/clear`, `/new`, `/reset`, `/undo`) prompt before discarding conversation state. Three-option dialog (Approve Once / Always Approve / Cancel) routed through native yes/no buttons on Telegram, Discord, and Slack; text fallback elsewhere. Users who click **Always Approve** flip this key to `false`. The TUI also honors this setting for its `/clear`, `/new`, and `/reset` modal; `HERMES_TUI_NO_CONFIRM=1` force-skips that modal regardless of the configured value. |
 
@@ -62,11 +66,12 @@ Setting `approvals.mode: off` disables all safety prompts. Use only in trusted e
 
 ### YOLO Mode
 
-YOLO mode bypasses **all** dangerous command approval prompts for the current session. It can be activated three ways:
+YOLO mode bypasses **all** dangerous command approval prompts for its configured scope. It can be activated four ways:
 
 1. **CLI flag**: Start a session with `hermes --yolo` or `hermes chat --yolo`
 2. **Slash command**: Type `/yolo` during a session to toggle it on/off
 3. **Environment variable**: Set `HERMES_YOLO_MODE=1`
+4. **Persistent Signal sender allowlist**: Add an inbound sender's ACI to `approvals.platforms.signal.yolo_senders`
 
 The `/yolo` command is a **toggle** — each use flips the mode on or off:
 
@@ -78,7 +83,17 @@ The `/yolo` command is a **toggle** — each use flips the mode on or off:
   ⚠ YOLO mode OFF — dangerous commands will require approval.
 ```
 
-YOLO mode is available in both CLI and gateway sessions. Internally, it sets the `HERMES_YOLO_MODE` environment variable which is checked before every command execution.
+CLI flags remain process-scoped, `/yolo` remains in-memory and session-scoped, and the Signal sender allowlist is read from `config.yaml`, so it survives gateway restarts. The allowlist is matched only when the bound gateway platform is Signal, using the inbound sender's Signal ACI; a Telegram, Slack, or CLI identity with the same text does not match.
+
+For example, this persistently enables YOLO only for Kyle's Signal messages:
+
+```yaml
+approvals:
+  platforms:
+    signal:
+      yolo_senders:
+        - "34003dfa-1609-4fdd-9716-9f78efce05ea"
+```
 
 When YOLO is active, Hermes shows two persistent visual reminders so it's hard to forget that approval prompts are bypassed:
 
@@ -86,7 +101,7 @@ When YOLO is active, Hermes shows two persistent visual reminders so it's hard t
 - A `⚠ YOLO` fragment in the status bar across all width tiers, updated live as you toggle YOLO on or off (rich-text renderer and plain-text fallback).
 
 :::danger
-YOLO mode disables **all** dangerous command safety checks for the session — **except** the hardline blocklist (see below). Use only when you fully trust the commands being generated (e.g., well-tested automation scripts in disposable environments).
+YOLO mode disables **all** dangerous command approval prompts for its scope — **except** the hardline blocklist and `approvals.deny` (see below). Use only when you fully trust the commands being generated (e.g., well-tested automation scripts in disposable environments).
 :::
 
 For destructive session slash commands (`/clear`, `/new` / `/reset`, `/undo`, `/quit --delete` — `/exit --delete` is an alias), the CLI also prompts for confirmation before running them. See [Slash Commands — Confirmation prompts for destructive commands](../reference/slash-commands.md#confirmation-prompts-for-destructive-commands).
@@ -96,6 +111,7 @@ For destructive session slash commands (`/clear`, `/new` / `/reset`, `/undo`, `/
 Some commands are so catastrophic — irreversible filesystem wipes, fork bombs, direct block-device writes — that Hermes refuses to run them **regardless** of:
 
 - `--yolo` / `/yolo` toggled on
+- Sender listed in `approvals.platforms.signal.yolo_senders`
 - `approvals.mode: off`
 - Cron jobs running in headless `approve` mode
 - User explicitly clicking "allow always"
@@ -115,7 +131,7 @@ If you hit the blocklist, the tool call returns an explanatory error to the agen
 
 ### User-Defined Deny Rules (`approvals.deny`)
 
-The hardline blocklist is fixed and code-shipped. `approvals.deny` is its user-editable counterpart: a list of glob patterns that block matching terminal commands unconditionally — **before** `--yolo`, `/yolo`, and `approvals.mode: off` are consulted. Use it to run yolo-with-exceptions: "let the agent do everything, except these specific things, ever."
+The hardline blocklist is fixed and code-shipped. `approvals.deny` is its user-editable counterpart: a list of glob patterns that block matching terminal commands unconditionally — **before** `--yolo`, `/yolo`, configured Signal sender YOLO, and `approvals.mode: off` are consulted. Use it to run yolo-with-exceptions: "let the agent do everything, except these specific things, ever."
 
 ```yaml
 approvals:
