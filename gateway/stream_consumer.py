@@ -55,6 +55,98 @@ _COMMENTARY = object()
 _FLUSH = object()
 
 
+class _InterimCommentaryDelivery:
+    """Deliver low-frequency commentary through one editable message.
+
+    The edit target is intentionally separate from the streamed/final response
+    target. Timestamp-chained adapters such as Signal replace the target after
+    every edit, so each successful edit must provide the next handle. Once an
+    edit chain becomes unusable, suppress later commentary instead of stacking
+    fresh status messages; the final response remains unaffected.
+    """
+
+    def __init__(
+        self,
+        adapter: Any,
+        chat_id: str,
+        *,
+        metadata: Optional[dict] = None,
+        edit_enabled: bool = False,
+    ):
+        self.adapter = adapter
+        self.chat_id = chat_id
+        self.metadata = metadata
+        self.edit_enabled = edit_enabled
+        self.message_id: Optional[str] = None
+        self._failed_closed = False
+        self._lock = asyncio.Lock()
+
+    async def deliver(self, text: str) -> tuple[bool, bool]:
+        """Return ``(success, created_new_message)`` for one commentary."""
+        async with self._lock:
+            if self._failed_closed:
+                return False, False
+
+            if self.edit_enabled and self.message_id is not None:
+                current_message_id = self.message_id
+                kwargs = {
+                    "chat_id": self.chat_id,
+                    "message_id": current_message_id,
+                    "content": text,
+                    "finalize": False,
+                }
+                if self.metadata:
+                    try:
+                        params = inspect.signature(
+                            self.adapter.edit_message
+                        ).parameters
+                        if "metadata" in params or any(
+                            param.kind is inspect.Parameter.VAR_KEYWORD
+                            for param in params.values()
+                        ):
+                            kwargs["metadata"] = self.metadata
+                    except (TypeError, ValueError):
+                        pass
+
+                result = await self.adapter.edit_message(**kwargs)
+                if not getattr(result, "success", False):
+                    self._failed_closed = True
+                    return False, False
+
+                next_message_id = next_edit_target_message_id(
+                    self.adapter,
+                    current_message_id,
+                    result,
+                )
+                if (
+                    getattr(self.adapter, "EDIT_RESULT_ID_IS_NEXT_TARGET", False)
+                    is True
+                    and next_message_id == current_message_id
+                ):
+                    logger.error(
+                        "Commentary edit response missing fresh next-target id"
+                    )
+                    self._failed_closed = True
+                    return False, False
+
+                self.message_id = next_message_id
+                return True, False
+
+            result = await self.adapter.send(
+                chat_id=self.chat_id,
+                content=text,
+                metadata=self.metadata,
+            )
+            if not getattr(result, "success", False):
+                return False, False
+
+            if self.edit_enabled:
+                message_id = getattr(result, "message_id", None)
+                if message_id is not None and message_id != "":
+                    self.message_id = str(message_id)
+            return True, True
+
+
 def escape_code_fences_for_display(text: str) -> str:
     """Escape triple-backtick markers so text can be safely wrapped
     inside an outer ``` code block without breaking the fence.
@@ -200,6 +292,8 @@ class GatewayStreamConsumer:
         on_before_finalize: Optional[Callable[[], Any]] = None,
         initial_reply_to_id: Optional[str] = None,
         run_still_current: Optional[Callable[[], bool]] = None,
+        *,
+        edit_commentary: bool = False,
     ):
         self.adapter = adapter
         self.chat_id = chat_id
@@ -282,6 +376,12 @@ class GatewayStreamConsumer:
         # replies after an early/partial multi-message delivery.
         self._turn_split_delivery = False
         self._delivered_commentary_texts: list[str] = []
+        self._commentary_delivery = _InterimCommentaryDelivery(
+            adapter,
+            chat_id,
+            metadata=metadata,
+            edit_enabled=edit_commentary,
+        )
         # Retains the finalized visible text of each streaming segment so
         # ``has_delivered_text`` can still match after ``_reset_segment_state``
         # clears ``_last_sent_text``. Without this, a segment break (triggered
@@ -1832,31 +1932,34 @@ class GatewayStreamConsumer:
             pass  # best-effort — don't let this block the fallback path
 
     async def _send_commentary(self, text: str) -> bool:
-        """Send a completed interim assistant commentary message."""
+        """Send the first commentary, then edit it when explicitly enabled."""
         text = self._clean_for_display(text)
         if not text.strip():
             return False
         try:
-            result = await self.adapter.send(
-                chat_id=self.chat_id,
-                content=text,
-                metadata=self.metadata,
+            success, created_new_message = await self._commentary_delivery.deliver(
+                text
             )
             # Note: do NOT set _already_sent = True here.
             # Commentary messages are interim status updates (e.g. "Using browser
             # tool..."), not the final response. Setting already_sent would cause
             # the final response to be incorrectly suppressed when there are
             # multiple tool calls. See: https://github.com/NousResearch/hermes-agent/issues/10454
-            if result.success:
-                # Commentary counts as fresh content — close off any
+            if success:
+                # A newly created commentary bubble counts as fresh content — close off any
                 # stale tool bubble above it so the next tool starts a
-                # new bubble below.
-                self._notify_new_message()
+                # new bubble below. In-place commentary edits must not reset
+                # progress again because they did not add another bubble.
+                if created_new_message:
+                    self._notify_new_message()
                 # Record the exact delivered text so run.py can confirm whether
                 # an interim "preview" actually carried the final response, vs.
                 # unrelated commentary delivered during a session split (#14238).
-                self._delivered_commentary_texts.append(text)
-            return result.success
+                if created_new_message or not self._delivered_commentary_texts:
+                    self._delivered_commentary_texts.append(text)
+                else:
+                    self._delivered_commentary_texts[-1] = text
+            return success
         except Exception as e:
             logger.error("Commentary send error: %s", e)
             return False

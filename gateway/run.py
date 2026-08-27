@@ -5344,6 +5344,7 @@ class TurnRunner:
                         on_before_finalize=_pause_typing_before_finalize,
                         initial_reply_to_id=ctx.event_message_id,
                         run_still_current=ctx._run_still_current,
+                        edit_commentary=_adapter_supports_progress_edits(_adapter),
                     )
                     if _want_stream_deltas:
                         def _stream_delta_cb(text: str) -> None:
@@ -5364,6 +5365,44 @@ class TurnRunner:
                 if ctx._run_still_current():
                     _stts_consumer_ref.on_delta(text)
 
+        _fallback_commentary_delivery = None
+        if ctx._status_adapter is not None:
+            try:
+                from gateway.stream_consumer import _InterimCommentaryDelivery
+
+                _fallback_commentary_delivery = _InterimCommentaryDelivery(
+                    ctx._status_adapter,
+                    ctx._status_chat_id,
+                    metadata=ctx._status_thread_metadata,
+                    edit_enabled=_adapter_supports_progress_edits(
+                        ctx._status_adapter
+                    ),
+                )
+            except Exception as _fallback_setup_err:
+                logger.debug(
+                    "Could not set up interim commentary fallback: %s",
+                    _fallback_setup_err,
+                )
+
+        async def _deliver_fallback_commentary(display_text: str) -> None:
+            if _fallback_commentary_delivery is None:
+                await ctx._status_adapter.send(
+                    ctx._status_chat_id,
+                    display_text,
+                    metadata=ctx._status_thread_metadata,
+                )
+                return
+
+            success, created_new_message = (
+                await _fallback_commentary_delivery.deliver(display_text)
+            )
+            if (
+                success
+                and created_new_message
+                and ctx.progress_queue is not None
+            ):
+                ctx.progress_queue.put(("__reset__",))
+
         def _interim_assistant_cb(text: str, *, already_streamed: bool = False) -> None:
             if not ctx._run_still_current():
                 return
@@ -5377,11 +5416,7 @@ class TurnRunner:
             if already_streamed or not ctx._status_adapter or not str(display_text or "").strip():
                 return
             safe_schedule_threadsafe(
-                ctx._status_adapter.send(
-                    ctx._status_chat_id,
-                    display_text,
-                    metadata=ctx._status_thread_metadata,
-                ),
+                _deliver_fallback_commentary(display_text),
                 ctx._loop_for_step,
                 logger=logger,
                 log_message="interim_assistant_callback scheduling error",

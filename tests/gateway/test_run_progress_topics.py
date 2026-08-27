@@ -246,8 +246,8 @@ class TimestampChainProgressAdapter(ProgressCaptureAdapter):
     SUPPORTS_PROGRESS_EDITS = True
     EDIT_RESULT_ID_IS_NEXT_TARGET = True
 
-    def __init__(self):
-        super().__init__(platform=Platform.SIGNAL)
+    def __init__(self, platform=Platform.SIGNAL):
+        super().__init__(platform=platform)
         self._next_id = 0
 
     def _mint_id(self):
@@ -265,12 +265,22 @@ class TimestampChainProgressAdapter(ProgressCaptureAdapter):
         )
         return SendResult(success=True, message_id=self._mint_id())
 
-    async def edit_message(self, chat_id, message_id, content) -> SendResult:
+    async def edit_message(
+        self,
+        chat_id,
+        message_id,
+        content,
+        *,
+        finalize=False,
+        metadata=None,
+    ) -> SendResult:
         self.edits.append(
             {
                 "chat_id": chat_id,
                 "message_id": message_id,
                 "content": content,
+                "finalize": finalize,
+                "metadata": metadata,
             }
         )
         return SendResult(success=True, message_id=self._mint_id())
@@ -623,6 +633,27 @@ class DelayedInterimAgent:
         }
 
 
+class TimestampChainInterimAgent:
+    def __init__(self, **kwargs):
+        self.interim_assistant_callback = kwargs.get("interim_assistant_callback")
+        self.tools = []
+
+    def run_conversation(self, message, conversation_history=None, task_id=None):
+        callback = self.interim_assistant_callback
+        assert callback is not None
+        callback("Step 1 done.")
+        time.sleep(0.2)
+        callback("Step 2 in progress.")
+        time.sleep(0.2)
+        callback("Step 3 done.")
+        time.sleep(0.2)
+        return {
+            "final_response": "Final answer.",
+            "messages": [],
+            "api_calls": 1,
+        }
+
+
 def _make_runner(adapter):
     gateway_run = importlib.import_module("gateway.run")
     GatewayRunner = gateway_run.GatewayRunner
@@ -726,6 +757,85 @@ async def test_run_agent_progress_adopts_timestamp_chain_targets(monkeypatch, tm
         "progress-2",
     ]
     assert [len(call["content"].splitlines()) for call in adapter.edits[:2]] == [2, 3]
+
+
+@pytest.mark.asyncio
+async def test_run_agent_interim_commentary_adopts_timestamp_chain_targets(
+    monkeypatch,
+    tmp_path,
+):
+    """Signal interim prose uses progress-safe edits without token streaming."""
+    adapter, result = await _run_with_agent(
+        monkeypatch,
+        tmp_path,
+        TimestampChainInterimAgent,
+        session_id="sess-signal-interim-chain",
+        config_data={
+            "display": {
+                "tool_progress": "off",
+                "interim_assistant_messages": True,
+            },
+            "streaming": {"enabled": False},
+        },
+        platform=Platform.SIGNAL,
+        chat_id="+155****4567",
+        chat_type="dm",
+        thread_id=None,
+        adapter_cls=TimestampChainProgressAdapter,
+    )
+
+    assert result["final_response"] == "Final answer."
+    assert adapter.SUPPORTS_STREAMING_EDITS is False
+    assert [call["content"] for call in adapter.sent] == ["Step 1 done."]
+    assert [call["message_id"] for call in adapter.edits] == [
+        "progress-1",
+        "progress-2",
+    ]
+    assert [call["content"] for call in adapter.edits] == [
+        "Step 2 in progress.",
+        "Step 3 done.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_agent_interim_fallback_adopts_timestamp_chain_targets(
+    monkeypatch,
+    tmp_path,
+):
+    """The no-consumer fallback preserves the same Signal edit chain."""
+
+    def break_stream_consumer_setup(runner):
+        def raise_config_error(*args, **kwargs):
+            raise RuntimeError("forced stream-consumer setup failure")
+
+        runner._build_stream_consumer_config = raise_config_error
+
+    adapter, result = await _run_with_agent(
+        monkeypatch,
+        tmp_path,
+        TimestampChainInterimAgent,
+        session_id="sess-signal-interim-fallback-chain",
+        config_data={
+            "display": {
+                "tool_progress": "off",
+                "interim_assistant_messages": True,
+            },
+            "streaming": {"enabled": False},
+        },
+        platform=Platform.SIGNAL,
+        chat_id="+155****4567",
+        chat_type="dm",
+        thread_id=None,
+        adapter_cls=TimestampChainProgressAdapter,
+        configure_runner=break_stream_consumer_setup,
+    )
+
+    assert result["final_response"] == "Final answer."
+    assert [call["content"] for call in adapter.sent] == ["Step 1 done."]
+    assert [call["message_id"] for call in adapter.edits] == [
+        "progress-1",
+        "progress-2",
+    ]
 
 
 @pytest.mark.asyncio
