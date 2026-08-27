@@ -2277,6 +2277,15 @@ DEFAULT_CONFIG = {
         #     - "git push --force*"
         #     - "*curl*|*sh*"
         "deny": [],
+        # Persistent sender-scoped YOLO. Only the Signal gateway consults this
+        # allowlist, matching each entry against the inbound sender's stable ACI
+        # (sourceUuid, carried as the session's user_id_alt). The hardline
+        # blocklist and approvals.deny still run before this bypass.
+        "platforms": {
+            "signal": {
+                "yolo_senders": [],
+            },
+        },
         # When true, /reload-mcp asks the user to confirm before rebuilding
         # the MCP tool set for the active session.  Reloading invalidates
         # the provider prompt cache (tool schemas are baked into the system

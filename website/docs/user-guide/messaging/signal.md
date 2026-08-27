@@ -123,6 +123,20 @@ sudo hermes gateway install --system   # Linux only: boot-time system service
 
 ## Access Control
 
+### Persistent YOLO for Specific Signal Senders
+
+To persistently bypass dangerous-command approval prompts for specific trusted Signal senders, add their Signal ACIs to `approvals.platforms.signal.yolo_senders` in `~/.hermes/config.yaml`:
+
+```yaml
+approvals:
+  platforms:
+    signal:
+      yolo_senders:
+        - "34003dfa-1609-4fdd-9716-9f78efce05ea"
+```
+
+Hermes matches this list against the inbound Signal `sourceUuid` carried by the gateway session, not against a phone number or a UUID-looking identifier from another platform. The setting survives gateway restarts and does not enable YOLO for other Signal senders, Telegram, Slack, or CLI sessions. The built-in hardline blocklist and `approvals.deny` remain unconditional and are evaluated before this bypass.
+
 ### DM Access
 
 DM access follows the same pattern as all other Hermes platforms:
