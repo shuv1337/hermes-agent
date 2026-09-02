@@ -820,9 +820,15 @@ def _dashboard_public_hosts() -> frozenset[str]:
         hostname = urllib.parse.urlparse(public_url).hostname
     except ValueError:
         return frozenset()
-    if not hostname:
-        return frozenset()
-    return frozenset({hostname.lower()})
+    extra = {
+        item.strip().lower()
+        for item in os.environ.get("HERMES_DASHBOARD_ALLOWED_HOSTS", "").split(",")
+        if item.strip()
+    }
+    hosts = set(extra)
+    if hostname:
+        hosts.add(hostname.lower())
+    return frozenset(hosts)
 
 
 def should_require_auth(host: str, allow_public: bool = False) -> bool:
