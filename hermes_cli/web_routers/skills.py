@@ -340,6 +340,24 @@ async def scan_skill_hub(identifier: str = "", profile: Optional[str] = None):
     return await _hub_lookup(_run, ident, "skills hub scan failed", "Hub scan failed")
 
 
+@router.get("/api/commands")
+def get_commands():
+    """Canonical slash-command metadata for the mobile command cheat sheet."""
+    from hermes_cli.commands import COMMAND_REGISTRY
+
+    commands = [
+        {
+            "name": command.name, "description": command.description,
+            "category": command.category, "aliases": list(command.aliases),
+            "args_hint": command.args_hint, "cli_only": command.cli_only,
+            "gateway_only": command.gateway_only,
+            "config_gated": command.gateway_config_gate is not None,
+        }
+        for command in COMMAND_REGISTRY
+    ]
+    return {"commands": commands, "total": len(commands)}
+
+
 @router.get("/api/skills")
 async def get_skills(profile: Optional[str] = None):
     from tools.skills_tool import _find_all_skills

@@ -5,6 +5,7 @@ helpers (``_sessions``, ``_ok``, ``_err``, ...) bare; module-level helpers are p
 server.py the same way (tests monkeypatching ``server.X`` still intercept)."""
 
 import contextlib
+from pathlib import Path
 
 from .method_ctx import HandlerRegistry, bind_module
 
@@ -502,6 +503,46 @@ def _(rid, params: dict) -> dict:
 
 
 # ── session.resume ───────────────────────────────────────────────────
+def _infer_profile_for_session_id(session_id: str) -> tuple[str, Path] | None:
+    """Recover an exact, unique profile owner for a restored mobile session.
+
+    Explicit profile requests never call this. A launch-owned id, ambiguous id,
+    or unreadable store keeps normal launch-profile handling rather than guessing.
+    """
+    target = str(session_id or "").strip()
+    if not target:
+        return None
+    try:
+        launch_db = _get_db()
+        if launch_db is None or launch_db.get_session(target):
+            return None
+        from hermes_constants import get_default_hermes_root
+        from hermes_state import SessionDB
+        homes = sorted((get_default_hermes_root() / "profiles").iterdir())
+    except Exception:
+        return None
+    match = None
+    for home in homes:
+        db_path = home / "state.db"
+        if not home.is_dir() or not db_path.is_file():
+            continue
+        db = None
+        try:
+            db = SessionDB(db_path=db_path, read_only=True)
+            if db.get_session(target):
+                if match is not None:
+                    return None
+                match = (home.name, home)
+        except Exception:
+            # A failed read could hide a second owner: fail closed.
+            return None
+        finally:
+            if db is not None:
+                with contextlib.suppress(Exception):
+                    db.close()
+    return match
+
+
 class _Resume:
     """Per-call ``session.resume`` state. ``owns_db``: the DEDICATED profile handle is ours
     to close (handler ``finally``) until handed to the hydration worker or the agent."""
@@ -513,6 +554,11 @@ class _Resume:
         # ``profile`` (app-global remote mode): resume from another local profile's state.db.
         self.profile = (params.get("profile") or "").strip() or None
         self.profile_home = _profile_home(self.profile)
+        if self.profile is None:
+            inferred = _infer_profile_for_session_id(target)
+            if inferred is not None:
+                self.profile, self.profile_home = inferred
+                _served_profile_homes.add(self.profile_home)
         self.lazy, self.defer_history = _flag(params, "lazy"), _flag(params, "defer_history")
         # Desktop hydrates over REST; suppress the duplicate WS copy only when asked.
         self.omit_messages, self.eager_build = _flag(params, "omit_messages"), _flag(params, "eager_build")

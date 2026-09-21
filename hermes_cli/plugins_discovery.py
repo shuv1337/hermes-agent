@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Set
 
-from hermes_constants import get_hermes_home
+from hermes_constants import get_default_hermes_root, get_hermes_home
 from hermes_cli.config import cfg_get
 from hermes_cli.plugin_capabilities import VALID_CAPABILITY_IDS
 from hermes_cli.plugin_capabilities import parse_declared_capabilities as _parse_declared_capabilities
@@ -155,9 +155,13 @@ def collect_directory_manifests() -> List[PluginManifest]:
     logger.debug("Scanning bundled plugins: %s", repo_plugins)
     _scan("bundled (top-level)", repo_plugins, "bundled", {"memory", "context_engine", "platforms", "model-providers"})
     _scan("bundled/platforms", repo_plugins / "platforms", "bundled")
-    user_dir = get_hermes_home() / "plugins"
-    logger.debug("Scanning user plugins: %s", user_dir)
-    _scan("user", user_dir, "user")
+    # Installed code is shared; enablement still comes from the active profile.
+    # Scan profile overrides last so they win over the root's installed copy.
+    root_dir = get_default_hermes_root() / "plugins"
+    profile_dir = get_hermes_home() / "plugins"
+    _scan("user", root_dir, "user")
+    if profile_dir.resolve() != root_dir.resolve():
+        _scan("profile", profile_dir, "user")
     if _origin._env_enabled("HERMES_ENABLE_PROJECT_PLUGINS"):
         project_dir = Path.cwd() / ".hermes" / "plugins"
         logger.debug("Scanning project plugins: %s", project_dir)

@@ -1885,6 +1885,25 @@ def _load_enabled_toolsets(platform: str | None = None) -> list[str] | None:
     explicit = [item.strip() for item in os.environ.get("HERMES_TUI_TOOLSETS", "").split(",") if item.strip()]
     fallback_notice = None
     if not explicit:
+        # Profile capability editors persist this pin. It must win over coding
+        # posture, even when a bot's configured cwd happens to be a repository.
+        with contextlib.suppress(Exception):
+            from hermes_cli.config import load_config
+            from hermes_cli.tools_config import enabled_mcp_server_names
+            cfg = load_config()
+            tools_cfg = cfg.get("tools") if isinstance(cfg, dict) else None
+            pinned = tools_cfg.get("enabled_toolsets") if isinstance(tools_cfg, dict) else None
+            if isinstance(pinned, list) and pinned:
+                selected = {str(name).strip() for name in pinned if str(name).strip()}
+                # Discovery failure must not replace an explicit capability pin
+                # with broader coding/CLI defaults.
+                with contextlib.suppress(Exception):
+                    from hermes_cli.plugins import discover_plugins
+                    discover_plugins()
+                with contextlib.suppress(Exception):
+                    selected.update(enabled_mcp_server_names(cfg))
+                selected.update(_gui_surface_toolsets(session_platform))
+                return sorted(selected)
         with contextlib.suppress(Exception):
             from agent.coding_context import coding_selection
             selection = coding_selection(platform=session_platform)
