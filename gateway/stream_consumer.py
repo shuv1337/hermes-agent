@@ -118,7 +118,8 @@ class GatewayStreamConsumer(StreamTransportMixin, StreamFallbackMixin, StreamThi
         on_new_message: Optional[callable] = None,
         on_before_finalize: Optional[Callable[[], Any]] = None,
         initial_reply_to_id: Optional[str] = None,
-        run_still_current: Optional[Callable[[], bool]] = None):
+        run_still_current: Optional[Callable[[], bool]] = None,
+        *, edit_commentary: bool = False):
         self.adapter = adapter
         self.chat_id = chat_id
         self.cfg = config or StreamConsumerConfig()
@@ -157,6 +158,10 @@ class GatewayStreamConsumer(StreamTransportMixin, StreamFallbackMixin, StreamThi
         self._last_edit_overflowed = False  # last _send_or_edit split into continuations
         self._flood_strikes = 0
         self._current_edit_interval = self.cfg.edit_interval  # adaptive backoff
+        from gateway.interim_commentary import InterimCommentaryDelivery
+        self._commentary_delivery = InterimCommentaryDelivery(
+            adapter, chat_id, edit_enabled=edit_commentary, run_still_current=self._run_still_current,
+        )
         self._delivered_commentary_texts: list[str] = []
         self._delivered_segment_texts: list[str] = []  # finalized text per past segment
         self._in_think_block = False  # think-tag filter state (mirrors CLI _stream_delta)
@@ -912,7 +917,7 @@ class GatewayStreamConsumer(StreamTransportMixin, StreamFallbackMixin, StreamThi
         """Tool boundary: edit-based transports reset so the next chunk is a fresh message.
         Cumulative transports must NOT reset — clearing _accumulated makes the next frame a
         non-prefix snapshot and the connector re-appends the whole answer.  preserve_no_edit:
-        "__no_edit__" (platform never returned a real id — Signal, github_comment webhook)
+        "__no_edit__" (platform never returned a real id, e.g. github_comment webhook)
         must keep its sentinel or every tool boundary posts a new message; the
         continuation goes out once via _send_fallback_final."""
         if self._cumulative_transport():

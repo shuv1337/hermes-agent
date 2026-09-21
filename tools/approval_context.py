@@ -329,3 +329,43 @@ def _get_approval_transport_config() -> tuple[str, str | None]:
         # prompt on a built-in surface the operator may not be watching.
         return "config-error", None
     return selected or "builtin", "builtin" if fallback == "builtin" else None
+
+
+def _is_configured_signal_sender_yolo(session_key: str) -> bool:
+    """Return whether this bound Signal sender has persistent YOLO enabled.
+
+    Sender identity comes from the gateway's task-local session context. The
+    bound session-key equality check prevents another session from borrowing
+    the current turn's sender. Process environment cannot opt in.
+    """
+    if not session_key:
+        return False
+    try:
+        from gateway.session_context import get_session_env
+
+        if get_session_env("HERMES_SESSION_KEY", "", allow_env_fallback=False) != session_key:
+            return False
+        if get_session_env("HERMES_SESSION_PLATFORM", "", allow_env_fallback=False).strip().lower() != "signal":
+            return False
+        sender_id = (
+            get_session_env("HERMES_SESSION_USER_ID_ALT", "", allow_env_fallback=False)
+            or get_session_env("HERMES_SESSION_USER_ID", "", allow_env_fallback=False)
+        ).strip().lower()
+        if not sender_id:
+            return False
+    except Exception:
+        return False
+
+    platforms = _get_approval_config().get("platforms")
+    if not isinstance(platforms, dict):
+        return False
+    signal_config = platforms.get("signal")
+    if not isinstance(signal_config, dict):
+        return False
+    configured_senders = signal_config.get("yolo_senders")
+    if not isinstance(configured_senders, list):
+        return False
+    return any(
+        isinstance(configured, str) and configured.strip().lower() == sender_id
+        for configured in configured_senders
+    )

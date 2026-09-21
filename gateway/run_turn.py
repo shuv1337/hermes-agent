@@ -2635,9 +2635,12 @@ class GatewayTurnMixin:
                 _adapter.pause_typing_for_chat(_chat_id)
         # Non-editing platforms (QQ, WeChat) skip streaming — the partial first message could never
         # be updated — unless they have a native-streaming transport (WeCom msgtype "stream").
-        _adapter_supports_edit = getattr(adapter, "SUPPORTS_MESSAGE_EDITING", True)
+        from gateway.platforms.base import adapter_supports_streaming_edits
+        _adapter_supports_edit = adapter_supports_streaming_edits(adapter)
         _adapter_supports_native_stream = bool(getattr(adapter, "SUPPORTS_NATIVE_STREAMING", False))
-        if not _adapter_supports_edit and not _adapter_supports_native_stream and on_missing_cursor == "raise":
+        _explicit_opt_out = getattr(adapter, "SUPPORTS_STREAMING_EDITS", None) is False
+        if (not _adapter_supports_edit and not _adapter_supports_native_stream
+                and (on_missing_cursor == "raise" or _explicit_opt_out)):
             raise RuntimeError("skip streaming for non-editable platform")
         _effective_cursor = scfg.cursor if _adapter_supports_edit else ""
         # Some Matrix clients render the cursor as tofu: stream text, no cursor.
@@ -4157,7 +4160,12 @@ class GatewayTurnMixin:
                     except Exception as _ee:
                         logger.debug("Heartbeat edit failed: %s", _ee)
                         _notify_res = None
-                if not (_notify_res and getattr(_notify_res, "success", False)):
+                if _notify_res and getattr(_notify_res, "success", False):
+                    from gateway.platforms.base import next_edit_target_message_id
+                    _heartbeat_msg_id = next_edit_target_message_id(
+                        _notify_adapter, _heartbeat_msg_id, _notify_res,
+                    )
+                else:
                     # The edit above awaited; a drain/restart notice may have gone out meanwhile, and
                     # a fresh "Working" bubble after it reads as a contradiction (#10990).
                     if not self._should_emit_long_running_notification(

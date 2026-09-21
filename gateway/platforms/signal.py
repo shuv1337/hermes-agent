@@ -178,8 +178,12 @@ class SignalAdapter(BasePlatformAdapter):
     platform = Platform.SIGNAL
     MAX_MESSAGE_LENGTH = MAX_MESSAGE_LENGTH
     splits_long_messages = True  # send() chunks after markdown → Signal formatting conversion
-    # No real edit API; declaring it lets streaming suppress the cursor instead of a stale tofu square.
-    SUPPORTS_MESSAGE_EDITING = False
+    # signal-cli supports explicit edits; token streaming is too noisy for Signal.
+    # Tier-low display defaults still leave progress off until the user opts in.
+    SUPPORTS_MESSAGE_EDITING = True
+    SUPPORTS_STREAMING_EDITS = False
+    SUPPORTS_PROGRESS_EDITS = True
+    EDIT_RESULT_ID_IS_NEXT_TARGET = True
 
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.SIGNAL)
@@ -709,6 +713,7 @@ class SignalAdapter(BasePlatformAdapter):
         base_params = await self._with_target({"account": self.account}, chat_id)
         chunks = self._split_signal_formatted_message(*markdown_to_signal(content), self.MAX_MESSAGE_LENGTH)
         last_result = None
+        message_ids = []
         for idx, (plain_text, text_styles) in enumerate(chunks, start=1):
             params: Dict[str, Any] = dict(base_params, message=plain_text)
             if len(text_styles) == 1:
@@ -720,8 +725,47 @@ class SignalAdapter(BasePlatformAdapter):
             last_result, err = await self._rpc_send(params, "RPC send failed")
             if err:
                 return err
-        # No editable message identifier; message_id=None keeps the stream consumer on the non-edit path.
-        return SendResult(success=True, message_id=None, raw_response=last_result)
+            message_ids.append(self._extract_send_timestamp(last_result))
+        # Partial timestamp coverage cannot safely identify a split message for later edits.
+        editable_id = message_ids[-1] if message_ids and all(message_ids) else None
+        extra_ids = message_ids[:-1] if editable_id else message_ids
+        return SendResult(
+            success=True, message_id=editable_id, raw_response=last_result,
+            continuation_message_ids=tuple(message_id for message_id in extra_ids if message_id),
+        )
+
+    @staticmethod
+    def _extract_send_timestamp(rpc_result: Any) -> Optional[str]:
+        timestamp = rpc_result.get("timestamp") if isinstance(rpc_result, dict) else None
+        return str(timestamp) if timestamp is not None and timestamp != "" else None
+
+    async def edit_message(self, chat_id: str, message_id: str, content: str, *, finalize: bool = False) -> SendResult:
+        """Edit one Signal message; the returned timestamp anchors the next edit."""
+        if not message_id:
+            return SendResult(success=False, error="Signal edit requires message_id timestamp")
+        try:
+            edit_timestamp = int(str(message_id))
+        except (TypeError, ValueError):
+            return SendResult(success=False, error="Signal edit requires numeric message_id timestamp")
+        plain_text, text_styles = markdown_to_signal(content)
+        # A timestamp identifies one message. Splitting an edit would leave old chunks behind.
+        if utf16_len(plain_text) > self.MAX_MESSAGE_LENGTH:
+            return SendResult(success=False, error="Signal edit exceeds message length limit", error_kind="too_long")
+        await self._stop_typing_indicator(chat_id)
+        params = await self._with_target(
+            {"account": self.account, "message": plain_text, "editTimestamp": edit_timestamp}, chat_id,
+        )
+        if len(text_styles) == 1:
+            params["textStyle"] = text_styles[0]
+        elif text_styles:
+            params["textStyles"] = text_styles
+        result, err = await self._rpc_send(params, "RPC edit failed")
+        if err:
+            return err
+        fresh_timestamp = self._extract_send_timestamp(result)
+        if not fresh_timestamp or fresh_timestamp == str(message_id):
+            return SendResult(success=False, error="Signal edit response missing fresh timestamp", raw_response=result)
+        return SendResult(success=True, message_id=fresh_timestamp, raw_response=result)
 
     def _track_sent_timestamp(self, rpc_result) -> None:
         """Record outbound message timestamp for echo-back filtering."""

@@ -350,19 +350,20 @@ class StreamFallbackMixin:
             _plat = getattr(getattr(self.adapter, "platform", None), "value", None)
             _platform_name = str(_plat or getattr(self.adapter, "name", "")).lower()
             _needs_reply_anchor = _platform_name in ("buzz", "slack", "mattermost", "feishu")
-            result = await self.adapter.send(
-                chat_id=self.chat_id, content=text,
-                reply_to=self._initial_reply_to_id if _needs_reply_anchor else None, metadata=_md)
+            success, created = await self._commentary_delivery.deliver(
+                text, reply_to=self._initial_reply_to_id if _needs_reply_anchor else None, metadata=_md)
             # Do NOT set _already_sent: commentary is interim, and the flag would
             # suppress the real final after multiple tool calls.
-            if result.success:
-                self._notify_new_message()
-                # Lets run.py confirm whether an interim send carried the final.
-                # Record the exact delivered text so run.py can confirm whether an interim "preview"
-                # actually carried the final response, vs. unrelated commentary delivered during a session
-                # split (#14238).
-                self._delivered_commentary_texts.append(text)
-            return result.success
+            if success:
+                if created:
+                    self._notify_new_message()
+                # Only visible commentary counts when reconciling the final response.
+                # An edit replaces the previous commentary text instead of appending a second copy.
+                if created or not self._delivered_commentary_texts:
+                    self._delivered_commentary_texts.append(text)
+                else:
+                    self._delivered_commentary_texts[-1] = text
+            return success
         except Exception as e:
             logger.error("Commentary send error: %s", e)
             return False

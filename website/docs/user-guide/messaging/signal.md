@@ -191,9 +191,9 @@ The bot sends typing indicators while processing messages, refreshing every 8 se
 
 ### Tool Progress Display
 
-Signal does not support editing already-sent messages. Hermes therefore suppresses gateway tool-progress bubbles on Signal, even when `/verbose` is enabled and saves a non-`off` mode for the platform.
+Signal can edit an already-sent message by timestamp. Hermes uses that for explicit edits and, when you opt in, for tool-progress bubbles. Token-by-token streaming stays off, because each Signal edit is a visible event. Tool progress remains off unless `display.platforms.signal.tool_progress` is set.
 
-You can still see tool activity in the CLI, and final Signal replies can include normal assistant output. If you need live per-tool progress in chat, use a messaging platform with message editing support.
+A configured `approvals.platforms.signal.yolo_senders` list can skip approval prompts for those Signal sender ACIs. Deny rules and hardline blocks still apply, and the list defaults to empty.
 
 ### Phone Number Redaction
 

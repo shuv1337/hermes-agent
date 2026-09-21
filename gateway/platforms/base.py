@@ -1628,6 +1628,51 @@ class SendResult:
 # pinned the send coroutine and froze inbound on every platform).
 _SEND_RETRY_INLINE_WAIT_CAP_SECS = 60.0
 
+
+def next_edit_target_message_id(
+    adapter: Any,
+    current_message_id: Optional[str],
+    result: Any,
+) -> Optional[str]:
+    """Return the platform handle that a subsequent edit must target.
+
+    Most adapters keep editing the original message id even when an edit API
+    returns a fresh replacement/event id. Timestamp-chained platforms opt in
+    explicitly so shared callers never infer this from ``SendResult.message_id``.
+    """
+    if getattr(adapter, "EDIT_RESULT_ID_IS_NEXT_TARGET", False) is not True:
+        return current_message_id
+    if not (result and getattr(result, "success", False)):
+        return current_message_id
+    next_message_id = getattr(result, "message_id", None)
+    if next_message_id is None or next_message_id == "":
+        return current_message_id
+    return str(next_message_id)
+
+
+def adapter_supports_streaming_edits(adapter: Any) -> bool:
+    """Whether adapter edits are safe for high-frequency token streaming.
+
+    ``SUPPORTS_MESSAGE_EDITING`` means explicit edits are possible. Streaming is
+    narrower: some platforms expose an edit API but make every edit a visible event.
+    """
+    streaming_capability = getattr(adapter, "SUPPORTS_STREAMING_EDITS", None)
+    if streaming_capability is not None:
+        return bool(streaming_capability)
+    return bool(getattr(adapter, "SUPPORTS_MESSAGE_EDITING", True))
+
+
+def adapter_supports_progress_edits(adapter: Any) -> bool:
+    """Whether automatic tool/thinking progress may edit.
+
+    Progress is lower-frequency than token streaming. A platform may allow
+    explicit ``edit_message()`` while opting out of automatic progress edits.
+    """
+    progress_capability = getattr(adapter, "SUPPORTS_PROGRESS_EDITS", None)
+    if progress_capability is not None:
+        return bool(progress_capability)
+    return adapter_supports_streaming_edits(adapter)
+
 # Platform-neutral send-failure kinds for ``SendResult.error_kind``: too_long (size cap),
 # bad_format (markup rejected; plain-text retry fixes), forbidden (the bot CANNOT reach the user),
 # not_found (chat/thread/message gone), rate_limited, transient (connection-level, retry-safe),
@@ -1841,6 +1886,12 @@ class BasePlatformAdapter(ABC):
     # adapters (API server). Propagated to ``HERMES_SESSION_ASYNC_DELIVERY`` so tools never promise
     # a delivery they can't keep.
     supports_async_delivery: bool = True
+    # Explicit edits, token streaming, and progress cadence have different platform costs.
+    # Defaults preserve today's behavior. Signal opts into timestamp-chained edits explicitly.
+    SUPPORTS_MESSAGE_EDITING: bool = True
+    SUPPORTS_STREAMING_EDITS: Optional[bool] = None
+    SUPPORTS_PROGRESS_EDITS: Optional[bool] = None
+    EDIT_RESULT_ID_IS_NEXT_TARGET: bool = False
     # ``send()`` chunks natively via ``truncate_message()`` -> the router skips its truncation.
     splits_long_messages: bool = False
     # Prefix users can always TYPE for Hermes commands ("!" where the client eats a leading "/").

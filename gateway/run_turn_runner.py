@@ -570,7 +570,10 @@ class TurnRunner:
             kwargs["finalize"] = True
         if st._edit_accepts_metadata:
             kwargs["metadata"] = ctx._progress_metadata
-        return await st.adapter.edit_message(**kwargs)
+        from gateway.platforms.base import next_edit_target_message_id
+        result = await st.adapter.edit_message(**kwargs)
+        st.progress_msg_id = next_edit_target_message_id(st.adapter, message_id, result)
+        return result
 
     @staticmethod
     def _progress_text(lines: list) -> str:
@@ -700,6 +703,8 @@ class TurnRunner:
         result = await self._send_progress_text(st, "\n".join(st.progress_lines) if st.can_edit else msg)
         if result.success and result.message_id:
             st.progress_msg_id = result.message_id
+        elif result.success and st.can_edit:
+            st.can_edit = False
         return True
 
     async def send_progress_messages(self):
@@ -713,8 +718,10 @@ class TurnRunner:
         # Skip tool progress for platforms that can't edit messages (e.g. iMessage/BlueBubbles):
         # each update would be a separate bubble. getattr, not attribute access: duck-typed
         # adapters (test fakes, minimal plugins) may lack edit_message — treated as "can't edit".
+        from gateway.platforms.base import adapter_supports_progress_edits
         adapter_edit = getattr(type(adapter), "edit_message", None)
-        if adapter_edit is None or adapter_edit is BasePlatformAdapter.edit_message:
+        if (not adapter_supports_progress_edits(adapter)
+                or adapter_edit is None or adapter_edit is BasePlatformAdapter.edit_message):
             self._drain_progress_queue()
             return
         st = self._progress_edit_state(adapter)
@@ -930,8 +937,11 @@ class TurnRunner:
                 from gateway.stream_consumer import GatewayStreamConsumer
                 adapter = self._runner._delivery_adapter_for(ctx.source)
                 if adapter:
+                    from gateway.platforms.base import (
+                        adapter_supports_progress_edits, adapter_supports_streaming_edits,
+                    )
                     supports_incremental_stream = (
-                        getattr(adapter, "SUPPORTS_MESSAGE_EDITING", True)
+                        adapter_supports_streaming_edits(adapter)
                         or bool(getattr(adapter, "SUPPORTS_NATIVE_STREAMING", False))
                     )
                     consumer_stream_deltas = want_stream_deltas and supports_incremental_stream
@@ -950,6 +960,8 @@ class TurnRunner:
                         ),
                         on_before_finalize=pause_typing_before_finalize,
                         initial_reply_to_id=ctx.event_message_id, run_still_current=ctx._run_still_current,
+                        edit_commentary=(adapter_supports_progress_edits(adapter)
+                                         and getattr(adapter, "EDIT_RESULT_ID_IS_NEXT_TARGET", False) is True),
                     )
                     ctx.stream_consumer_holder[0] = stream_consumer
                     # #105341: a consumer created only for interim commentary (text streaming off)

@@ -505,6 +505,10 @@ class StreamTransportMixin:
             self._last_sent_text = ""
             self._notify_new_message()
         else:
+            from gateway.platforms.base import next_edit_target_message_id
+            next_id = next_edit_target_message_id(self.adapter, self._message_id, result)
+            if next_id != self._message_id:
+                self._adopt_message_id(next_id)
             self._last_sent_text = text
         self._flood_strikes = 0
         return True

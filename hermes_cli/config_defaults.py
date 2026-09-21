@@ -1659,6 +1659,8 @@ DEFAULT_CONFIG = {
         # / mode=off. Quote in YAML when starting with * or containing {}/!/: e.g. "git push
         # --force*".
         "deny": [],
+        # Stable Signal sender ACIs only; hardline blocks and deny rules still apply.
+        "platforms": {"signal": {"yolo_senders": []}},
         # /reload-mcp confirms before rebuilding the MCP tool set (it invalidates the prompt cache,
         # so the next message re-sends full input). "Always Approve" → false.
         "mcp_reload_confirm": True,

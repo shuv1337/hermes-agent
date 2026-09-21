@@ -280,9 +280,10 @@ class TestSignalStreamingPatch:
     cursor from leaking into Signal messages.
     """
 
-    def test_signal_does_not_support_editing(self, monkeypatch):
-        """SignalAdapter.SUPPORTS_MESSAGE_EDITING must be False."""
+    def test_signal_edits_explicitly_but_not_as_a_token_stream(self, monkeypatch):
+        """Explicit edits are allowed; token streaming stays off so the cursor cannot leak."""
         monkeypatch.setenv("SIGNAL_GROUP_ALLOWED_USERS", "")
         from gateway.platforms.signal import SignalAdapter
-        assert SignalAdapter.SUPPORTS_MESSAGE_EDITING is False
+        assert SignalAdapter.SUPPORTS_MESSAGE_EDITING is True
+        assert SignalAdapter.SUPPORTS_STREAMING_EDITS is False
 
