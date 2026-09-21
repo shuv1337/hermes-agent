@@ -1,0 +1,51 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:hermes_mobile/core/models/hermes_models.dart';
+import 'package:hermes_mobile/features/bots/bots_screen.dart';
+import 'package:hermes_mobile/core/providers.dart';
+
+HermesBotProfile _bot(String name, {String? group}) {
+  return HermesBotProfile.fromJson({
+    'name': name,
+    'ui_meta': {
+      'hermes-bots': {'title': name, 'group': ?group},
+    },
+  });
+}
+
+void main() {
+  test('bot roster keeps ungrouped first and sorts group sections', () {
+    final sections = botRosterSections([
+      _bot('one'),
+      _bot('fitness', group: 'Health and Fitness'),
+      _bot('work', group: 'Admin'),
+      _bot('sleep', group: 'Health and Fitness'),
+    ]);
+
+    expect(sections.map((section) => section.group), [
+      null,
+      'Admin',
+      'Health and Fitness',
+    ]);
+    expect(sections[2].bots.map((bot) => bot.name), ['fitness', 'sleep']);
+  });
+
+  test('session pins keep the requested session at the top', () {
+    final recent = HermesSession(id: 'recent', title: 'Recent');
+    final older = HermesSession(id: 'older', title: 'Older');
+
+    expect(orderSessionsWithPins([recent, older], ['older']).map((s) => s.id), [
+      'older',
+      'recent',
+    ]);
+  });
+
+  test('new bot chats open without an injected starter message', () {
+    final screen = buildBotChatScreen(
+      session: HermesSession(id: 'new-bot-chat'),
+      profileName: 'fitness-coach',
+    );
+
+    expect(screen.initialMessage, isNull);
+  });
+}

@@ -1,0 +1,70 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:hermes_mobile/core/models/hermes_models.dart';
+import 'package:hermes_mobile/features/sessions/tool_message_card.dart';
+
+HermesMessage _tool(String name, {String? context, dynamic args}) {
+  return HermesMessage(
+    id: 'tool-1',
+    sessionId: 'session-1',
+    role: 'tool',
+    toolName: name,
+    content: context,
+    toolCalls: args == null ? null : {'args': args},
+  );
+}
+
+void main() {
+  test('tool search gets a readable activity summary', () {
+    final presentation = presentToolMessage(
+      _tool('tool_search', args: {'query': 'apple health sleep'}),
+    );
+
+    expect(presentation.title, 'Tool search');
+    expect(presentation.summary, 'Searched tools for “apple health sleep”');
+    expect(presentation.details, contains('"query": "apple health sleep"'));
+  });
+
+  test('generic tool uses the gateway context instead of an ellipsis', () {
+    final presentation = presentToolMessage(
+      _tool('weather_lookup', context: 'Austin, TX'),
+    );
+
+    expect(presentation.title, 'Weather lookup');
+    expect(presentation.summary, 'Austin, TX');
+  });
+
+  testWidgets('tool details expand when the activity is tapped', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ToolMessageContent(
+            message: _tool('skill_view', args: {'name': 'apple-health'}),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Opened the “apple-health” skill'), findsOneWidget);
+    expect(
+      tester
+          .widget<AnimatedCrossFade>(find.byType(AnimatedCrossFade))
+          .crossFadeState,
+      CrossFadeState.showFirst,
+    );
+
+    await tester.tap(find.text('Skill'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<AnimatedCrossFade>(find.byType(AnimatedCrossFade))
+          .crossFadeState,
+      CrossFadeState.showSecond,
+    );
+    expect(find.textContaining('"name": "apple-health"'), findsOneWidget);
+  });
+}

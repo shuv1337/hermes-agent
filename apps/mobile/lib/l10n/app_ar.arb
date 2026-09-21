@@ -1,0 +1,456 @@
+{
+  "@@locale": "ar",
+  "appTitle": "Hermes Go",
+  "tagline": "انطلق أبعد. ابقَ متصلاً.",
+  "aboutBody": "Hermes Go v0.1\nGo further. Stay connected.\nGateway connector — sessions, chat, models, jobs.",
+  "failedToLoadConnection": "Failed to load connection: {error}",
+  "@failedToLoadConnection": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "navSessions": "الجلسات",
+  "navBots": "الروبوتات",
+  "navJobs": "مهام",
+  "navSettings": "الإعدادات",
+  "botsTitle": "الروبوتات",
+  "botsEmpty": "لا توجد روبوتات بعد. اضغط + لإنشاء واحد.",
+  "newBotTitle": "روبوت جديد",
+  "newBotSubtitle": "زميل مُسمّى له ذاكرته ومهاراته ومحادثته الخاصة.",
+  "botNameLabel": "الاسم",
+  "botNameHelper": "يُستخدم كمعرّف @",
+  "botNameTaken": "هذا المعرّف موجود بالفعل",
+  "botDescriptionLabel": "الوصف",
+  "botAppearanceLabel": "المظهر",
+  "createBotAction": "إنشاء روبوت",
+  "creatingBot": "جارٍ الإنشاء…",
+  "editBotAction": "تعديل الملف الشخصي",
+  "editBotTitle": "تعديل الروبوت",
+  "savingBot": "جارٍ الحفظ…",
+  "botHandleImmutable": "@{handle} هو المعرّف الدائم للروبوت للجلسات والذاكرة.",
+  "botsNoConversation": "لا توجد محادثات بعد",
+  "botsCachedRoster": "يتم عرض آخر قائمة أثناء إعادة اتصال الخادم.",
+  "modelLabel": "النموذج",
+  "lastActivity": "آخر نشاط",
+  "messagesLabel": "الرسائل",
+  "settingsTitle": "الإعدادات",
+  "checkConnection": "Check connection",
+  "liveChatReady": "Live — chat ready",
+  "notLiveSeeStatus": "Not live — see Connection status",
+  "wsConnectedChatReady": "WebSocket connected — chat ready",
+  "stillOffline": "Still offline",
+  "apiToken": "API token",
+  "refreshSignIn": "Refresh sign-in",
+  "refreshSignInSubtitle": "Re-enter password (e.g. after a host kick). Not automatic.",
+  "disconnect": "قطع الاتصال",
+  "disconnectSubtitle": "Remove this gateway from the phone",
+  "disconnectConfirmTitle": "Disconnect?",
+  "disconnectConfirmBody": "Removes the saved gateway from this phone. Host agents are not affected.",
+  "exitSampleWorkspace": "الخروج من مساحة العمل التجريبية",
+  "exitSampleWorkspaceSubtitle": "إيقاف بيئة التجربة وإزالتها من هذا الهاتف",
+  "exitSampleWorkspaceConfirmTitle": "الخروج من مساحة العمل التجريبية؟",
+  "exitSampleWorkspaceConfirmBody": "يوقف بوابة العينة المدمجة ويمسح جلساتها من هذا الهاتف. لا تُرسل أي بيانات خارج الجهاز.",
+  "sampleWorkspaceAboutLine": "مساحة عمل تجريبية — اتصل بـ demo.hermes.go (المستخدم demo، كلمة المرور demo) لتجربة Hermes Go بدون إعداد بوابة.",
+  "sampleWorkspaceBadge": "تجريبي",
+  "cancel": "إلغاء",
+  "theme": "Theme",
+  "appearance": "Appearance",
+  "appearanceSubtitle": "Same built-in skins as Desktop (Nous, Midnight, Ember, …).",
+  "hapticsSounds": "Haptics & sounds",
+  "hapticsOff": "Off — no taps, no completion chime",
+  "hapticsOn": "On — taps, send/stop feedback, reply chime",
+  "previewHaptics": "Preview haptics & chime",
+  "syncNow": "Sync now",
+  "syncNowSubtitle": "Sessions, jobs, models, skills",
+  "syncedWithSummary": "Synced ({summary})",
+  "@syncedWithSummary": {
+    "placeholders": {
+      "summary": {
+        "type": "String"
+      }
+    }
+  },
+  "about": "About",
+  "couldNotOpenBrowser": "Could not open browser — link copied",
+  "language": "اللغة",
+  "languageSystem": "إعدادات النظام",
+  "languageSubtitle": "App UI language. Chat content follows your agent.",
+  "connectedChatReady": "Connected · chat ready",
+  "connectedChatReadyBody": "Live WebSocket to the gateway. Messages and slash commands work.",
+  "signedInChatOffline": "Signed in · chat offline",
+  "signedInReconnecting": "Signed in · reconnecting",
+  "autoReconnectGaveUp": "Auto-reconnect gave up. Tap Reconnect (or check VPN / host).",
+  "signedInChatOfflineBody": "HTTPS/cookies may work for lists, but the live WebSocket is down. Auto-retry runs with backoff; or tap Reconnect.",
+  "sessionExpired": "Session expired",
+  "sessionExpiredBody": "Sign in again. Expiry may be intentional (signed out on host).",
+  "gaveUpReconnecting": "Gave up reconnecting",
+  "connectionProblem": "Connection problem",
+  "cannotReachGateway": "Cannot reach the gateway. Check VPN/Tailscale and host power.",
+  "notConnected": "Not connected",
+  "noGatewaySaved": "No gateway saved on this phone. Sign in from Connect.",
+  "webSocket": "WebSocket",
+  "live": "Live",
+  "httpsRest": "HTTPS / REST",
+  "checking": "Checking…",
+  "ok": "OK",
+  "fail": "Fail",
+  "unknown": "Unknown",
+  "host": "Host",
+  "user": "User",
+  "reconnect": "إعادة الاتصال",
+  "reconnectNow": "Reconnect now",
+  "checkNow": "Check now",
+  "signIn": "تسجيل الدخول",
+  "signInAndReconnect": "Sign in & reconnect",
+  "gaveUpTapReconnect": "Gave up — tap Reconnect",
+  "connecting": "Connecting…",
+  "error": "Error",
+  "closed": "Closed",
+  "idle": "Idle",
+  "offline": "Offline",
+  "themeLight": "فاتح",
+  "themeDark": "داكن",
+  "themeSystem": "النظام",
+  "skinSectionDesktop": "Desktop",
+  "skinSectionMobile": "Mobile",
+  "required": "مطلوب",
+  "signedInWsLive": "Signed in — WebSocket live",
+  "signedInWsOffline": "Signed in; WebSocket: {status}",
+  "@signedInWsOffline": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reenterPasswordFor": "Re-enter the password for {user} on {host}.\nWe never auto-reconnect after expiry (kicks stay kicked).",
+  "@reenterPasswordFor": {
+    "placeholders": {
+      "user": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "connectTitle": "Hermes Go",
+  "signInAgain": "Sign in again",
+  "sessionExpiredBanner": "انتهت جلسة البوابة أو تم تسجيل الخروج منها.\nأعد إدخال كلمة المرور للمتابعة — لا نعيد الاتصال تلقائياً بعد انتهاء الجلسة.",
+  "connectIntro": "Connect to your Hermes gateway — same as Desktop: base URL, then username and password. No API key.",
+  "gatewayBaseUrl": "Gateway base URL",
+  "httpPrivateNetworkHint": "Unencrypted HTTP: fine on your own LAN or VPN, use HTTPS for anything public.",
+  "urlRequired": "URL required",
+  "provider": "Provider",
+  "username": "اسم المستخدم",
+  "password": "كلمة المرور",
+  "continueAction": "متابعة",
+  "changeUrl": "Change URL",
+  "gatewayOpenHint": "Gateway is open (no password gate). You can connect without credentials.",
+  "signInPasswordHint": "Sign in with username and password (same as Desktop remote gateway).",
+  "oauthOnlyError": "This gateway uses OAuth sign-in only. Password login is not enabled. Enable a supports_password provider on the host, or use Desktop for OAuth.",
+  "connectedOpenGateway": "Connected (open gateway).",
+  "noPasswordProvider": "No password provider selected.",
+  "usernamePasswordRequired": "اسم المستخدم وكلمة المرور مطلوبان.",
+  "signedInAs": "تم تسجيل الدخول باسم {username}",
+  "@signedInAs": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewayNotReachable": "Gateway not reachable.",
+  "chats": "المحادثات",
+  "newChat": "محادثة جديدة",
+  "noChatsYet": "No chats yet",
+  "startNewChatHint": "Start a new chat, or open one from the menu.",
+  "pinned": "Pinned",
+  "recents": "Recents",
+  "renameChat": "Rename chat",
+  "title": "Title",
+  "save": "حفظ",
+  "renameFailed": "Rename failed: {error}",
+  "@renameFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteChatTitle": "Delete chat?",
+  "delete": "حذف",
+  "sessionIdCopied": "Session ID copied",
+  "sessionActions": "Session actions",
+  "pin": "Pin",
+  "unpin": "Unpin",
+  "copyId": "Copy ID",
+  "export": "Export",
+  "rename": "Rename",
+  "archive": "Archive",
+  "exportFailed": "Export failed: {error}",
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "couldNotStartChat": "Could not start chat: {error}",
+  "@couldNotStartChat": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionNotFound": "Session not found: {id}",
+  "@sessionNotFound": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "selectModel": "Select model",
+  "imageChat": "Image chat",
+  "greetingMorning": "صباح الخير",
+  "greetingAfternoon": "مساء الخير",
+  "greetingEvening": "مساء الخير",
+  "messageHint": "رسالة إلى Hermes Go…",
+  "messageHintShort": "Message…",
+  "sendAMessageToContinue": "Send a message to continue.",
+  "sync": "مزامنة",
+  "stop": "إيقاف",
+  "dictate": "Dictate",
+  "stopDictation": "Stop dictation",
+  "listening": "Listening…",
+  "readAloudOn": "Read aloud: on",
+  "readAloudOff": "Read aloud: off",
+  "readAloud": "Read aloud",
+  "addContext": "Add context",
+  "photoLibrary": "Photo library",
+  "camera": "Camera",
+  "pasteImageFromClipboard": "Paste image from clipboard",
+  "noImageOnClipboard": "No image on clipboard — use Photo library or Camera",
+  "couldNotPickImage": "Could not pick image: {error}",
+  "@couldNotPickImage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pasteFailed": "Paste failed: {error}",
+  "@pasteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "speechUnavailable": "Speech recognition unavailable on this device",
+  "micPermissionDenied": "Microphone / speech permission denied — enable in Settings",
+  "couldNotStartDictation": "Could not start dictation — check mic & speech permissions",
+  "dictationFailed": "Dictation failed: {error}",
+  "@dictationFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "uploadingImage": "Uploading image…",
+  "thinking": "يفكّر…",
+  "writing": "يكتب…",
+  "runningTool": "Running {name}…",
+  "@runningTool": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "imageAttachFailed": "Image attach failed: {error}",
+  "@imageAttachFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "savedWaitingWs": "Saved on phone — waiting for live WebSocket (Settings may show HTTPS only).",
+  "queuedForSync": "Queued for sync to gateway…",
+  "stopFailed": "Stop failed: {error}",
+  "@stopFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "editMessage": "Edit message",
+  "saveAndResend": "Save & resend",
+  "editAndResend": "Edit & resend",
+  "rewindAndRun": "Rewind to this prompt and run again",
+  "regenerate": "Regenerate",
+  "resend": "Resend",
+  "noResponseYet": "No reply yet — resend or edit this message",
+  "messageActions": "Message actions",
+  "deleteMessageTitle": "حذف الرسالة؟",
+  "deleteMessageBody": "لا يمكن التراجع عن هذا الإجراء. لا يمكن لتطبيق Hermes حذف رسالة واحدة على البوابة بعد، لذا تتم إزالتها من هذا الجهاز فقط — تحتفظ البوابة بنسختها الخاصة وقد تظل تظهر في أماكن أخرى.",
+  "messageDeleted": "تم حذف الرسالة (على هذا الجهاز فقط)",
+  "resubmitMessage": "Resubmit this message",
+  "retryFromPrevious": "Retry from the previous user message",
+  "copied": "Copied",
+  "copy": "Copy",
+  "codeCopied": "Code copied",
+  "copiedLink": "Copied link: {href}",
+  "@copiedLink": {
+    "placeholders": {
+      "href": {
+        "type": "String"
+      }
+    }
+  },
+  "stopRequested": "Stop requested.",
+  "slashFailed": "Slash failed: {error}",
+  "@slashFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "modelSavedLocal": "Model saved on phone; gateway: {error}",
+  "@modelSavedLocal": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pleaseLookAtImage": "Please look at the attached image.",
+  "pleaseLookAtImages": "Please look at the attached images.",
+  "nImages": "{count} image(s)",
+  "@nImages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "jobsTitle": "Jobs",
+  "retry": "Retry",
+  "runNow": "Run now",
+  "pause": "Pause",
+  "resume": "Resume",
+  "modelPickerTitle": "Model",
+  "modelPickerSubtitle": "Same catalog as Desktop",
+  "reasoningOptions": "Options",
+  "thinking": "Thinking",
+  "thinkingOnHint": "Model may use reasoning tokens",
+  "thinkingOffHint": "Reasoning disabled for this session",
+  "effort": "Effort",
+  "applyEffort": "Apply effort to session",
+  "confirmModel": "Use this model",
+  "modelPickerConfirmHint": "Select a model, set its options, then confirm.",
+  "modelNoOptions": "This model has no Thinking or Fast options.",
+  "modelCapsLoading": "Loading per-model options…",
+  "fastMode": "Fast",
+  "fastModeHint": "Priority / lower-latency when the model supports it",
+
+  "contextUsageTitle": "Context Usage",
+  "contextUsageTokenSummary": "~{used} / {max} Tokens",
+  "@contextUsageTokenSummary": {
+    "placeholders": {
+      "used": {"type": "String"},
+      "max": {"type": "String"}
+    }
+  },
+  "contextUsagePercentFull": "{percent}% Full",
+  "@contextUsagePercentFull": {
+    "placeholders": {
+      "percent": {"type": "int"}
+    }
+  },
+  "contextUsageLoading": "Loading breakdown…",
+  "contextUsageEmpty": "No context data yet — send a message first.",
+  "contextUsageOpen": "Context usage",
+  "contextCatSystemPrompt": "System prompt",
+  "contextCatToolDefinitions": "Tool definitions",
+  "contextCatRules": "Rules",
+  "contextCatSkills": "Skills",
+  "contextCatMcp": "MCP",
+  "contextCatSubagents": "Subagent definitions",
+  "contextCatMemory": "Memory",
+  "contextCatConversation": "Conversation",
+
+  "refreshModels": "Refresh models",
+  "skillsTitle": "Installed skills on your gateway",
+  "filterSkills": "Filter skills…",
+  "reloadSkills": "Reload skills on gateway",
+  "reloadFailed": "Reload failed: {error}",
+  "@reloadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "skillsSection": "Skills",
+  "commandsSection": "Commands",
+  "optionsSection": "Options",
+  "privacyAndData": "الخصوصية والبيانات",
+  "privacyAndDataSubtitle": "كيفية التعامل مع محتوى البوابة والبيانات الموجودة على الجهاز",
+  "privacyDataFlow": "يرسل Hermes Go المحادثات والمرفقات مباشرةً إلى البوابة التي تختارها. وقد ترسلها تلك البوابة إلى موفري النماذج والخدمات التي يحددها مالكها.",
+  "privacyOnDevice": "يحتفظ التطبيق على هذا الجهاز ببيانات الاتصال الوصفية وملفات تعريف ارتباط الجلسة المشفرة والتفضيلات ونسخة محلية مؤقتة من المحادثات. يؤدي قطع الاتصال إلى إزالة الاتصالات المحفوظة وبيانات المصادقة.",
+  "privacyNoAnalytics": "لا يتضمن هذا الإصدار حزم SDK للإعلانات أو التحليلات.",
+  "privacyPolicyMissing": "إجراء مطلوب من الناشر: يجب إعداد رابط HTTPS عام لسياسة الخصوصية قبل إرسال التطبيق إلى المتجر.",
+  "openPrivacyPolicy": "فتح سياسة الخصوصية",
+  "couldNotOpenLink": "تعذر فتح الرابط.",
+  "unofficialDisclaimer": "غير رسمي · مبني من المجتمع · غير تابع لـ Nous Research",
+  "noCachedJobs": "لا توجد مهام مخزنة مؤقتاً بعد.\nأصلح الاتصال وحاول مرة أخرى.",
+  "noCronJobs": "لا توجد مهام cron على هذه البوابة.\nأنشئها على المضيف (`hermes cron` أو Desktop).\nعند اكتمالها، ستتم مزامنة هذه الصفحة ويمكنها إرسال إشعار.",
+  "skillsPickerSubtitle": "المهارات المثبتة على بوابتك (المركزية والمضمنة والخاصة بك).\nتُخزّن مؤقتاً على الهاتف عند انقطاع الشبكة.\nاضغط لاستدعائها كأمر slash.",
+  "noSkillsCached": "لا توجد مهارات مخزنة مؤقتاً بعد.\nأعد التحميل عند توفر البوابة أو اكتب /skills-name عند عمل الإكمال التلقائي.",
+  "noSkillsMatch": "لا توجد مهارات تطابق «{query}».",
+  "@noSkillsMatch": {"placeholders": {"query": {"type": "String"}}},
+  "commandCheatSheetTitle": "Slash commands",
+  "commandCheatSheetSubtitle": "Browse every /command Hermes supports",
+  "filterCommands": "Filter commands…",
+  "noCommandsMatch": "No commands match \u201c{query}\u201d.",
+  "@noCommandsMatch": {"placeholders": {"query": {"type": "String"}}},
+  "commandBadgeCli": "CLI",
+  "commandBadgeConfigGated": "config",
+  "commandsLoadError": "Couldn't load commands. Check your connection and try again.",
+  "modelPickerDetails": "نفس قائمة Desktop (/api/model/options · model.options).\nتُطبّق على الجلسة المفتوحة في البوابة.",
+  "couldNotLoadModels": "تعذر تحميل النماذج:\n{detail}",
+  "@couldNotLoadModels": {"placeholders": {"detail": {"type": "String"}}},
+  "noModelsFromGateway": "لا توجد نماذج من هذه البوابة.\nيستخدم Desktop ‏GET /api/model/options (ملفات تعريف ارتباط الجلسة). اضبط الموفرين على المضيف إذا كانت القائمة فارغة فعلاً.",
+  "notificationsTitle": "الإشعارات",
+
+  "artifactOpenTooltip": "فتح {name}",
+  "@artifactOpenTooltip": {"placeholders": {"name": {"type": "String"}}},
+  "artifactKindMarkdown": "Markdown",
+  "artifactKindHtml": "HTML",
+  "artifactReload": "إعادة التحميل",
+  "artifactNotFound": "الملف غير موجود. ربما تم نقله أو حذفه على البوابة.",
+  "artifactAccessDenied": "الوصول إلى هذا الملف غير مسموح.",
+  "artifactTooLarge": "هذا الملف كبير جدًا للمعاينة هنا.",
+  "artifactLoadFailed": "تعذر تحميل هذا الملف.",
+  "artifactEnableJs": "تفعيل JavaScript",
+  "artifactEnableJsWarning": "معطّل افتراضيًا ولا يُحفظ أبدًا — فعّله فقط للمستندات التي تثق بها.",
+  "artifactOpenLinkTitle": "فتح الرابط؟",
+  "artifactOpenLinkBody": "سيؤدي هذا إلى فتح {url} في متصفحك، مغادرًا Hermes Go.",
+  "@artifactOpenLinkBody": {"placeholders": {"url": {"type": "String"}}},
+  "artifactOpenLinkAction": "فتح في المتصفح",
+  "imageTapToLoad": "اضغط لتحميل الصورة من {host}",
+  "@imageTapToLoad": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedPrivateNetwork": "تم حظر الصورة — شبكة خاصة ({host})",
+  "@imageBlockedPrivateNetwork": {"placeholders": {"host": {"type": "String"}}},
+  "imageBlockedSource": "تم حظر الصورة — مصدر غير مدعوم",
+  "imageLoadFailed": "تعذّر تحميل الصورة"
+}

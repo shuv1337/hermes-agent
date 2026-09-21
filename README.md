@@ -3,6 +3,29 @@
 </p>
 
 # Hermes Agent ☤
+
+> [!NOTE]
+> **This fork is Hermes Go 📱** — an iOS/Android companion app for your Hermes gateway, living in [`apps/mobile`](apps/mobile/). The agent, tools, memory, and cron stay on your host; the phone gets chat, sessions, projects, the model picker, and job notifications.
+>
+> **Build and run it locally:**
+> ```bash
+> # 1. On the host machine, start the authenticated dashboard/gateway
+> hermes dashboard --host 0.0.0.0 --no-open   # listens on :9119
+>
+> # 2. Build and run the app (Flutter 3.x, Xcode / Android Studio)
+> cd apps/mobile
+> flutter pub get
+> flutter run                                  # debug on a connected device/simulator
+>
+> # 3. Release builds
+> flutter build ipa --release                  # iOS (set your team in Xcode first)
+> flutter build apk --release                  # Android
+>
+> # 4. Upgrade-install on an iPhone without losing saved gateways
+> ./scripts/deploy_ios.sh
+> ```
+> Full instructions, host security notes, and the gateway API surface: [`apps/mobile/README.md`](apps/mobile/README.md). Fork-specific backend changes are documented in [`MOBILE.md`](MOBILE.md). Everything below is the upstream Hermes Agent README.
+
 <p align="center">
   <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a> | <a href="https://hermes-agent.nousresearch.com/">Hermes Desktop</a>
 </p>

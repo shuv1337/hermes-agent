@@ -1,0 +1,6 @@
+# Copy to android/key.properties and fill in your Play upload key values.
+# Never commit android/key.properties or the keystore itself.
+storePassword=change-me
+keyPassword=change-me
+keyAlias=upload
+storeFile=/absolute/path/to/upload-keystore.jks
