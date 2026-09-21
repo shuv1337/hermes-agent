@@ -77,6 +77,61 @@ class TestHostHeaderValidator:
             assert not _is_accepted_host(malformed, "127.0.0.1", trusted)
 
 
+class TestConfiguredPublicHosts:
+    @pytest.fixture(autouse=True)
+    def isolated_config(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.delenv("HERMES_DASHBOARD_PUBLIC_URL", raising=False)
+        (tmp_path / "config.yaml").write_text("dashboard: {}\n")
+
+    @pytest.mark.parametrize("public_url", [None, "https://public.example.test/hermes"])
+    def test_extra_hosts_are_unioned_with_optional_public_url(self, tmp_path, monkeypatch, public_url):
+        import hermes_cli.web_server as ws
+
+        if public_url:
+            (tmp_path / "config.yaml").write_text(f"dashboard:\n  public_url: {public_url}\n")
+        monkeypatch.setenv("HERMES_DASHBOARD_ALLOWED_HOSTS", " ShuvDev, SHUVDEV, other.test ,, ")
+        expected = {"shuvdev", "other.test"}
+        if public_url:
+            expected.add("public.example.test")
+        assert ws._dashboard_public_hosts() == frozenset(expected)
+        assert ws.should_require_dashboard_auth("127.0.0.1")
+
+    def test_malformed_extra_hosts_cannot_authorize_a_request(self, monkeypatch):
+        import hermes_cli.web_server as ws
+
+        monkeypatch.setenv(
+            "HERMES_DASHBOARD_ALLOWED_HOSTS",
+            "https://evil.test,good.test/path,user@other.test,bad.test:port,[localhost], safe.test",
+        )
+        assert ws._dashboard_public_hosts() == frozenset({"safe.test"})
+
+    def test_configured_hosts_reach_http_and_websocket_guards(self, monkeypatch):
+        from fastapi.testclient import TestClient
+        from starlette.websockets import WebSocketDisconnect
+        import hermes_cli.web_server as ws
+
+        monkeypatch.setenv("HERMES_DASHBOARD_ALLOWED_HOSTS", "shuvdev")
+        hosts = ws._dashboard_public_hosts()
+        assert ws.should_require_dashboard_auth("127.0.0.1", hosts)
+        monkeypatch.setattr(ws.app.state, "bound_host", "127.0.0.1", raising=False)
+        monkeypatch.setattr(ws.app.state, "trusted_public_hosts", hosts, raising=False)
+        # Exercise the transport guards with the same per-spawn token path as
+        # a Desktop-owned backend; public auth policy is asserted above.
+        monkeypatch.setattr(ws.app.state, "auth_required", False, raising=False)
+        monkeypatch.setattr(ws, "_DASHBOARD_EMBEDDED_CHAT_ENABLED", True)
+        client = TestClient(ws.app)
+        assert client.get("/api/status", headers={"Host": "shuvdev:9119"}).status_code == 200
+        assert client.get("/api/status", headers={"Host": "shuvdev.evil.test"}).status_code == 400
+        url = f"/api/events?token={ws._SESSION_TOKEN}&channel=host-config-test"
+        with client.websocket_connect(url, headers={"Host": "shuvdev:9119", "Origin": "https://shuvdev:9119"}):
+            pass
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect(url, headers={"Host": "shuvdev", "Origin": "https://shuvdev.evil.test"}):
+                pass
+        assert exc.value.code == 4403
+
+
 class TestHostHeaderMiddleware:
     """End-to-end test via the FastAPI app — verify the middleware
     rejects bad Host headers with 400."""
