@@ -1225,7 +1225,7 @@ class TestRoleAlternation:
 
 class TestThinkingBlockSignatureManagement:
     """Tests for the thinking block handling strategy:
-    strip from old turns, preserve latest signed, downgrade unsigned."""
+    strip from old turns, preserve latest signed, drop unsigned."""
 
 
 
@@ -1289,7 +1289,21 @@ class TestThinkingBlockSignatureManagement:
             if block.get("type") in {"thinking", "redacted_thinking"}:
                 assert "cache_control" not in block
 
+    @pytest.mark.parametrize("storage_field", ["reasoning_details", "anthropic_content_blocks"])
+    def test_latest_unsigned_thinking_is_dropped_not_downgraded(self, storage_field):
+        from copy import deepcopy
 
+        unsigned = {"type": "thinking", "thinking": "Unsigned reasoning."}
+        message = {"role": "assistant", "content": "Response.", storage_field: [unsigned]}
+        if storage_field == "anthropic_content_blocks":
+            message[storage_field].append({"type": "text", "text": "Response."})
+        original = deepcopy(message)
+
+        _, result = convert_messages_to_anthropic([message])
+
+        blocks = next(m for m in result if m["role"] == "assistant")["content"]
+        assert blocks == [{"type": "text", "text": "Response."}]
+        assert message == original
 
     def test_multi_turn_conversation_preserves_only_last(self):
         """Full multi-turn conversation: only last assistant keeps thinking."""

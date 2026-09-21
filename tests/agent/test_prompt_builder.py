@@ -87,6 +87,37 @@ class TestGuidanceConstants:
         assert "recent turns of the current session" not in SESSION_SEARCH_GUIDANCE
 
 
+class TestAnthropicOAuthBlocklistGuard:
+    def test_guidance_excludes_known_blocked_literals(self, monkeypatch, tmp_path):
+        from agent.prompt_builder import SKILLS_GUIDANCE, clear_skills_system_prompt_cache
+
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        skill_dir = tmp_path / "skills" / "example"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: example\ndescription: Example workflow\n---\nFollow the workflow.\n"
+        )
+        clear_skills_system_prompt_cache(clear_snapshot=True)
+        try:
+            skills_prompt = build_skills_system_prompt()
+            assert "Example workflow" in skills_prompt
+            rendered = "\n".join(
+                (MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE, skills_prompt)
+                + tuple(PLATFORM_HINTS.values())
+            )
+            for literal in (
+                "skill_manage(action='patch')", "use session_search to recall",
+                "MEDIA:/path/to/file", "MEDIA:/absolute/path",
+            ):
+                assert literal not in rendered
+        finally:
+            clear_skills_system_prompt_cache(clear_snapshot=True)
+
+    def test_media_hints_keep_delivery_marker(self):
+        for platform in ("telegram", "discord", "slack", "desktop"):
+            assert "MEDIA:" in PLATFORM_HINTS[platform]
+
+
 # =========================================================================
 # Context injection scanning
 # =========================================================================
@@ -790,9 +821,10 @@ class TestPromptBuilderConstants:
         ), "CLI hint should explicitly discourage MEDIA: tags."
         # Messaging hints should still advertise MEDIA: positively (sanity
         # check that this test is calibrated correctly).
-        # Dieted (#95681): messaging hints now share the _MEDIA_NATIVE
-        # spine ("write MEDIA:/absolute/path..."), not per-hint prose.
-        assert "MEDIA:/absolute/path" in PLATFORM_HINTS["telegram"]
+        # Preserve the marker and absolute-path instruction without requiring
+        # the literal example rejected by subscription OAuth credentials.
+        assert "MEDIA:" in PLATFORM_HINTS["telegram"]
+        assert "absolute path" in PLATFORM_HINTS["telegram"]
 
 
 

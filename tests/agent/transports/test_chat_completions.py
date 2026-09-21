@@ -203,6 +203,44 @@ class TestChatCompletionsBasic:
         msgs = [{"role": "user", "content": "hi"}]
         assert transport.convert_messages(msgs) is msgs
 
+    @pytest.mark.parametrize("block", [
+        {"type": "thinking", "thinking": "Native reasoning", "signature": "sig_1"},
+        {"type": "redacted_thinking", "data": "opaque"},
+    ])
+    def test_convert_messages_strips_anthropic_reasoning_details(self, transport, block):
+        reasoning = [block]
+        messages = [{"role": "assistant", "content": "answer", "reasoning_details": reasoning}]
+
+        kwargs = transport.build_kwargs("gpt-4o", messages)
+
+        assert kwargs["messages"] == [{"role": "assistant", "content": "answer"}]
+        assert messages[0]["reasoning_details"] is reasoning
+
+    @pytest.mark.parametrize("include_native", [False, True])
+    def test_convert_messages_preserves_openrouter_reasoning_extensions(self, transport, include_native):
+        from copy import deepcopy
+
+        reasoning = [
+            {"type": "reasoning.text", "text": "Provider reasoning", "signature": "sig_2"},
+            {"type": "reasoning.encrypted", "data": "opaque", "format": "anthropic-claude-v1"},
+        ]
+        stored = reasoning + ([{"type": "thinking", "thinking": "Native", "signature": "sig_1"}] if include_native else [])
+        messages = [{
+            "role": "assistant", "content": "answer", "reasoning_details": stored,
+            "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}],
+        }]
+        original = deepcopy(messages)
+
+        kwargs = transport.build_kwargs(
+            "anthropic/claude-sonnet-4.6", messages, base_url="https://openrouter.ai/api/v1",
+        )
+
+        assert kwargs["messages"][0]["reasoning_details"] == reasoning
+        assert kwargs["messages"][0]["tool_calls"] == original[0]["tool_calls"]
+        assert messages == original
+        if not include_native:
+            assert kwargs["messages"] is messages
+
     def test_convert_messages_strips_internal_scaffolding_markers(self, transport):
         """Hermes-internal ``_``-prefixed markers must never reach the wire.
 

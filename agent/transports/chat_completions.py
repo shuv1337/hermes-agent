@@ -372,6 +372,23 @@ def _finish_kwargs(api_kwargs: dict[str, Any], sanitized: list, params: dict, *,
     return api_kwargs
 
 
+def _drop_foreign_reasoning_block(block: Any, native_reasoning_details_type: str | None) -> bool:
+    """Drop native Anthropic thinking and another profile's native carrier.
+
+    OpenRouter reasoning.* blocks stay. Stored history is not mutated here.
+    """
+    if not isinstance(block, dict):
+        return False
+    block_type = block.get("type")
+    if block_type in ("thinking", "redacted_thinking"):
+        return True
+    return (
+        isinstance(block_type, str)
+        and block_type.endswith(".native_assistant")
+        and block_type != native_reasoning_details_type
+    )
+
+
 def _sanitize_message(
     msg: Any, strip_extra_content: bool, strip_reasoning_details: bool = False,
     native_reasoning_details_type: str | None = None,
@@ -396,9 +413,7 @@ def _sanitize_message(
         strip_keys.append("reasoning_details")
     elif isinstance(msg.get("reasoning_details"), list):
         details = msg["reasoning_details"]
-        kept = [d for d in details if not (
-            isinstance(d, dict) and isinstance(d.get("type"), str)
-            and d["type"].endswith(".native_assistant") and d["type"] != native_reasoning_details_type)]
+        kept = [d for d in details if not _drop_foreign_reasoning_block(d, native_reasoning_details_type)]
         if len(kept) != len(details):
             strip_keys.append("reasoning_details")
             kept_details = kept

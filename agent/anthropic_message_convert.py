@@ -547,9 +547,9 @@ def _merge_consecutive_roles(result: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 
 def _keep_valid_latest_thinking(content: List[Any], signature_dead: bool) -> List[Any]:
-    """Latest assistant turn on direct Anthropic: keep signed thinking, demote unsigned to text so
-    the reasoning isn't lost. If orphan-stripping mutated THIS turn every signature is dead (and a
-    bare signed block with no tool_use is also invalid), so demote ALL of them."""
+    """Keep signed thinking on the latest direct-Anthropic turn; drop unsigned blocks rather
+    than promoting them into visible text. When orphan-stripping invalidated this turn's
+    signatures, retain the existing recovery path that demotes its reasoning to text."""
     new_content = []
     for b in content:
         if _block_type(b) not in _THINKING_TYPES:
@@ -559,7 +559,7 @@ def _keep_valid_latest_thinking(content: List[Any], signature_dead: bool) -> Lis
         signed = b.get("data") if is_redacted else b.get("signature")  # redacted 'data' IS the signature
         if signed and not signature_dead:
             new_content.append(b)
-        elif (signature_dead or not is_redacted) and b.get("thinking"):
+        elif signature_dead and b.get("thinking"):
             new_content.append(_text_block(b["thinking"]))  # demote to plain text; dataless redacted dropped
     return new_content
 

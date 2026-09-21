@@ -235,7 +235,7 @@ USER_PROFILE_GUIDANCE = build_memory_guidance(False, True)
 
 SESSION_SEARCH_GUIDANCE = (
     "When the user references something from a past conversation or you suspect relevant cross-session "
-    "context exists, use session_search to recall it before asking them to repeat themselves."
+    "context exists, use session_search to look it up before asking them to repeat themselves."
 )
 
 # The opening sentence is worded deliberately: Anthropic's server-side filter rejected the previous phrasing
@@ -620,7 +620,7 @@ def hud_surface_note(valid_tool_names: "set[str] | None" = None) -> str:
 DEVELOPER_ROLE_MODELS = ("gpt-5", "codex")
 
 _MEDIA_NATIVE = (
-    "You can send files natively: write MEDIA:/absolute/path/to/file in your response. "
+    "You can send files natively: write the `MEDIA:` marker immediately followed by the file's absolute path in your response. "
 )
 
 _LOCAL_CRON_DELIVERY_NOTE = (
@@ -656,14 +656,14 @@ PLATFORM_HINTS = {
     "discord": (
         "You are in a Discord server or group chat communicating with your user. Discord renders standard "
         "markdown natively (bold, italic, code blocks, links); tables are NOT supported — use bullet lists "
-        "or labeled lines. You can send media files natively: include MEDIA:/absolute/path/to/file in your "
+        "or labeled lines. You can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path in your "
         "response. Images (.png, .jpg, .webp) are sent as photo attachments, audio as file attachments. You "
         "can also include image URLs in markdown format ![alt](url) and they will be sent as attachments."
     ),
     "slack": (
         "You are in a Slack workspace communicating with your user. Standard markdown is auto-converted to Slack "
         "formatting (bold, headers, links, code); tables are NOT supported — use bullet lists or labeled lines. You "
-        "can send media files natively: include MEDIA:/absolute/path/to/file in your response. Images (.png, .jpg, "
+        "can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path in your response. Images (.png, .jpg, "
         ".webp) are uploaded as photo attachments, audio as file attachments. You can also include image URLs in "
         "markdown format ![alt](url) and they will be uploaded as attachments."
     ),
@@ -675,7 +675,7 @@ PLATFORM_HINTS = {
     "email": (
         "You are communicating via email. Write clear, well-structured responses suitable for email. Use "
         "plain text formatting (no markdown). Keep responses concise but complete. You can send file "
-        "attachments — include MEDIA:/absolute/path/to/file in your response. The subject line is preserved "
+        "attachments — include the `MEDIA:` marker immediately followed by the file's absolute path in your response. The subject line is preserved "
         "for threading. Do not include greetings or sign-offs unless contextually appropriate."
     ),
     "cron": (
@@ -705,7 +705,7 @@ PLATFORM_HINTS = {
         # prelude first; width adopts the first measured span). setup_mcp is taught by its own tool schema.
         "You are chatting inside the Hermes desktop app, a graphical chat surface. Markdown renders with full GitHub "
         "flavor (tables, syntax-highlighted code, math via $...$, task lists, callouts). Deliver files by writing "
-        "MEDIA:/absolute/path/to/file — any file type: images/audio/video render inline, everything else becomes a "
+        "the `MEDIA:` marker immediately followed by the file's absolute path — any file type: images/audio/video render inline, everything else becomes a "
         "card with Download and preview buttons. Remote image URLs render via ![alt](url); local files ONLY via MEDIA: "
         "(local markdown images are blocked). Inline widget/chart (living IN the chat): write an HTML file, then put "
         "::preview{file=\"path.html\"} alone on its own line (plugins can register more ::name{...} directives). The "
@@ -725,13 +725,13 @@ PLATFORM_HINTS = {
     "bluebubbles": (
         "You are chatting via iMessage (BlueBubbles). iMessage does not render markdown formatting — use "
         "plain text. Keep responses concise as they appear as text messages. You can send media files "
-        "natively: include MEDIA:/absolute/path/to/file in your response. Images (.jpg, .png, .heic) appear "
+        "natively: include the `MEDIA:` marker immediately followed by the file's absolute path in your response. Images (.jpg, .png, .heic) appear "
         "as photos and other files arrive as attachments."
     ),
     "mattermost": (
         "You are in a Mattermost workspace communicating with your user. Mattermost renders standard "
         "Markdown — headings, bold, italic, code blocks, and tables all work. You can send media files "
-        "natively: include MEDIA:/absolute/path/to/file in your response. Images (.jpg, .png, .webp) are "
+        "natively: include the `MEDIA:` marker immediately followed by the file's absolute path in your response. Images (.jpg, .png, .webp) are "
         "uploaded as photo attachments, audio and video as file attachments. Image URLs in markdown format "
         "![alt](url) are rendered as inline previews automatically."
     ),
@@ -746,14 +746,14 @@ PLATFORM_HINTS = {
     "feishu": (
         "You are in a Feishu (Lark) workspace communicating with your user. Feishu renders Markdown in "
         "messages — bold, italic, code blocks, and links are supported. You can send media files natively: "
-        "include MEDIA:/absolute/path/to/file in your response. Images (.jpg, .png, .webp) are uploaded and "
+        "include the `MEDIA:` marker immediately followed by the file's absolute path in your response. Images (.jpg, .png, .webp) are uploaded and "
         "displayed inline, audio files as native voice messages (non-Opus formats are transcoded "
         "automatically; without ffmpeg they fall back to file attachments), and other files as attachments."
     ),
     "weixin": (
         "You are on Weixin/WeChat. Markdown formatting is supported, so you may use it when it improves readability, "
         "but keep the message compact and chat-friendly. You can send media files natively: include "
-        "MEDIA:/absolute/path/to/file in your response. Images are sent as native photos, videos play inline when "
+        "the `MEDIA:` marker immediately followed by the file's absolute path in your response. Images are sent as native photos, videos play inline when "
         "supported, and other files arrive as downloadable documents. You can also include image URLs in markdown "
         "format ![alt](url) and they will be downloaded and sent as native media when possible."
     ),
@@ -765,7 +765,7 @@ PLATFORM_HINTS = {
     ),
     "qqbot": (
         "You are on QQ, a popular Chinese messaging platform. QQ supports markdown formatting "
-        "and emoji. You can send media files natively: include MEDIA:/absolute/path/to/file in "
+        "and emoji. You can send media files natively: include the `MEDIA:` marker immediately followed by the file's absolute path in "
         "your response. Images are sent as native photos, and other files arrive as downloadable documents."
     ),
     "yuanbao": (
@@ -781,7 +781,7 @@ PLATFORM_HINTS = {
     "api_server": (
         "You're responding through an API server. The rendering layer is unknown — assume plain text. No markdown "
         "formatting (no asterisks, bullets, headers, code fences). Treat this like a conversation, not a document. "
-        "Keep responses brief and natural. File/media delivery: images referenced as MEDIA:/absolute/path tags "
+        "Keep responses brief and natural. File/media delivery: images referenced with the `MEDIA:` marker followed by an absolute path "
         "(.png/.jpg/.jpeg/.gif/.webp/.bmp, up to 5MB) are inlined as base64 data URLs in responses on the chat, "
         "completions, and responses endpoints. Non-image files are NOT intercepted anywhere, and the runs endpoint "
         "intercepts nothing — a MEDIA: tag there renders as literal text exposing a raw host filesystem path. For "
@@ -1381,7 +1381,7 @@ def _render_skills_index(
         "Skills also encode the user's preferred approach, conventions, and quality standards for tasks like "
         "code review, planning, and testing — load them even for tasks you already know how to do, because "
         "the skill defines how it should be done here.\n"
-        "If a skill has issues, fix it with skill_manage(action='patch').\n"
+        "If a skill has issues, fix it with the patch action of skill_manage.\n"
         "After difficult/iterative tasks, offer to save as a skill. If a skill you loaded was missing steps, "
         "had wrong commands, or needed pitfalls you discovered, update it before finishing.\n"
         "\n"
