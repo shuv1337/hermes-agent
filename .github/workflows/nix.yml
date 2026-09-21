@@ -10,10 +10,9 @@ name: Nix flake check
 # in progress. One slow advisory job in the CI lane blocks every rerun of the
 # fast required jobs beside it. A separate run reruns and cancels on its own.
 
+# Fork automation starts manually.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read

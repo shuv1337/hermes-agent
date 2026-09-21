@@ -14,10 +14,9 @@ name: CI
 # Do not add ``secrets: inherit`` or GitHub App credentials here. Trusted
 # main-only automation uses protected environments in its own workflows.
 
+# Fork automation starts manually; reusable workflow calls stay available.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -10,10 +10,9 @@ name: Plugin Catalog CI
 #                            at that exact commit must pass
 #                            `hermes plugins validate`.
 
+# Fork automation starts manually.
 on:
-  pull_request:
-    paths:
-      - "plugin-catalog/**"
+  workflow_dispatch:
 
 permissions:
   contents: read

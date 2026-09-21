@@ -21,11 +21,8 @@ name: OSV-Scanner
 # fail-on-vuln is disabled so the job does not block merges on pre-existing
 # vulnerabilities in pinned deps that we may need to patch deliberately.
 
+# Fork automation starts manually.
 on:
-  schedule:
-    # Weekly scan against main — catches CVEs published after merge for
-    # deps that haven't changed since.
-    - cron: '0 9 * * 1'
   workflow_dispatch:
 
 permissions:

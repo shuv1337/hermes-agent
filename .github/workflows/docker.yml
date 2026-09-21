@@ -1,5 +1,6 @@
 name: Docker Build, Test, and Publish
 
+# Fork automation starts manually. Job bodies stay upstream's.
 on:
   # This workflow owns its own triggers. ci.yml does not call it.
   # A reusable-workflow call eeps the caller run in progress for that full time.
@@ -9,11 +10,7 @@ on:
   #
   # Trusted main pushes resolve the environment-scoped Docker Hub secrets in
   # this same workflow, never across a workflow boundary.
-  pull_request:
-  push:
-    branches: [main]
-  release:
-    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
