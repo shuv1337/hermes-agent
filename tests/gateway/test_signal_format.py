@@ -5,10 +5,7 @@ strikethrough, monospace, code blocks, headings, and — critically — the
 false-positive regressions that caused spurious italics in production.
 """
 
-import pytest
 
-from gateway.config import PlatformConfig
-from gateway.platforms.signal import SignalAdapter
 from gateway.platforms.signal_format import markdown_to_signal
 
 
