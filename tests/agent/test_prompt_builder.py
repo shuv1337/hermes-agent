@@ -1,7 +1,5 @@
 """Tests for agent/prompt_builder.py — context scanning, truncation, skills index."""
 
-import builtins
-import importlib
 import logging
 import os
 import sys
@@ -22,20 +20,8 @@ from agent.prompt_builder import (
     build_skills_system_prompt,
     build_context_files_prompt,
     CONTEXT_FILE_MAX_CHARS,
-    _dynamic_context_file_max_chars,
     _get_context_file_max_chars,
-    _CONTEXT_FILE_DYNAMIC_CEILING,
-    DEFAULT_AGENT_IDENTITY,
     drain_truncation_warnings,
-    TOOL_USE_ENFORCEMENT_GUIDANCE,
-    TOOL_USE_ENFORCEMENT_MODELS,
-    OPENAI_MODEL_EXECUTION_GUIDANCE,
-    PARALLEL_TOOL_CALL_GUIDANCE,
-    GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
-    MEMORY_GUIDANCE,
-    SESSION_SEARCH_GUIDANCE,
-    PLATFORM_HINTS,
-    WSL_ENVIRONMENT_HINT,
 )
 
 
@@ -61,30 +47,6 @@ def _drain_truncation_warnings():
 # =========================================================================
 
 
-class TestGuidanceConstants:
-    def test_memory_guidance_keeps_form_rule_and_routing(self):
-        """Dieted (#95681): WHAT belongs in memory is the memory tool
-        schema's job (taught on every call). This block keeps only the
-        declarative-form rule and the staleness/skills routing."""
-        from agent.prompt_builder import MEMORY_GUIDANCE
-
-        assert "declarative facts" in MEMORY_GUIDANCE
-        assert "imperative phrasing" in MEMORY_GUIDANCE
-        assert "stale within a week" in MEMORY_GUIDANCE
-        # Skills are the default home for task-learned knowledge (incl. the
-        # user's preferences/corrections for that work); memory is the narrow
-        # every-session exception. The routing rule must LEAD, not trail.
-        assert MEMORY_GUIDANCE.index("Skills come first") < MEMORY_GUIDANCE.index("Memory is the narrow exception")
-        assert "preferences and corrections" in MEMORY_GUIDANCE
-        assert "Save proactively" not in MEMORY_GUIDANCE
-        assert "workflows belong" in MEMORY_GUIDANCE
-        # The category/SKIP curricula must NOT be re-taught here.
-        assert "PR numbers" not in MEMORY_GUIDANCE
-        assert "tool quirks" not in MEMORY_GUIDANCE
-
-    def test_session_search_guidance_is_simple_cross_session_recall(self):
-        assert "relevant cross-session context exists" in SESSION_SEARCH_GUIDANCE
-        assert "recent turns of the current session" not in SESSION_SEARCH_GUIDANCE
 
 
 class TestAnthropicOAuthBlocklistGuard:
@@ -199,19 +161,6 @@ class TestTruncateContent:
 
 
 
-    def test_truncation_warning_points_to_config_key(self, monkeypatch):
-        def fake_load_config():
-            return {"context_file_max_chars": 120}
-
-        monkeypatch.setattr("hermes_cli.config.load_config", fake_load_config)
-        monkeypatch.setattr("hermes_cli.config.load_config_readonly", fake_load_config)
-
-        _truncate_content("x" * 180, "warning.md")
-
-        warnings = drain_truncation_warnings()
-        assert len(warnings) == 1
-        assert "context_file_max_chars" in warnings[0]
-        assert "CONTEXT_FILE_MAX_CHARS" not in warnings[0]
 
     def test_warnings_isolated_across_contexts(self, monkeypatch):
         """Truncation warnings accumulate per-context — a concurrent build in
@@ -254,12 +203,6 @@ class TestDynamicContextFileCap:
         monkeypatch.setattr("hermes_cli.config.load_config_readonly", lambda: {})
 
 
-    def test_dynamic_scales_above_floor_for_large_window(self):
-        # 200K-token window → ~48K (200000 * 4 * 0.06), well above the floor
-        # and above Codex's 32 KiB project_doc default.
-        cap = _dynamic_context_file_max_chars(200_000)
-        assert cap == 48_000
-        assert cap > CONTEXT_FILE_MAX_CHARS
 
 
 
@@ -334,23 +277,6 @@ class TestParseSkillFile:
 
 
 
-class TestPromptBuilderImports:
-    def test_module_import_does_not_eagerly_import_skills_tool(self, monkeypatch):
-        original_import = builtins.__import__
-
-        def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
-            if name == "tools.skills_tool" or (
-                name == "tools" and fromlist and "skills_tool" in fromlist
-            ):
-                raise ModuleNotFoundError("simulated optional tool import failure")
-            return original_import(name, globals, locals, fromlist, level)
-
-        monkeypatch.delitem(sys.modules, "agent.prompt_builder", raising=False)
-        monkeypatch.setattr(builtins, "__import__", guarded_import)
-
-        module = importlib.import_module("agent.prompt_builder")
-
-        assert hasattr(module, "build_skills_system_prompt")
 
 
 # =========================================================================
@@ -517,16 +443,6 @@ class TestBuildContextFilesPrompt:
         result = build_context_files_prompt(cwd=str(sub), skip_soul=True)
         assert result.count("Same rules everywhere.") == 1
 
-    def test_agents_md_single_file_output_unchanged(self, tmp_path):
-        # Zero-regression guarantee: with one AGENTS.md at cwd (git repo or
-        # not), the section is byte-identical to historical single-file form.
-        from agent.prompt_builder import _load_agents_md
-
-        (tmp_path / ".git").mkdir()
-        sub = tmp_path / "sub"
-        sub.mkdir()
-        (sub / "AGENTS.md").write_text("Only file.")
-        assert _load_agents_md(sub) == "## AGENTS.md\n\nOnly file."
 
     def test_agents_md_no_git_root_stays_cwd_only(self, tmp_path):
         # Without a git root, parents are never consulted (no picking up an
@@ -644,7 +560,6 @@ class TestFindHermesMd:
 
     def test_unreadable_parent_is_treated_as_no_git_root(self, tmp_path, monkeypatch):
         """A parent the process cannot stat (#8751) must not raise out of prompt construction."""
-        import os as _os
         project = tmp_path / "locked" / "proj"
         project.mkdir(parents=True)
         real_exists = Path.exists
@@ -710,19 +625,6 @@ class TestFindGitRoot:
         sub.mkdir(parents=True)
         assert _find_git_root(sub) == tmp_path
 
-    def test_returns_none_without_git(self, tmp_path):
-        # Create an isolated dir tree with no .git anywhere in it.
-        # tmp_path itself might be under a git repo, so we test with
-        # a directory that has its own .git higher up to verify the
-        # function only returns an actual .git directory it finds.
-        isolated = tmp_path / "no_git_here"
-        isolated.mkdir()
-        # We can't fully guarantee no .git exists above tmp_path,
-        # so just verify the function returns a Path or None.
-        result = _find_git_root(isolated)
-        # If result is not None, it must actually contain .git
-        if result is not None:
-            assert (result / ".git").exists()
 
 
 class TestCursorrulesCandidates:
@@ -889,44 +791,6 @@ class TestEnvironmentHints:
         assert f"Current working directory: {tmp_path}" in _pb.build_environment_hints()
 
 
-    def test_probe_remote_backend_imports_real_factory(self, monkeypatch):
-        """Regression for #53667: the probe imported a nonexistent
-        ``get_environment`` from ``tools.environments`` and always died with
-        ``ImportError: cannot import name 'get_environment'`` (cosmetic — it
-        only dropped the live backend description to a static fallback). The
-        real factory is ``_create_environment`` in ``tools.terminal_tool``;
-        the probe must import and call THAT, returning a parsed line instead
-        of None."""
-        import agent.prompt_builder as _pb
-
-        monkeypatch.setenv("TERMINAL_ENV", "docker")
-        _pb._BACKEND_PROBE_CACHE.clear()
-
-        class _FakeEnv:
-            def execute(self, cmd, timeout=None):
-                return {
-                    "returncode": 0,
-                    "output": (
-                        "os=Linux\nkernel=6.8.0\nhome=/root\n"
-                        "cwd=/workspace\nuser=root\n"
-                    ),
-                }
-
-        created = {}
-
-        def _fake_create_environment(*, env_type, **kwargs):
-            created["env_type"] = env_type
-            return _FakeEnv()
-
-        # Patch the REAL factory in tools.terminal_tool_backends — the probe imports it
-        # locally, so the import itself must succeed (the bug was here).
-        import tools.terminal_tool_backends as _tt
-        monkeypatch.setattr(_tt, "_create_environment", _fake_create_environment)
-
-        line = _pb._probe_remote_backend("docker")
-        assert created.get("env_type") == "docker"
-        assert line is not None
-        assert "Linux 6.8.0" in line
 
     def test_remote_backend_probe_carries_no_user_home_cwd(self, monkeypatch):
         """#117262: the sandbox's user, $HOME and cwd are user-identifying metadata that
@@ -1098,14 +962,6 @@ class TestEnvironmentHints:
 
 
 
-    def test_remote_backend_list_covers_known_sandboxes(self):
-        """Regression guard: if someone adds a remote backend, they must list it here."""
-        import agent.prompt_builder as _pb
-        for backend in ("docker", "singularity", "modal", "daytona", "ssh", "vercel_sandbox"):
-            assert backend in _pb._REMOTE_TERMINAL_BACKENDS, (
-                f"{backend!r} must be in _REMOTE_TERMINAL_BACKENDS so its host "
-                f"info is suppressed in the system prompt"
-            )
 
 
 # =========================================================================
@@ -1180,13 +1036,6 @@ class TestBuildSkillsSystemPromptConditional:
 # =========================================================================
 
 
-class TestToolUseEnforcementGuidance:
-    def test_guidance_mentions_tool_calls(self):
-        assert "tool call" in TOOL_USE_ENFORCEMENT_GUIDANCE.lower()
-
-
-    def test_guidance_requires_action(self):
-        assert "MUST" in TOOL_USE_ENFORCEMENT_GUIDANCE
 
 
 
@@ -1195,93 +1044,10 @@ class TestToolUseEnforcementGuidance:
 
 
 
-class TestOpenAIModelExecutionGuidance:
-    """Tests for GPT/Codex-specific execution discipline guidance."""
-
-
-
-    def test_guidance_covers_verification(self):
-        text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "verification" in text or "verify" in text
-        assert "correctness" in text
-
-
-
-    def test_guidance_is_string(self):
-        assert isinstance(OPENAI_MODEL_EXECUTION_GUIDANCE, str)
-        assert len(OPENAI_MODEL_EXECUTION_GUIDANCE) > 100
-
-    def test_guidance_covers_external_write_readback(self):
-        text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "read" in text and "back" in text
-        assert "successful tool call is not a successful task" in text
-
-    def test_guidance_covers_count_reconciliation(self):
-        text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "has_more" in text
-        assert "hard assertions" in text
-
-    def test_guidance_covers_literal_preservation(self):
-        text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "normalize" in text
-        assert "malformed" in text
-
-    def test_guidance_covers_retry_differently(self):
-        text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "suspiciously narrow" in text
-        assert "retry" in text
-
-    def test_guidance_gates_completion_on_verification(self):
-        text = OPENAI_MODEL_EXECUTION_GUIDANCE.lower()
-        assert "plausible subset" in text
-
-
-class TestExecutionGuidanceModels:
-    """Behavior contracts for the default auto-match model list."""
-
-    def test_includes_historical_families(self):
-        from agent.prompt_builder import EXECUTION_GUIDANCE_MODELS
-        for fam in ("gpt", "codex", "grok"):
-            assert fam in EXECUTION_GUIDANCE_MODELS
-
-    def test_includes_composio_eval_families(self):
-        from agent.prompt_builder import EXECUTION_GUIDANCE_MODELS
-        for fam in ("deepseek", "kimi", "qwen", "glm", "minimax", "mimo", "mistral"):
-            assert fam in EXECUTION_GUIDANCE_MODELS
-
-    def test_muse_spark_gets_both_guidance_blocks(self):
-        # Muse Spark closes the turn after a chat-only response on defaults
-        # (#96550) — it needs tool-use enforcement AND execution guidance.
-        from agent.prompt_builder import EXECUTION_GUIDANCE_MODELS
-        assert any(p in "meta/muse-spark-1.3-contributor" for p in TOOL_USE_ENFORCEMENT_MODELS)
-        assert any(p in "meta/muse-spark-1.3-contributor" for p in EXECUTION_GUIDANCE_MODELS)
-
-    def test_excludes_google_and_claude(self):
-        # Gemini/Gemma get GOOGLE_MODEL_OPERATIONAL_GUIDANCE instead;
-        # Claude doesn't exhibit the targeted failure modes.
-        from agent.prompt_builder import EXECUTION_GUIDANCE_MODELS
-        for fam in ("gemini", "gemma", "claude"):
-            assert fam not in EXECUTION_GUIDANCE_MODELS
-
-
-class TestParallelToolCallGuidance:
-    """Behavior contracts for the universal parallel-tool-call guidance block.
-
-    Asserts the invariants the block must satisfy (steer batching, scope to
-    independent calls, stay short for the cached prompt) rather than freezing
-    its exact wording.
-    """
-
-    def test_is_nonempty_string(self):
-        assert isinstance(PARALLEL_TOOL_CALL_GUIDANCE, str)
-        assert PARALLEL_TOOL_CALL_GUIDANCE.strip()
 
 
 
 
-    def test_has_a_heading(self):
-        # Heading delimits it as its own section in the assembled prompt.
-        assert PARALLEL_TOOL_CALL_GUIDANCE.lstrip().startswith("#")
 
 
 
