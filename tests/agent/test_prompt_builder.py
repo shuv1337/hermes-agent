@@ -22,6 +22,9 @@ from agent.prompt_builder import (
     CONTEXT_FILE_MAX_CHARS,
     _get_context_file_max_chars,
     drain_truncation_warnings,
+    MEMORY_GUIDANCE,
+    SESSION_SEARCH_GUIDANCE,
+    PLATFORM_HINTS,
 )
 
 
