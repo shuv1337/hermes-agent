@@ -1,7 +1,7 @@
 """Hermes Go restores sessions and capabilities from their owning profile."""
 
 import pytest
-import yaml
+from hermes_cli.config import atomic_config_write
 
 from hermes_constants import get_hermes_home, set_hermes_home_override, reset_hermes_home_override
 from hermes_state import SessionDB
@@ -78,10 +78,10 @@ def test_profile_capability_pin_wins_over_coding_posture(profile_stores, monkeyp
     _, _, homes = profile_stores
     import agent.coding_context as coding
     monkeypatch.delenv('HERMES_TUI_TOOLSETS', raising=False)
-    (homes['coach'] / 'config.yaml').write_text(yaml.safe_dump({
+    atomic_config_write(homes['coach'] / 'config.yaml', {
         'tools': {'enabled_toolsets': ['web', 'apple_health']},
         'mcp_servers': {'example': {'command': 'unused-fixture', 'enabled': True}},
-    }))
+    })
     monkeypatch.setattr(coding, 'coding_selection', lambda **kwargs: ['coding'])
     token = set_hermes_home_override(homes['coach'])
     try:
@@ -96,9 +96,9 @@ def test_profile_capability_pin_survives_plugin_discovery_failure(profile_stores
     import agent.coding_context as coding
     import hermes_cli.plugins as plugins
     monkeypatch.delenv('HERMES_TUI_TOOLSETS', raising=False)
-    (homes['coach'] / 'config.yaml').write_text(yaml.safe_dump({
+    atomic_config_write(homes['coach'] / 'config.yaml', {
         'tools': {'enabled_toolsets': ['apple_health']},
-    }))
+    })
     def broken_discovery():
         raise PermissionError('unreadable plugin directory')
     monkeypatch.setattr(plugins, 'discover_plugins', broken_discovery)

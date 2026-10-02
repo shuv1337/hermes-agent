@@ -13,13 +13,13 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 from hermes_cli.auth import AuthError, resolve_provider
 from hermes_cli.colors import Colors, color
 from hermes_cli.config import get_env_path, get_env_value, get_hermes_home, load_config
+from hermes_cli.config_defaults import DEFAULT_SANDBOX_IMAGE, DEFAULT_VERCEL_IMAGE
 from hermes_cli.models import provider_label
 from hermes_cli.runtime_provider import resolve_requested_provider
 from hermes_cli.vercel_auth import describe_vercel_auth
 from hermes_cli.status_auth import (  # renderers wired into _SECTIONS below
     _render_api_keys, _render_apikey_providers, _render_auth_providers, _render_nous_gateway)
 from hermes_constants import OPENROUTER_MODELS_URL
-from hermes_constants import is_termux as _is_termux
 
 
 def check_mark(ok: bool) -> str:
@@ -108,8 +108,8 @@ def _estop_status_line():
 # Simple env-driven terminal backends: (label, env var, default, empty-counts-as-unset).
 _TERMINAL_ENV_ROWS = {
     "ssh": (("SSH Host:", "TERMINAL_SSH_HOST", "(not set)", True), ("SSH User:", "TERMINAL_SSH_USER", "(not set)", True)),
-    "docker": (("Docker Image:", "TERMINAL_DOCKER_IMAGE", "python:3.11-slim", False),),
-    "daytona": (("Daytona Image:", "TERMINAL_DAYTONA_IMAGE", "nikolaik/python-nodejs:python3.11-nodejs20", False),),
+    "docker": (("Docker Image:", "TERMINAL_DOCKER_IMAGE", DEFAULT_SANDBOX_IMAGE, False),),
+    "daytona": (("Daytona Image:", "TERMINAL_DAYTONA_IMAGE", DEFAULT_SANDBOX_IMAGE, False),),
 }
 
 _PLATFORMS = {  # name -> (token env var, home-channel env var or None)
@@ -144,15 +144,20 @@ def _render_header(ctx):
         _banner((paused,), Colors.YELLOW, Colors.BOLD)
 
 
+def _load_ctx_config(ctx) -> None:
+    """Load config.yaml into the shared context (fail-soft)."""
+    try:
+        ctx.config = load_config()
+    except Exception:
+        ctx.config = {}
+
+
 def _render_environment(ctx):
     _section("Environment")
     _kv("Project:", PROJECT_ROOT)
     _kv("Python:", sys.version.split()[0])
     _kv_flag(".env file:", get_env_path().exists(), "exists", "not found")
-    try:
-        ctx.config = load_config()
-    except Exception:
-        ctx.config = {}
+    _load_ctx_config(ctx)
     _kv("Model:", _configured_model_label(ctx.config))
     _kv("Provider:", _effective_provider_label())
 
@@ -171,9 +176,10 @@ def _render_terminal(ctx):
         persist_enabled = (bool(terminal_cfg.get("container_persistent", True)) if persist is None
                            else persist.lower() in {"1", "true", "yes", "on"})
         auth_status = describe_vercel_auth()
-        _kv("Runtime:", os.getenv('TERMINAL_VERCEL_RUNTIME') or terminal_cfg.get('vercel_runtime') or 'node24')
+        _kv("Image:", os.getenv('TERMINAL_VERCEL_RUNTIME') or terminal_cfg.get('vercel_runtime')
+            or os.getenv('TERMINAL_VERCEL_IMAGE') or terminal_cfg.get('vercel_image') or DEFAULT_VERCEL_IMAGE)
         _kv_flag("SDK:", importlib.util.find_spec("vercel") is not None, "installed",
-                 "missing (install: pip install 'hermes-agent[vercel]')")
+                 "missing (run hermes setup terminal and select Vercel Sandbox, then restart Hermes)")
         _kv("Auth:", f"{check_mark(auth_status.ok)} {auth_status.label}")
         for line in auth_status.detail_lines:
             _kv("Auth detail:", line)
@@ -202,16 +208,11 @@ def _render_platforms(ctx):
         home_channel = os.getenv(home_var, "") if home_var else ""
         _row(name, has_token, _configured(has_token) + (f" (home: {home_channel})" if home_channel else ""))
 
-    try:  # Plugin-registered platforms
+    try:  # Plugin platforms: the gateway's own verdict, never the check_fn "SDK importable" probe
         from gateway.platform_registry import platform_registry
+        connected = {p.value for p in _connected_platforms()}
         for entry in platform_registry.plugin_entries():
-            # Per-entry guard: one raising probe must not abort the listing of every remaining
-            # plugin platform (matches the other check_fn sites).
-            try:
-                configured = bool(entry.check_fn())
-            except Exception:
-                configured = False
-            _row(entry.label, configured, f"{_configured(configured)} (plugin)")
+            _row(entry.label, entry.name in connected, f"{_configured(entry.name in connected)} (plugin)")
     except Exception:
         pass
 
@@ -240,13 +241,10 @@ def _render_gateway(ctx):
                     _kv(f"  {name}/{platform}:", url)
         if snapshot.has_process_service_mismatch:
             _kv("Service:", "installed but not managing the current running gateway")
-        elif _is_termux() and not snapshot.gateway_pids:
-            _kv("Start with:", "hermes gateway")
-            _kv("Note:", "Android may stop background jobs when Termux is suspended")
         elif snapshot.service_installed and not snapshot.service_running:
             _kv("Service:", "installed but stopped")
     except Exception:
-        platform = "termux" if _is_termux() else "linux" if sys.platform.startswith("linux") else sys.platform
+        platform = "linux" if sys.platform.startswith("linux") else sys.platform
         status_text, manager = _GATEWAY_FALLBACK.get(platform, ("N/A", "(not supported on this platform)"))
         _kv("Status:", color(status_text, Colors.DIM))
         _kv("Manager:", manager)
@@ -257,19 +255,23 @@ def _load_json(path: Path, encoding: str = "utf-8"):
         return json.load(f)
 
 
-def _render_cron(ctx):
-    _section("Scheduled Jobs")
+def _cron_summary() -> str:
+    """``N active, M total`` jobs line, shared by the full and short status renderers."""
     jobs_file = get_hermes_home() / "cron" / "jobs.json"
     if not jobs_file.exists():
-        _kv("Jobs:", 0)
-        return
+        return "0"
     try:
         # utf-8-sig: same dialect as cron/jobs.load_jobs — Windows editors may leave a UTF-8 BOM
         # that plain utf-8 json.load rejects.
         jobs = _load_json(jobs_file, "utf-8-sig").get("jobs", [])
-        _kv("Jobs:", f"{sum(1 for j in jobs if j.get('enabled', True))} active, {len(jobs)} total")
+        return f"{sum(1 for j in jobs if j.get('enabled', True))} active, {len(jobs)} total"
     except Exception:
-        _kv("Jobs:", "(error reading jobs file)")
+        return "(error reading jobs file)"
+
+
+def _render_cron(ctx):
+    _section("Scheduled Jobs")
+    _kv("Jobs:", _cron_summary())
 
 
 def _render_sessions(ctx):
@@ -296,7 +298,7 @@ def _render_sessions(ctx):
         _kv("Active:", 0)
     else:
         try:
-            data = _load_json(sessions_file)
+            data = _load_json(sessions_file, encoding="utf-8-sig")
             entries = [k for k in data if not str(k).startswith("_")] if isinstance(data, dict) else []
             _kv("Active:", f"{len(entries)} session(s)")
         except Exception:
@@ -353,6 +355,65 @@ def _render_footer(ctx):
     print()
 
 
+def _connected_platforms() -> list:
+    """Platforms the gateway would start (``GatewayConfig.get_connected_platforms``)."""
+    from gateway.config import load_gateway_config
+    return load_gateway_config().get_connected_platforms()
+
+
+def _connected_platform_labels() -> list:
+    from gateway.platform_registry import platform_registry
+    return [getattr(platform_registry.get(p.value), "label", p.value) for p in _connected_platforms()]
+
+
+def _authenticated_provider_names() -> list:
+    """The providers the /model picker offers: cached catalogs only, no endpoint probes."""
+    from hermes_cli.inventory import load_picker_context
+    from hermes_cli.model_switch import list_authenticated_providers
+    pick = load_picker_context()
+    return [row["name"] for row in list_authenticated_providers(
+        user_providers=pick.user_providers, custom_providers=pick.custom_providers,
+        excluded_providers=pick.excluded_providers, max_models=0, non_blocking_catalogs=True,
+        probe_custom_providers=False)]
+
+
+def _gateway_state() -> tuple:
+    from hermes_cli.gateway import get_gateway_runtime_snapshot, named_profile_served_by_running_multiplexer
+    if get_gateway_runtime_snapshot().running:
+        return True, "running"
+    if named_profile_served_by_running_multiplexer():  # satellite profile: no gateway.pid of its own
+        return True, "running (via the default-profile multiplexer)"
+    return False, "stopped"
+
+
+def _summary_row(label: str, probe, empty: str) -> None:
+    """One summary row; a failing probe degrades only its own row."""
+    try:
+        values = list(dict.fromkeys(probe()))
+    except Exception:
+        values = None
+    _kv(label, "unknown" if values is None else ", ".join(values) or empty)
+
+
+def _render_summary(ctx):
+    """Default ``hermes status``: one line per component; ``--full`` prints every section."""
+    _render_header(ctx)
+    print()
+    _load_ctx_config(ctx)
+    _kv("Model:", _configured_model_label(ctx.config))
+    _kv("Provider:", _effective_provider_label())
+    _summary_row("Providers:", _authenticated_provider_names, "none connected")
+    try:
+        running, text = _gateway_state()
+        _kv_flag("Gateway:", running, text, text)
+    except Exception:
+        _kv("Gateway:", "unknown")
+    _summary_row("Platforms:", _connected_platform_labels, "none configured")
+    _kv("Jobs:", _cron_summary())
+    _banner(("  Run 'hermes status --full' for every section",), Colors.DIM)
+    print()
+
+
 # Print order of `hermes status`; each renderer takes the shared _StatusContext.
 _SECTIONS = (
     _render_header, _render_environment, _render_api_keys, _render_auth_providers, _render_nous_gateway,
@@ -361,37 +422,10 @@ _SECTIONS = (
 
 
 def show_status(args):
-    """Show status of all Hermes Agent components."""
+    """One-screen summary by default; ``--full``/``--deep`` print every section."""
     # Shared by section renderers: config, --deep, and the Nous login facts Auth Providers derives
     # for the later Nous Tool Gateway section.
     ctx = SimpleNamespace(deep=getattr(args, 'deep', False), config={}, nous_logged_in=False,
                           nous_inference_present=False, nous_account_info=None)
-    for render in _SECTIONS:
+    for render in _SECTIONS if getattr(args, 'full', False) or ctx.deep else (_render_summary,):
         render(ctx)
-
-
-# ---- BEGIN PLUGIN-COMPAT (revert-scheduled; see COMPAT_MANIFEST.md) ----
-# Names external plugins imported from this module before the Sep 2026 decomposition.
-# Internal code MUST NOT use these (scripts/check_compat_pointers.py fails CI if it does).
-# The whole block is removed by reverting the commit that added it.
-import subprocess  # noqa: F401,E402
-
-
-_PLUGIN_COMPAT_LAZY = {
-    'format_nous_portal_entitlement_message': ('hermes_cli.nous_account', 'format_nous_portal_entitlement_message'),
-    'get_nous_portal_account_info': ('hermes_cli.nous_account', 'get_nous_portal_account_info'),
-    'get_nous_subscription_features': ('hermes_cli.nous_subscription', 'get_nous_subscription_features'),
-    'managed_nous_tools_enabled': ('tools.tool_backend_helpers', 'managed_nous_tools_enabled'),
-    'redact_key': ('hermes_cli.config', 'redact_key'),
-}
-
-
-def __getattr__(name):  # PEP 562 — lazy so no import cycles
-    target = _PLUGIN_COMPAT_LAZY.get(name)
-    if target is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    import importlib
-    from hermes_cli.plugin_compat import warn_once
-    warn_once(__name__, name, *target)
-    return getattr(importlib.import_module(target[0]), target[1])
-# ---- END PLUGIN-COMPAT ----
