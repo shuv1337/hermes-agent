@@ -98,3 +98,12 @@ def test_brokered_opaque_bearer_rotates_on_stored_expiry_and_keeps_the_refresh_t
     assert pool.try_refresh_current() is None
     pool.mark_exhausted_and_rotate(status_code=401, api_key_hint="ya29.revoked")
     assert json.loads((home / "auth.json").read_text())["credential_pool"][name][0]["last_status"] == STATUS_DEAD
+
+
+def test_solstice_lists_gemini_4_argon_without_making_it_the_default():
+    from providers import get_provider_profile
+
+    models = tuple(get_provider_profile("solstice").fallback_models)
+    assert "gemini-4-argon" in models
+    assert models[0] != "gemini-4-argon"
+    assert models[-1] == "gemini-3.5-flash-lite"
