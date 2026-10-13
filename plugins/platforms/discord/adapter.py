@@ -1257,7 +1257,9 @@ def _read_discord_prompt_timeout() -> int:
     return seconds
 
 
-from plugins.platforms.discord.adapter_media import DiscordMediaMixin
+# Keep media helpers in the loader's profile-scoped plugin namespace so they
+# read this adapter's SDK globals after optional dependencies are installed.
+from .adapter_media import DiscordMediaMixin
 from plugins.platforms.discord.adapter_slash_auth import DiscordSlashAuthMixin
 from plugins.platforms.discord.adapter_thread_titles import DiscordThreadTitlesMixin, SemanticThreadRenames
 from plugins.platforms.discord.adapter_voice_info import DiscordVoiceInfoMixin
